@@ -1,10 +1,31 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index.tsx";
-import NotFound from "./pages/NotFound.tsx";
+import NotFound from "./pages/NotFound";
+
+import TenantLayout from "./layouts/TenantLayout";
+import AdminLayout from "./layouts/AdminLayout";
+
+import Dashboard from "./pages/tenant/Dashboard";
+import Customers from "./pages/tenant/Customers";
+import Products from "./pages/tenant/Products";
+import Invoices from "./pages/tenant/Invoices";
+import CreateInvoice from "./pages/tenant/CreateInvoice";
+import InvoiceDetails from "./pages/tenant/InvoiceDetails";
+import Reports from "./pages/tenant/Reports";
+import Team from "./pages/tenant/Team";
+import TenantSettings from "./pages/tenant/Settings";
+import AuditLogs from "./pages/tenant/AuditLogs";
+
+import AdminOverview from "./pages/admin/Overview";
+import AdminCompanies from "./pages/admin/Companies";
+import AdminUsers from "./pages/admin/Users";
+import AdminInvoiceTraffic from "./pages/admin/InvoiceTraffic";
+import AdminIntegrationHealth from "./pages/admin/IntegrationHealth";
+import AdminSystemLogs from "./pages/admin/SystemLogs";
+import AdminSettings from "./pages/admin/Settings";
 
 const queryClient = new QueryClient();
 
@@ -15,8 +36,33 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Index />} />
-          {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+          <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
+
+          <Route path="/app" element={<TenantLayout />}>
+            <Route index element={<Navigate to="/app/dashboard" replace />} />
+            <Route path="dashboard" element={<Dashboard />} />
+            <Route path="customers" element={<Customers />} />
+            <Route path="products" element={<Products />} />
+            <Route path="invoices" element={<Invoices />} />
+            <Route path="invoices/new" element={<CreateInvoice />} />
+            <Route path="invoices/:id" element={<InvoiceDetails />} />
+            <Route path="reports" element={<Reports />} />
+            <Route path="team" element={<Team />} />
+            <Route path="settings" element={<TenantSettings />} />
+            <Route path="audit-logs" element={<AuditLogs />} />
+          </Route>
+
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<Navigate to="/admin/overview" replace />} />
+            <Route path="overview" element={<AdminOverview />} />
+            <Route path="companies" element={<AdminCompanies />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="invoice-traffic" element={<AdminInvoiceTraffic />} />
+            <Route path="integration-health" element={<AdminIntegrationHealth />} />
+            <Route path="system-logs" element={<AdminSystemLogs />} />
+            <Route path="settings" element={<AdminSettings />} />
+          </Route>
+
           <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
