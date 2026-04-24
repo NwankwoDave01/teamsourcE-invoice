@@ -14,7 +14,7 @@ export default function InvoiceDetails() {
   const customer = customers.find((c) => c.id === invoice.customerId);
 
   const workflow = INVOICE_STATUSES.filter((s) => s !== "Rejected");
-  const currentIdx = workflow.indexOf(invoice.status);
+  const currentIdx = workflow.indexOf(invoice.status as typeof workflow[number]);
 
   return (
     <div>
