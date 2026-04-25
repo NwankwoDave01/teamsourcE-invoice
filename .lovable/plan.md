@@ -1,52 +1,84 @@
 
-# Multi-Tenant E-Invoicing SaaS — App Shell
+# Supabase Backend Implementation Plan
 
-Build a polished, desktop-first SaaS shell for a Nigerian e-invoicing platform with two distinct workspaces: **Tenant (Company)** and **Super Admin**. UI-only with mock data, no backend.
+Migrate the e-invoicing SaaS from mock data to a real multi-tenant Supabase backend using **Lovable Cloud**. Email + password auth, every signup creates a Company workspace, and every business entity is migrated to live tables with RLS.
 
-## Design Direction
-- **Style**: Enterprise finance/compliance — clean, premium, professional. Not playful.
-- **Theme**: Light theme with a refined deep indigo/slate primary, subtle neutral surfaces, and semantic status colors (green = validated, amber = in review, red = rejected, blue = submitted).
-- **Typography**: Inter, tight headings, comfortable table density.
-- **Components**: shadcn cards, tables, badges, filters, drawers, modals — consistent across screens.
-- **Layout**: Collapsible left sidebar (icon-mini mode) + persistent top bar with workspace switcher, global search, notifications, and user menu.
+## 1. Enable Lovable Cloud
+- Provision Supabase via Lovable Cloud (no external project needed).
+- Enable **leaked-password (HIBP) protection** for stronger password security.
+- Disable email confirmation in dev so signup → login is instant (can be re-enabled before production).
 
-## Routing Structure
-- `/` → redirects to `/app/dashboard`
-- **Tenant workspace** (`/app/*`) wrapped in `TenantLayout`:
-  - `/app/dashboard` — KPIs, invoice status funnel, recent activity
-  - `/app/customers` — customer list with filters
-  - `/app/products` — products/services catalog
-  - `/app/invoices` — invoice list with status pipeline filters
-  - `/app/invoices/new` — Create Invoice (multi-step form layout)
-  - `/app/invoices/:id` — Invoice Details with workflow timeline (Draft → … → Confirmed)
-  - `/app/reports` — charts and summary tables
-  - `/app/team` — users + roles (Company Admin, Finance Officer, Staff)
-  - `/app/settings` — company profile, branding, tax config tabs
-  - `/app/audit-logs` — searchable activity log
-- **Super Admin workspace** (`/admin/*`) wrapped in `AdminLayout` with distinct accent color:
-  - `/admin/overview` — platform KPIs
-  - `/admin/companies` — tenants table
-  - `/admin/users` — global user directory
-  - `/admin/invoice-traffic` — submission volume + status mix
-  - `/admin/integration-health` — NRS/FIRS connector status panels
-  - `/admin/system-logs` — system-level logs
-  - `/admin/settings` — platform settings
-- A workspace switcher in the top bar lets you jump between Tenant and Super Admin areas.
+## 2. Database Schema
 
-## Shared Shell Components
-- `TenantLayout` / `AdminLayout` — sidebar + top bar wrappers
-- `AppSidebar` — grouped nav, active route highlight, collapsible to icon mode, always-visible trigger in header
-- `TopBar` — workspace/company switcher, global search, notifications bell, help, avatar menu
-- `PageHeader` — title, breadcrumbs, primary action button
-- `StatusBadge` — covers all 8 invoice workflow states
-- `DataTable` — reusable with filters, pagination, row actions
-- `EmptyState`, `StatCard`, `KpiTile` for dashboards
+### Auth & tenancy
+- **`companies`** — `id`, `name`, `tin`, `industry`, `plan` (enum: Starter/Growth/Enterprise), `status` (Active/Trial/Suspended), `created_by`, timestamps.
+- **`profiles`** — one row per `auth.users`, with `display_name`, `phone`, `avatar_url`. Auto-created via trigger on signup.
+- **`company_members`** — junction `(company_id, user_id)` with `status` (Active/Invited/Disabled) and `last_active_at`. Resolves which company a user belongs to.
+- **`app_role`** enum: `super_admin`, `company_admin`, `finance_officer`, `staff_user`.
+- **`user_roles`** — `(user_id, company_id, role)` stored in a **separate table** (security best practice, prevents privilege-escalation). `super_admin` rows have `company_id = NULL`.
+- **`has_role(uuid, app_role, uuid)`** SECURITY DEFINER function for RLS without recursion.
+- **`is_company_member(uuid, uuid)`** SECURITY DEFINER helper.
 
-## Mock Data
-- 3 sample companies, ~20 customers, ~15 products, ~40 invoices spread across all workflow states, ~10 team members, ~50 audit log entries, platform-level metrics for the admin side.
-- Centralized in `src/mock/` so all pages render realistic, consistent content.
+### Business data
+- **`customers`** — scoped by `company_id`: name, email, phone, tin, city, status, computed outstanding via view.
+- **`products`** — scoped by `company_id`: sku, name, category, unit, price, tax_rate, active.
+- **`invoices`** — scoped by `company_id`: number (unique per company), customer_id, issue_date, due_date, **status** enum (Draft → In Review → Approved → Ready → Submitted → Validated → Signed → Confirmed / Rejected), subtotal, tax, total, currency, irn, created_by.
+- **`invoice_lines`** — `invoice_id`, product_id, description, qty, unit_price, tax_rate, line_total.
+- **`audit_logs`** — `company_id`, actor_id, action, target, category, ip, created_at. Written by triggers + app code.
+- **`integration_health`** — global table for NRS/FIRS/TIN connector status (read-only for tenants, writable by super_admin).
+- **`system_logs`** — global, super_admin only.
 
-## Out of Scope (this phase)
-- Auth, real APIs, NRS/FIRS integration, persistence, payments, file uploads.
+### Auto-signup trigger
+On `auth.users` insert: create `profiles` row, create a `companies` row using `raw_user_meta_data.company_name` + `tin`, create `company_members` row, and grant `company_admin` role.
 
-Result: a navigable, visually polished shell where every listed route renders a credible placeholder page ready for future feature work.
+## 3. Row-Level Security
+Every table gets RLS enabled. Policy patterns:
+- **Tenant tables** (customers, products, invoices, invoice_lines, audit_logs): `is_company_member(auth.uid(), company_id)` for SELECT; mutations additionally require `company_admin` or `finance_officer` role (Staff = read-only on financial data).
+- **Companies / company_members / user_roles**: members can read their own company; only `company_admin` can update company; only `super_admin` can list all.
+- **Profiles**: users can read/update only their own row.
+- **Global tables** (integration_health, system_logs, all companies list): `has_role(auth.uid(), 'super_admin')`.
+- `invoice_lines`: nested check via parent invoice's `company_id`.
+
+## 4. Frontend Changes
+
+### Auth pages (new)
+- `/auth/login` — email + password.
+- `/auth/signup` — email, password, full name, **company name**, **TIN**. Creates the company workspace.
+- `AuthProvider` context using `onAuthStateChange` (set up BEFORE `getSession`).
+- `ProtectedRoute` wrapping `/app/*` — redirects to `/auth/login` if no session.
+- `AdminRoute` wrapping `/admin/*` — additionally checks `super_admin` role.
+
+### Data layer
+- `src/integrations/supabase/client.ts` (auto-generated by Cloud).
+- Replace `src/mock/data.ts` consumers with TanStack Query hooks:
+  - `useCurrentCompany`, `useCustomers`, `useProducts`, `useInvoices(filters)`, `useInvoice(id)`, `useTeam`, `useAuditLogs`.
+  - `useCreateInvoice`, `useUpdateInvoiceStatus`, `useCreateCustomer`, `useCreateProduct`, `useInviteMember`.
+- Keep mock data file temporarily as seed source; delete once migration is verified.
+
+### Pages wired to live data
+- **Dashboard** — KPIs/pipeline computed from real invoices.
+- **Customers / Products / Invoices / Invoice Details / Create Invoice** — full CRUD.
+- **Team** — list `company_members` + invite flow (creates invite row; full email invite deferred).
+- **Settings** — edit company profile (Company Admin only).
+- **Audit Logs** — read from `audit_logs`.
+- **Admin pages** — list all companies/users, integration health, system logs (super_admin gated).
+
+### TopBar
+- Show real user from session; sign-out calls `supabase.auth.signOut()`.
+- Workspace switcher reads from `company_members` (single workspace for now since signup = 1 company).
+
+## 5. Seeding
+After schema migration, insert one demo company + the existing mock customers/products/invoices for the first signed-up user so the UI isn't empty on first login. Done via the **insert tool** (not migration).
+
+## 6. Out of Scope (this phase)
+- Email-based team invitations (will create an `invitations` table + edge function later).
+- Real NRS/FIRS API integration (status transitions remain manual).
+- Google / social login.
+- Storage buckets for invoice PDFs / company logos.
+- Stripe billing for plans.
+
+## Deliverables
+- Lovable Cloud enabled, schema migrated, RLS verified by security scan.
+- Working `/auth/signup` → auto-creates company → lands on `/app/dashboard` populated with seeded data.
+- All tenant pages persist changes; admin pages gated by role.
+- Existing dashboard/invoice/create-invoice polish preserved.
