@@ -1,5 +1,5 @@
-import { Bell, ChevronDown, HelpCircle, Search, ShieldCheck, Building2 } from "lucide-react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Bell, ChevronDown, HelpCircle, Search, ShieldCheck, Building2, LogOut } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -9,12 +9,22 @@ import {
   DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { currentCompany, companies } from "@/mock/data";
+import { useAuth } from "@/contexts/AuthContext";
+import { useCurrentCompany } from "@/hooks/useCompanyData";
 
 export function TopBar({ variant = "tenant" }: { variant?: "tenant" | "admin" }) {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
   const isAdmin = variant === "admin";
+  const { user, isSuperAdmin, signOut } = useAuth();
+  const { data: company } = useCurrentCompany();
+
+  const displayName = (user?.user_metadata?.display_name as string) || user?.email?.split("@")[0] || "User";
+  const initials = displayName.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/auth/login", { replace: true });
+  };
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-card px-4">
@@ -30,31 +40,32 @@ export function TopBar({ variant = "tenant" }: { variant?: "tenant" | "admin" })
             ) : (
               <Building2 className="h-4 w-4 text-primary" />
             )}
-            <span className="max-w-[140px] truncate">
-              {isAdmin ? "Platform Console" : currentCompany.name}
+            <span className="max-w-[160px] truncate">
+              {isAdmin ? "Platform Console" : company?.name ?? "Workspace"}
             </span>
             <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="start" className="w-64">
-          <DropdownMenuLabel>Companies</DropdownMenuLabel>
-          {companies.slice(0, 4).map((c) => (
-            <DropdownMenuItem key={c.id} onClick={() => navigate("/app/dashboard")}>
-              <Building2 className="mr-2 h-4 w-4 text-primary" />
-              <div className="flex flex-1 flex-col">
-                <span className="text-sm">{c.name}</span>
-                <span className="text-xs text-muted-foreground">{c.plan} • {c.tin}</span>
+          {company && (
+            <>
+              <DropdownMenuLabel>Current workspace</DropdownMenuLabel>
+              <div className="px-2 py-1.5 text-xs">
+                <p className="font-medium text-foreground">{company.name}</p>
+                <p className="text-muted-foreground">{company.plan} · {company.tin}</p>
               </div>
-            </DropdownMenuItem>
-          ))}
-          <DropdownMenuSeparator />
+              <DropdownMenuSeparator />
+            </>
+          )}
           <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
           <DropdownMenuItem onClick={() => navigate("/app/dashboard")}>
             <Building2 className="mr-2 h-4 w-4" /> Tenant workspace
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={() => navigate("/admin/overview")}>
-            <ShieldCheck className="mr-2 h-4 w-4" /> Super Admin console
-          </DropdownMenuItem>
+          {isSuperAdmin && (
+            <DropdownMenuItem onClick={() => navigate("/admin/overview")}>
+              <ShieldCheck className="mr-2 h-4 w-4" /> Super Admin console
+            </DropdownMenuItem>
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -83,20 +94,30 @@ export function TopBar({ variant = "tenant" }: { variant?: "tenant" | "admin" })
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="h-9 gap-2 px-1.5">
               <Avatar className="h-7 w-7">
-                <AvatarFallback className="bg-primary text-primary-foreground text-xs">AO</AvatarFallback>
+                <AvatarFallback className="bg-primary text-primary-foreground text-xs">{initials}</AvatarFallback>
               </Avatar>
               <div className="hidden flex-col items-start text-left leading-tight md:flex">
-                <span className="text-xs font-medium">Adaeze Okafor</span>
-                <span className="text-[10px] text-muted-foreground">{isAdmin ? "Super Admin" : "Company Admin"}</span>
+                <span className="text-xs font-medium">{displayName}</span>
+                <span className="text-[10px] text-muted-foreground">
+                  {isAdmin ? "Super Admin" : isSuperAdmin ? "Super Admin" : "Company Admin"}
+                </span>
               </div>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>My account</DropdownMenuLabel>
-            <DropdownMenuItem>Profile</DropdownMenuItem>
+            <DropdownMenuLabel>
+              <div className="flex flex-col">
+                <span className="text-sm">{displayName}</span>
+                <span className="text-xs font-normal text-muted-foreground">{user?.email}</span>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => navigate("/app/settings")}>Preferences</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive">Sign out</DropdownMenuItem>
+            <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={handleSignOut}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign out
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
