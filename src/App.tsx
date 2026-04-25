@@ -3,10 +3,15 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import NotFound from "./pages/NotFound";
 
 import TenantLayout from "./layouts/TenantLayout";
 import AdminLayout from "./layouts/AdminLayout";
+
+import Login from "./pages/auth/Login";
+import Signup from "./pages/auth/Signup";
 
 import Dashboard from "./pages/tenant/Dashboard";
 import Customers from "./pages/tenant/Customers";
@@ -35,10 +40,15 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
+        <AuthProvider>
+          <Routes>
+            <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
 
-          <Route path="/app" element={<TenantLayout />}>
+            <Route path="/auth/login" element={<Login />} />
+            <Route path="/auth/signup" element={<Signup />} />
+
+            <Route element={<ProtectedRoute />}>
+              <Route path="/app" element={<TenantLayout />}>
             <Route index element={<Navigate to="/app/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="customers" element={<Customers />} />
@@ -50,9 +60,11 @@ const App = () => (
             <Route path="team" element={<Team />} />
             <Route path="settings" element={<TenantSettings />} />
             <Route path="audit-logs" element={<AuditLogs />} />
-          </Route>
+              </Route>
+            </Route>
 
-          <Route path="/admin" element={<AdminLayout />}>
+            <Route element={<ProtectedRoute requireSuperAdmin />}>
+              <Route path="/admin" element={<AdminLayout />}>
             <Route index element={<Navigate to="/admin/overview" replace />} />
             <Route path="overview" element={<AdminOverview />} />
             <Route path="companies" element={<AdminCompanies />} />
@@ -61,10 +73,12 @@ const App = () => (
             <Route path="integration-health" element={<AdminIntegrationHealth />} />
             <Route path="system-logs" element={<AdminSystemLogs />} />
             <Route path="settings" element={<AdminSettings />} />
-          </Route>
+              </Route>
+            </Route>
 
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
