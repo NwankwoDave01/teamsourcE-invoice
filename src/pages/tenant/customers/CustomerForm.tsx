@@ -44,7 +44,7 @@ interface CustomerFormProps {
 type FormState = {
   name: string;
   tin: string;
-  status: "Active" | "Inactive";
+  status: "Active" | "Invited" | "Disabled";
   city: string;
   email: string;
   phone: string;
@@ -68,7 +68,7 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
       setForm({
         name: existing.name,
         tin: existing.tin ?? "",
-        status: (existing.status as "Active" | "Inactive") ?? "Active",
+        status: (existing.status as "Active" | "Invited" | "Disabled") ?? "Active",
         city: existing.city ?? "",
         email: existing.email ?? "",
         phone: existing.phone ?? "",
@@ -175,13 +175,13 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                 <FieldHint>Used for NRS validation and invoice compliance.</FieldHint>
               </Field>
               <Field label="Status">
-                <Select value={form.status} onValueChange={(v) => set("status")(v as "Active" | "Inactive")}>
+                <Select value={form.status} onValueChange={(v) => set("status")(v as FormState["status"])}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="Active">Active</SelectItem>
-                    <SelectItem value="Inactive">Inactive</SelectItem>
+                    <SelectItem value="Disabled">Disabled</SelectItem>
                   </SelectContent>
                 </Select>
               </Field>
