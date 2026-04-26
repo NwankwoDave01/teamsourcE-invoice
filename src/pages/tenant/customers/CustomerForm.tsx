@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   Building2,
   Hash,
   Info,
+  Loader2,
   Mail,
   MapPin,
   Phone,
@@ -25,7 +27,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { customers } from "@/mock/data";
+import {
+  useCustomer,
+  useCreateCustomer,
+  useUpdateCustomer,
+  useInvoices,
+} from "@/hooks/useCompanyData";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -34,21 +41,82 @@ interface CustomerFormProps {
   mode: "create" | "edit";
 }
 
+type FormState = {
+  name: string;
+  tin: string;
+  status: "Active" | "Inactive";
+  city: string;
+  email: string;
+  phone: string;
+};
+
 export default function CustomerForm({ mode }: CustomerFormProps) {
   const navigate = useNavigate();
   const { id } = useParams();
-  const existing = mode === "edit" ? customers.find((c) => c.id === id) : undefined;
-
   const isEdit = mode === "edit";
+  const { data: existing, isLoading } = useCustomer(isEdit ? id : undefined);
+  const { data: invoices = [] } = useInvoices();
+  const create = useCreateCustomer();
+  const update = useUpdateCustomer();
+
+  const [form, setForm] = useState<FormState>({
+    name: "", tin: "", status: "Active", city: "", email: "", phone: "",
+  });
+
+  useEffect(() => {
+    if (existing) {
+      setForm({
+        name: existing.name,
+        tin: existing.tin ?? "",
+        status: (existing.status as "Active" | "Inactive") ?? "Active",
+        city: existing.city ?? "",
+        email: existing.email ?? "",
+        phone: existing.phone ?? "",
+      });
+    }
+  }, [existing]);
+
+  const set = <K extends keyof FormState>(k: K) => (v: FormState[K]) => setForm({ ...form, [k]: v });
+
   const title = isEdit ? "Edit customer" : "Add customer";
   const description = isEdit
     ? "Update billing and contact details for this customer."
     : "Create a new customer to start issuing invoices.";
 
-  const handleSave = () => {
-    toast.success(isEdit ? "Customer updated" : "Customer created");
-    navigate("/app/customers");
+  const handleSave = async () => {
+    if (!form.name.trim()) {
+      toast.error("Customer name is required");
+      return;
+    }
+    try {
+      if (isEdit && id) {
+        await update.mutateAsync({ id, ...form });
+      } else {
+        await create.mutateAsync(form as any);
+      }
+      toast.success(isEdit ? "Customer updated" : "Customer created");
+      navigate("/app/customers");
+    } catch (e: any) {
+      toast.error("Save failed", { description: e.message });
+    }
   };
+
+  // Stats for edit mode
+  const stats = (() => {
+    if (!isEdit || !id) return null;
+    let count = 0, outstanding = 0;
+    for (const inv of invoices) {
+      if (inv.customer_id === id) {
+        count += 1;
+        if (["Submitted", "Validated", "Approved", "Ready"].includes(inv.status)) {
+          outstanding += Number(inv.total);
+        }
+      }
+    }
+    return { count, outstanding };
+  })();
+
+  const saving = create.isPending || update.isPending;
 
   return (
     <div>
@@ -64,14 +132,19 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                 Cancel
               </Link>
             </Button>
-            <Button size="sm" onClick={handleSave} className="gap-1.5">
-              <Save className="h-4 w-4" />
+            <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {isEdit ? "Save changes" : "Create customer"}
             </Button>
           </>
         }
       />
 
+      {isEdit && isLoading ? (
+        <div className="flex items-center justify-center py-24 text-muted-foreground">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading customer…
+        </div>
+      ) : (
       <div className="grid gap-6 p-6 lg:grid-cols-3">
         {/* ============================== MAIN COLUMN ============================== */}
         <div className="space-y-6 lg:col-span-2">
@@ -84,15 +157,17 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
             <div className="grid gap-5 md:grid-cols-2">
               <Field label="Customer name" required>
                 <Input
-                  defaultValue={existing?.name}
+                  value={form.name}
+                  onChange={(e) => set("name")(e.target.value)}
                   placeholder="e.g. Adeola Ventures Ltd"
                 />
               </Field>
-              <Field label="Tax Identification Number (TIN)" required>
+              <Field label="Tax Identification Number (TIN)">
                 <div className="relative">
                   <Hash className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    defaultValue={existing?.tin}
+                    value={form.tin}
+                    onChange={(e) => set("tin")(e.target.value)}
                     placeholder="NG-XXXXXXXX"
                     className="pl-9 font-mono"
                   />
@@ -100,7 +175,7 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                 <FieldHint>Used for NRS validation and invoice compliance.</FieldHint>
               </Field>
               <Field label="Status">
-                <Select defaultValue={existing?.status ?? "Active"}>
+                <Select value={form.status} onValueChange={(v) => set("status")(v as "Active" | "Inactive")}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -114,7 +189,8 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                 <div className="relative">
                   <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    defaultValue={existing?.city}
+                    value={form.city}
+                    onChange={(e) => set("city")(e.target.value)}
                     placeholder="e.g. Lagos"
                     className="pl-9"
                   />
@@ -130,12 +206,13 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
             description="Who should we send invoices and reminders to?"
           >
             <div className="grid gap-5 md:grid-cols-2">
-              <Field label="Email address" required>
+              <Field label="Email address">
                 <div className="relative">
                   <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     type="email"
-                    defaultValue={existing?.email}
+                    value={form.email}
+                    onChange={(e) => set("email")(e.target.value)}
                     placeholder="billing@company.com"
                     className="pl-9"
                   />
@@ -145,7 +222,8 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                 <div className="relative">
                   <Phone className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    defaultValue={existing?.phone}
+                    value={form.phone}
+                    onChange={(e) => set("phone")(e.target.value)}
                     placeholder="+234 800 000 0000"
                     className="pl-9"
                   />
@@ -186,9 +264,9 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
 
               {isEdit && existing ? (
                 <div className="space-y-3 px-5 py-4 text-sm">
-                  <SummaryRow label="Outstanding" value={formatNGN(existing.outstanding)} />
-                  <SummaryRow label="Invoices issued" value={String(existing.invoices)} />
-                  <SummaryRow label="Status" value={existing.status} />
+                  <SummaryRow label="Outstanding" value={formatNGN(stats?.outstanding ?? 0)} />
+                  <SummaryRow label="Invoices issued" value={String(stats?.count ?? 0)} />
+                  <SummaryRow label="Status" value={form.status} />
                 </div>
               ) : (
                 <div className="space-y-2 px-5 py-4 text-sm text-muted-foreground">
@@ -200,8 +278,8 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
               )}
 
               <div className="space-y-2 border-t border-border p-4">
-                <Button onClick={handleSave} className="w-full gap-1.5" size="sm">
-                  <Save className="h-4 w-4" />
+                <Button onClick={handleSave} disabled={saving} className="w-full gap-1.5" size="sm">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                   {isEdit ? "Save changes" : "Create customer"}
                 </Button>
                 <Button variant="ghost" size="sm" asChild className="w-full gap-1.5 text-muted-foreground">
@@ -228,6 +306,7 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }
