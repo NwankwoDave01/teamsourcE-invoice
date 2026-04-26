@@ -1,84 +1,72 @@
+# Wire UI to Live Supabase Backend
 
-# Supabase Backend Implementation Plan
+The schema, RLS, auth, and data hooks are already in place. The remaining work is replacing `src/mock/data.ts` consumers with live Supabase queries through the existing hooks in `src/hooks/useCompanyData.ts`, while keeping the refined UI intact (no visual rebuilds).
 
-Migrate the e-invoicing SaaS from mock data to a real multi-tenant Supabase backend using **Lovable Cloud**. Email + password auth, every signup creates a Company workspace, and every business entity is migrated to live tables with RLS.
+## 1. Tenant pages — wire to live data
 
-## 1. Enable Lovable Cloud
-- Provision Supabase via Lovable Cloud (no external project needed).
-- Enable **leaked-password (HIBP) protection** for stronger password security.
-- Disable email confirmation in dev so signup → login is instant (can be re-enabled before production).
+**Dashboard** (`src/pages/tenant/Dashboard.tsx`)
+- Replace `invoices`/`customers`/`products` mock imports with `useInvoices()`, `useCustomers()`, `useProducts()`.
+- Compute KPIs (total/draft/in review/approved/submitted/validated/signed/rejected), pipeline counts, recent invoices, and upcoming due invoices from live data.
+- Add skeleton loading states and an empty state when the workspace has no invoices yet.
 
-## 2. Database Schema
+**Invoices list** (`src/pages/tenant/Invoices.tsx`)
+- Source list from `useInvoices()`. Keep filters, bulk-select, and status badges.
+- Bulk status updates use `useUpdateInvoiceStatus()` per selected row.
+- Loading skeleton + refined empty state preserved.
 
-### Auth & tenancy
-- **`companies`** — `id`, `name`, `tin`, `industry`, `plan` (enum: Starter/Growth/Enterprise), `status` (Active/Trial/Suspended), `created_by`, timestamps.
-- **`profiles`** — one row per `auth.users`, with `display_name`, `phone`, `avatar_url`. Auto-created via trigger on signup.
-- **`company_members`** — junction `(company_id, user_id)` with `status` (Active/Invited/Disabled) and `last_active_at`. Resolves which company a user belongs to.
-- **`app_role`** enum: `super_admin`, `company_admin`, `finance_officer`, `staff_user`.
-- **`user_roles`** — `(user_id, company_id, role)` stored in a **separate table** (security best practice, prevents privilege-escalation). `super_admin` rows have `company_id = NULL`.
-- **`has_role(uuid, app_role, uuid)`** SECURITY DEFINER function for RLS without recursion.
-- **`is_company_member(uuid, uuid)`** SECURITY DEFINER helper.
+**Create Invoice** (`src/pages/tenant/CreateInvoice.tsx`)
+- Customer picker from `useCustomers()`, product picker from `useProducts()`.
+- Auto-generate next invoice number (`INV-YYYY-#####`) by counting existing invoices.
+- Submit calls `useCreateInvoice()` → navigate to `/app/invoices/:id` on success. Toast on error.
 
-### Business data
-- **`customers`** — scoped by `company_id`: name, email, phone, tin, city, status, computed outstanding via view.
-- **`products`** — scoped by `company_id`: sku, name, category, unit, price, tax_rate, active.
-- **`invoices`** — scoped by `company_id`: number (unique per company), customer_id, issue_date, due_date, **status** enum (Draft → In Review → Approved → Ready → Submitted → Validated → Signed → Confirmed / Rejected), subtotal, tax, total, currency, irn, created_by.
-- **`invoice_lines`** — `invoice_id`, product_id, description, qty, unit_price, tax_rate, line_total.
-- **`audit_logs`** — `company_id`, actor_id, action, target, category, ip, created_at. Written by triggers + app code.
-- **`integration_health`** — global table for NRS/FIRS/TIN connector status (read-only for tenants, writable by super_admin).
-- **`system_logs`** — global, super_admin only.
+**Invoice Details** (`src/pages/tenant/InvoiceDetails.tsx`)
+- Load via `useInvoice(id)` (already returns invoice + lines).
+- Status transition buttons call `useUpdateInvoiceStatus()`.
+- 404 state when invoice not found.
 
-### Auto-signup trigger
-On `auth.users` insert: create `profiles` row, create a `companies` row using `raw_user_meta_data.company_name` + `tin`, create `company_members` row, and grant `company_admin` role.
+**Customers list + form** (`src/pages/tenant/Customers.tsx`, `customers/CustomerForm.tsx`)
+- List from `useCustomers()`. Delete via direct `supabase.from("customers").delete()` with query invalidation.
+- Create uses `useCreateCustomer()`. Edit loads + updates via Supabase, then navigates back.
 
-## 3. Row-Level Security
-Every table gets RLS enabled. Policy patterns:
-- **Tenant tables** (customers, products, invoices, invoice_lines, audit_logs): `is_company_member(auth.uid(), company_id)` for SELECT; mutations additionally require `company_admin` or `finance_officer` role (Staff = read-only on financial data).
-- **Companies / company_members / user_roles**: members can read their own company; only `company_admin` can update company; only `super_admin` can list all.
-- **Profiles**: users can read/update only their own row.
-- **Global tables** (integration_health, system_logs, all companies list): `has_role(auth.uid(), 'super_admin')`.
-- `invoice_lines`: nested check via parent invoice's `company_id`.
+**Products list + form** (`src/pages/tenant/Products.tsx`, `products/ProductForm.tsx`)
+- Same pattern as customers, using `useProducts()` + `useCreateProduct()` and inline update/delete.
 
-## 4. Frontend Changes
+**Team** (`src/pages/tenant/Team.tsx`)
+- List from `useTeam()` (already joins `company_members` + `profiles` + `user_roles`).
+- Invite button shows a "coming soon" toast for now (email invites are out of scope per plan).
 
-### Auth pages (new)
-- `/auth/login` — email + password.
-- `/auth/signup` — email, password, full name, **company name**, **TIN**. Creates the company workspace.
-- `AuthProvider` context using `onAuthStateChange` (set up BEFORE `getSession`).
-- `ProtectedRoute` wrapping `/app/*` — redirects to `/auth/login` if no session.
-- `AdminRoute` wrapping `/admin/*` — additionally checks `super_admin` role.
+**Audit Logs** (`src/pages/tenant/AuditLogs.tsx`)
+- Source from `useAuditLogs()`. Empty state when no logs.
 
-### Data layer
-- `src/integrations/supabase/client.ts` (auto-generated by Cloud).
-- Replace `src/mock/data.ts` consumers with TanStack Query hooks:
-  - `useCurrentCompany`, `useCustomers`, `useProducts`, `useInvoices(filters)`, `useInvoice(id)`, `useTeam`, `useAuditLogs`.
-  - `useCreateInvoice`, `useUpdateInvoiceStatus`, `useCreateCustomer`, `useCreateProduct`, `useInviteMember`.
-- Keep mock data file temporarily as seed source; delete once migration is verified.
+**Reports** (`src/pages/tenant/Reports.tsx`)
+- Aggregate metrics computed from `useInvoices()` + `useCustomers()`.
 
-### Pages wired to live data
-- **Dashboard** — KPIs/pipeline computed from real invoices.
-- **Customers / Products / Invoices / Invoice Details / Create Invoice** — full CRUD.
-- **Team** — list `company_members` + invite flow (creates invite row; full email invite deferred).
-- **Settings** — edit company profile (Company Admin only).
-- **Audit Logs** — read from `audit_logs`.
-- **Admin pages** — list all companies/users, integration health, system logs (super_admin gated).
+**Settings** (`src/pages/tenant/Settings.tsx`)
+- Load from `useCurrentCompany()`. Update via `supabase.from("companies").update(...)` (gated to company admins by RLS).
 
-### TopBar
-- Show real user from session; sign-out calls `supabase.auth.signOut()`.
-- Workspace switcher reads from `company_members` (single workspace for now since signup = 1 company).
+## 2. Admin pages — wire to live data (super_admin only)
 
-## 5. Seeding
-After schema migration, insert one demo company + the existing mock customers/products/invoices for the first signed-up user so the UI isn't empty on first login. Done via the **insert tool** (not migration).
+- **Overview** + **Companies**: use `useAllCompanies()`.
+- **Users**: query `profiles` + `user_roles` (super-admin only via RLS).
+- **Integration Health**: use `useIntegrationHealth()`. Seed a few rows on first super-admin visit if empty.
+- **System Logs**: use `useSystemLogs()`.
+- **Invoice Traffic**: aggregate across all companies (super-admin readable via `is_super_admin` RLS).
 
-## 6. Out of Scope (this phase)
-- Email-based team invitations (will create an `invitations` table + edge function later).
-- Real NRS/FIRS API integration (status transitions remain manual).
-- Google / social login.
-- Storage buckets for invoice PDFs / company logos.
-- Stripe billing for plans.
+## 3. Cleanup
 
-## Deliverables
-- Lovable Cloud enabled, schema migrated, RLS verified by security scan.
-- Working `/auth/signup` → auto-creates company → lands on `/app/dashboard` populated with seeded data.
-- All tenant pages persist changes; admin pages gated by role.
-- Existing dashboard/invoice/create-invoice polish preserved.
+- Remove all `import { ... } from "@/mock/data"` from tenant + admin pages.
+- Keep `src/mock/data.ts` only for any types still referenced by `StatusBadge.tsx` (or migrate `StatusBadge` to use the DB enum type from `useCompanyData.ts`).
+- Add toast notifications (`sonner`) on mutation success/failure across all pages.
+- Add `Loader2` skeletons for in-flight queries on every page.
+
+## 4. Verification
+
+- TypeScript compile clean.
+- Manual flow: signup → seed runs → dashboard populated → create/edit/delete customer → create invoice → status transitions → log out / log in.
+- Run the Supabase linter to confirm no new RLS issues.
+
+## Out of scope (unchanged from earlier plan)
+
+- Email-based team invitations (separate `invitations` table + edge function).
+- Real NRS/FIRS API calls (status transitions remain manual).
+- Storage buckets, Stripe billing, Google sign-in.
