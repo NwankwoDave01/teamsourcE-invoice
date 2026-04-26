@@ -78,6 +78,7 @@ export default function Customers() {
                   <th className="px-5 py-3 text-right font-medium">Invoices</th>
                   <th className="px-5 py-3 text-right font-medium">Outstanding</th>
                   <th className="px-5 py-3 text-left font-medium">Status</th>
+                  <th className="w-12 px-5 py-3" />
                 </tr>
               </thead>
               <tbody>
