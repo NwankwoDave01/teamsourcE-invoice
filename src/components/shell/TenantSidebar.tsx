@@ -1,19 +1,42 @@
 import {
   LayoutDashboard, Users, Package, FileText, FilePlus2,
   BarChart3, UserCog, Settings, ScrollText, ShieldCheck, ChevronsLeft,
+  ChevronDown, List, UserPlus, PackagePlus,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { Link, useLocation } from "react-router-dom";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
-  useSidebar,
+  SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, useSidebar,
 } from "@/components/ui/sidebar";
+import {
+  Collapsible, CollapsibleContent, CollapsibleTrigger,
+} from "@/components/ui/collapsible";
 
 const main = [
   { title: "Dashboard", url: "/app/dashboard", icon: LayoutDashboard },
-  { title: "Customers", url: "/app/customers", icon: Users },
-  { title: "Products", url: "/app/products", icon: Package },
+];
+
+const groupedMain = [
+  {
+    title: "Customers",
+    url: "/app/customers",
+    icon: Users,
+    children: [
+      { title: "All Customers", url: "/app/customers", icon: List, end: true },
+      { title: "Add Customer", url: "/app/customers/new", icon: UserPlus, end: true },
+    ],
+  },
+  {
+    title: "Products",
+    url: "/app/products",
+    icon: Package,
+    children: [
+      { title: "All Products", url: "/app/products", icon: List, end: true },
+      { title: "Add Product", url: "/app/products/new", icon: PackagePlus, end: true },
+    ],
+  },
 ];
 
 const invoicing = [
@@ -56,6 +79,55 @@ export function TenantSidebar() {
     </SidebarMenu>
   );
 
+  const renderGroupedItems = (items: typeof groupedMain) => (
+    <SidebarMenu>
+      {items.map((item) => {
+        const groupActive = pathname === item.url || pathname.startsWith(item.url + "/");
+        return (
+          <Collapsible key={item.url} asChild defaultOpen={groupActive}>
+            <SidebarMenuItem>
+              <CollapsibleTrigger asChild>
+                <SidebarMenuButton
+                  tooltip={item.title}
+                  isActive={groupActive}
+                  className="flex w-full items-center gap-3 rounded-md text-sidebar-foreground/90 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent/50 [&[data-state=open]>svg.chevron]:rotate-180"
+                >
+                  <item.icon className="h-4 w-4 shrink-0" />
+                  <span className="flex-1 text-left">{item.title}</span>
+                  <ChevronDown className="chevron h-3.5 w-3.5 shrink-0 text-sidebar-foreground/50 transition-transform" />
+                </SidebarMenuButton>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <SidebarMenuSub>
+                  {item.children.map((child) => {
+                    const childActive = child.end
+                      ? pathname === child.url
+                      : pathname === child.url || pathname.startsWith(child.url + "/");
+                    return (
+                      <SidebarMenuSubItem key={child.url}>
+                        <SidebarMenuSubButton asChild isActive={childActive}>
+                          <NavLink
+                            to={child.url}
+                            end={child.end}
+                            className="flex items-center gap-2 text-sidebar-foreground/80 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                            activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                          >
+                            <child.icon className="h-3.5 w-3.5 shrink-0" />
+                            <span>{child.title}</span>
+                          </NavLink>
+                        </SidebarMenuSubButton>
+                      </SidebarMenuSubItem>
+                    );
+                  })}
+                </SidebarMenuSub>
+              </CollapsibleContent>
+            </SidebarMenuItem>
+          </Collapsible>
+        );
+      })}
+    </SidebarMenu>
+  );
+
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border bg-sidebar px-4 py-4">
@@ -75,7 +147,10 @@ export function TenantSidebar() {
       <SidebarContent className="bg-sidebar px-2 py-3">
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/50">Workspace</SidebarGroupLabel>
-          <SidebarGroupContent>{renderItems(main)}</SidebarGroupContent>
+          <SidebarGroupContent>
+            {renderItems(main)}
+            {renderGroupedItems(groupedMain)}
+          </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
           <SidebarGroupLabel className="text-sidebar-foreground/50">Invoicing</SidebarGroupLabel>
