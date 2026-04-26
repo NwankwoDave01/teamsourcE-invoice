@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -6,8 +8,28 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { useCurrentCompany, useUpdateCompany } from "@/hooks/useCompanyData";
+import { toast } from "sonner";
 
 export default function Settings() {
+  const { data: company, isLoading } = useCurrentCompany();
+  const update = useUpdateCompany();
+  const [form, setForm] = useState({ name: "", tin: "", industry: "" });
+
+  useEffect(() => {
+    if (company) setForm({ name: company.name, tin: company.tin, industry: company.industry ?? "" });
+  }, [company]);
+
+  const handleSave = async () => {
+    if (!company) return;
+    try {
+      await update.mutateAsync({ id: company.id, ...form });
+      toast.success("Company profile updated");
+    } catch (e: any) {
+      toast.error("Failed to save", { description: e.message });
+    }
+  };
+
   return (
     <div>
       <PageHeader title="Settings" description="Configure your company workspace." />
@@ -25,23 +47,48 @@ export default function Settings() {
           <TabsContent value="company">
             <Card className="p-6 shadow-elegant-sm">
               <h3 className="mb-4 text-base font-semibold">Company profile</h3>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12 text-muted-foreground">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
+                </div>
+              ) : (
+              <>
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Legal name"><Input defaultValue="Sahara Foods Ltd" /></Field>
-                <Field label="Trading name"><Input defaultValue="Sahara Foods" /></Field>
-                <Field label="TIN"><Input defaultValue="NG-12834521" /></Field>
-                <Field label="RC Number"><Input defaultValue="RC-1184220" /></Field>
-                <Field label="Email"><Input defaultValue="finance@saharafoods.ng" /></Field>
-                <Field label="Phone"><Input defaultValue="+234 802 990 1100" /></Field>
+                <Field label="Legal name">
+                  <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                </Field>
+                <Field label="Industry">
+                  <Input value={form.industry} onChange={(e) => setForm({ ...form, industry: e.target.value })} />
+                </Field>
+                <Field label="TIN">
+                  <Input value={form.tin} onChange={(e) => setForm({ ...form, tin: e.target.value })} />
+                </Field>
+                <Field label="Plan">
+                  <Input value={company?.plan ?? ""} disabled />
+                </Field>
+                <Field label="Status">
+                  <Input value={company?.status ?? ""} disabled />
+                </Field>
+                <Field label="Created">
+                  <Input value={company ? new Date(company.created_at).toLocaleDateString() : ""} disabled />
+                </Field>
                 <div className="md:col-span-2">
                   <Field label="Registered address">
-                    <Textarea rows={3} defaultValue="12 Marina Road, Lagos Island, Lagos, Nigeria" />
+                    <Textarea rows={3} placeholder="Add your registered address" />
                   </Field>
                 </div>
               </div>
               <div className="mt-6 flex justify-end gap-2">
-                <Button variant="outline">Cancel</Button>
-                <Button>Save changes</Button>
+                <Button variant="outline" onClick={() => company && setForm({ name: company.name, tin: company.tin, industry: company.industry ?? "" })}>
+                  Reset
+                </Button>
+                <Button onClick={handleSave} disabled={update.isPending}>
+                  {update.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                  Save changes
+                </Button>
               </div>
+              </>
+              )}
             </Card>
           </TabsContent>
 
