@@ -1,7 +1,7 @@
 import { cn } from "@/lib/utils";
-import type { InvoiceStatus } from "@/mock/data";
+import type { DBInvoiceStatus } from "@/hooks/useCompanyData";
 
-const styles: Record<InvoiceStatus, string> = {
+const styles: Record<DBInvoiceStatus, string> = {
   Draft: "bg-muted text-muted-foreground border-border",
   "In Review": "bg-warning/10 text-warning border-warning/30",
   Approved: "bg-info/10 text-info border-info/30",
@@ -13,7 +13,7 @@ const styles: Record<InvoiceStatus, string> = {
   Rejected: "bg-destructive/10 text-destructive border-destructive/30",
 };
 
-export function StatusBadge({ status, className }: { status: InvoiceStatus; className?: string }) {
+export function StatusBadge({ status, className }: { status: DBInvoiceStatus; className?: string }) {
   return (
     <span
       className={cn(

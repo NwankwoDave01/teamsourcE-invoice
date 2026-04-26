@@ -4,6 +4,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Database } from "@/integrations/supabase/types";
 
 export type DBInvoiceStatus = Database["public"]["Enums"]["invoice_status"];
+
+export const INVOICE_STATUSES: DBInvoiceStatus[] = [
+  "Draft", "In Review", "Approved", "Ready",
+  "Submitted", "Validated", "Signed", "Confirmed", "Rejected",
+];
+
 export type DBCompany = Database["public"]["Tables"]["companies"]["Row"];
 export type DBCustomer = Database["public"]["Tables"]["customers"]["Row"];
 export type DBProduct = Database["public"]["Tables"]["products"]["Row"];
