@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Filter, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload, FileText } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Filter, Loader2, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload, FileText, Users } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -24,20 +24,52 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { customers as initialCustomers, type Customer } from "@/mock/data";
+import { useCustomers, useDeleteCustomer, useInvoices, type DBCustomer } from "@/hooks/useCompanyData";
 import { formatNGN } from "@/lib/format";
 import { toast } from "sonner";
 
 export default function Customers() {
   const navigate = useNavigate();
-  const [customers, setCustomers] = useState<Customer[]>(initialCustomers);
-  const [toDelete, setToDelete] = useState<Customer | null>(null);
+  const { data: customers = [], isLoading } = useCustomers();
+  const { data: invoices = [] } = useInvoices();
+  const del = useDeleteCustomer();
+  const [toDelete, setToDelete] = useState<DBCustomer | null>(null);
+  const [search, setSearch] = useState("");
 
-  const confirmDelete = () => {
+  // Aggregate per-customer invoice counts and outstanding amounts from invoices
+  const stats = useMemo(() => {
+    const map: Record<string, { count: number; outstanding: number }> = {};
+    for (const inv of invoices) {
+      if (!inv.customer_id) continue;
+      if (!map[inv.customer_id]) map[inv.customer_id] = { count: 0, outstanding: 0 };
+      map[inv.customer_id].count += 1;
+      if (["Submitted", "Validated", "Approved", "Ready"].includes(inv.status)) {
+        map[inv.customer_id].outstanding += Number(inv.total);
+      }
+    }
+    return map;
+  }, [invoices]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter((c) =>
+      c.name.toLowerCase().includes(q) ||
+      (c.tin?.toLowerCase().includes(q) ?? false) ||
+      (c.email?.toLowerCase().includes(q) ?? false),
+    );
+  }, [customers, search]);
+
+  const confirmDelete = async () => {
     if (!toDelete) return;
-    setCustomers((prev) => prev.filter((c) => c.id !== toDelete.id));
-    toast.success(`Customer "${toDelete.name}" deleted`);
-    setToDelete(null);
+    try {
+      await del.mutateAsync(toDelete.id);
+      toast.success(`Customer "${toDelete.name}" deleted`);
+    } catch (e: any) {
+      toast.error("Failed to delete", { description: e.message });
+    } finally {
+      setToDelete(null);
+    }
   };
 
   return (
@@ -60,7 +92,12 @@ export default function Customers() {
         <Card className="flex flex-wrap items-center gap-2 p-3 shadow-elegant-sm">
           <div className="relative flex-1 min-w-[240px]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Search by name, TIN, or email" className="h-9 pl-9" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by name, TIN, or email"
+              className="h-9 pl-9"
+            />
           </div>
           <Button variant="outline" size="sm" className="gap-1.5"><Filter className="h-4 w-4" />Status</Button>
           <Button variant="outline" size="sm" className="gap-1.5"><Filter className="h-4 w-4" />City</Button>
@@ -68,6 +105,31 @@ export default function Customers() {
         </Card>
 
         <Card className="shadow-elegant-sm">
+          {isLoading ? (
+            <div className="flex items-center justify-center px-6 py-16 text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading customers…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <Users className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold">
+                  {customers.length === 0 ? "No customers yet" : "No customers match your search"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {customers.length === 0 ? "Add your first customer to start invoicing." : "Try a different search term."}
+                </p>
+              </div>
+              {customers.length === 0 && (
+                <Button asChild size="sm" className="gap-1.5 mt-2">
+                  <Link to="/app/customers/new"><Plus className="h-4 w-4" /> Add customer</Link>
+                </Button>
+              )}
+            </div>
+          ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
@@ -82,16 +144,20 @@ export default function Customers() {
                 </tr>
               </thead>
               <tbody>
-                {customers.map((c) => (
+                {filtered.map((c) => {
+                  const s = stats[c.id] ?? { count: 0, outstanding: 0 };
+                  return (
                   <tr key={c.id} className="group border-b border-border last:border-0 hover:bg-muted/30">
                     <td className="px-5 py-3">
                       <div className="font-medium text-foreground">{c.name}</div>
-                      <div className="text-xs text-muted-foreground">{c.email} · {c.phone}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {[c.email, c.phone].filter(Boolean).join(" · ") || "—"}
+                      </div>
                     </td>
-                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{c.tin}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{c.city}</td>
-                    <td className="px-5 py-3 text-right tabular-nums">{c.invoices}</td>
-                    <td className="px-5 py-3 text-right tabular-nums font-medium">{formatNGN(c.outstanding)}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{c.tin ?? "—"}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{c.city ?? "—"}</td>
+                    <td className="px-5 py-3 text-right tabular-nums">{s.count}</td>
+                    <td className="px-5 py-3 text-right tabular-nums font-medium">{formatNGN(s.outstanding)}</td>
                     <td className="px-5 py-3">
                       <Badge variant={c.status === "Active" ? "default" : "secondary"} className={c.status === "Active" ? "bg-success/15 text-success hover:bg-success/15" : ""}>{c.status}</Badge>
                     </td>
@@ -131,17 +197,20 @@ export default function Customers() {
                       </DropdownMenu>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
           <div className="flex items-center justify-between border-t border-border px-5 py-3 text-xs text-muted-foreground">
-            <span>Showing 1–{customers.length} of {customers.length}</span>
+            <span>Showing {filtered.length} of {customers.length}</span>
             <div className="flex gap-1">
               <Button variant="ghost" size="sm" disabled>Previous</Button>
               <Button variant="ghost" size="sm" disabled>Next</Button>
             </div>
           </div>
+          </>
+          )}
         </Card>
       </div>
 
