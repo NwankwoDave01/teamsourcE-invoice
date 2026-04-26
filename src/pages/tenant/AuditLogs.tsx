@@ -1,10 +1,10 @@
-import { Download, Search } from "lucide-react";
+import { Download, Loader2, Search, ScrollText } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { auditLogs } from "@/mock/data";
+import { useAuditLogs } from "@/hooks/useCompanyData";
 
 const catColor: Record<string, string> = {
   Invoice: "bg-info/10 text-info",
@@ -16,6 +16,8 @@ const catColor: Record<string, string> = {
 };
 
 export default function AuditLogs() {
+  const { data: logs = [], isLoading } = useAuditLogs();
+
   return (
     <div>
       <PageHeader
@@ -35,6 +37,23 @@ export default function AuditLogs() {
         </Card>
 
         <Card className="shadow-elegant-sm">
+          {isLoading ? (
+            <div className="flex items-center justify-center px-6 py-16 text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading activity…
+            </div>
+          ) : logs.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <ScrollText className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold">No activity yet</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Actions across your workspace will appear here.
+                </p>
+              </div>
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
@@ -48,21 +67,24 @@ export default function AuditLogs() {
                 </tr>
               </thead>
               <tbody>
-                {auditLogs.map((l) => (
+                {logs.map((l) => (
                   <tr key={l.id} className="border-b border-border last:border-0 hover:bg-muted/30">
-                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{l.timestamp}</td>
-                    <td className="px-5 py-3 font-medium">{l.actor}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">
+                      {new Date(l.created_at).toLocaleString("en-GB", { dateStyle: "short", timeStyle: "short" })}
+                    </td>
+                    <td className="px-5 py-3 font-medium">{l.actor_name ?? "System"}</td>
                     <td className="px-5 py-3 text-muted-foreground">{l.action}</td>
-                    <td className="px-5 py-3 font-mono text-xs">{l.target}</td>
+                    <td className="px-5 py-3 font-mono text-xs">{l.target ?? "—"}</td>
                     <td className="px-5 py-3">
                       <Badge variant="secondary" className={`${catColor[l.category]} hover:${catColor[l.category]}`}>{l.category}</Badge>
                     </td>
-                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{l.ip}</td>
+                    <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{l.ip ?? "—"}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+          )}
         </Card>
       </div>
     </div>

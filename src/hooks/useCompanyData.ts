@@ -4,6 +4,12 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Database } from "@/integrations/supabase/types";
 
 export type DBInvoiceStatus = Database["public"]["Enums"]["invoice_status"];
+
+export const INVOICE_STATUSES: DBInvoiceStatus[] = [
+  "Draft", "In Review", "Approved", "Ready",
+  "Submitted", "Validated", "Signed", "Confirmed", "Rejected",
+];
+
 export type DBCompany = Database["public"]["Tables"]["companies"]["Row"];
 export type DBCustomer = Database["public"]["Tables"]["customers"]["Row"];
 export type DBProduct = Database["public"]["Tables"]["products"]["Row"];
@@ -55,6 +61,44 @@ export function useCreateCustomer() {
   });
 }
 
+export function useCustomer(id: string | undefined) {
+  return useQuery({
+    queryKey: ["customer", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("customers").select("*").eq("id", id!).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useUpdateCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...patch }: Partial<DBCustomer> & { id: string }) => {
+      const { data, error } = await supabase.from("customers").update(patch).eq("id", id).select().single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["customers"] });
+      qc.invalidateQueries({ queryKey: ["customer", vars.id] });
+    },
+  });
+}
+
+export function useDeleteCustomer() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("customers").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["customers"] }),
+  });
+}
+
 /* ----------------------------- Products ----------------------------- */
 export function useProducts() {
   const { companyId } = useAuth();
@@ -83,6 +127,67 @@ export function useCreateProduct() {
       return data;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["products"] }),
+  });
+}
+
+export function useProduct(id: string | undefined) {
+  return useQuery({
+    queryKey: ["product", id],
+    enabled: !!id,
+    queryFn: async () => {
+      const { data, error } = await supabase.from("products").select("*").eq("id", id!).maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+export function useUpdateProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...patch }: Partial<DBProduct> & { id: string }) => {
+      const { data, error } = await supabase.from("products").update(patch).eq("id", id).select().single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["products"] });
+      qc.invalidateQueries({ queryKey: ["product", vars.id] });
+    },
+  });
+}
+
+export function useDeleteProduct() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("products").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["products"] }),
+  });
+}
+
+export function useUpdateCompany() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, ...patch }: Partial<DBCompany> & { id: string }) => {
+      const { data, error } = await supabase.from("companies").update(patch).eq("id", id).select().single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["company"] }),
+  });
+}
+
+export function useDeleteInvoice() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from("invoices").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["invoices"] }),
   });
 }
 
