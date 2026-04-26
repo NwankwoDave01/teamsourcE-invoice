@@ -15,7 +15,11 @@ import Signup from "./pages/auth/Signup";
 
 import Dashboard from "./pages/tenant/Dashboard";
 import Customers from "./pages/tenant/Customers";
+import CreateCustomer from "./pages/tenant/customers/CreateCustomer";
+import EditCustomer from "./pages/tenant/customers/EditCustomer";
 import Products from "./pages/tenant/Products";
+import CreateProduct from "./pages/tenant/products/CreateProduct";
+import EditProduct from "./pages/tenant/products/EditProduct";
 import Invoices from "./pages/tenant/Invoices";
 import CreateInvoice from "./pages/tenant/CreateInvoice";
 import InvoiceDetails from "./pages/tenant/InvoiceDetails";
@@ -52,7 +56,11 @@ const App = () => (
             <Route index element={<Navigate to="/app/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="customers" element={<Customers />} />
+            <Route path="customers/new" element={<CreateCustomer />} />
+            <Route path="customers/:id/edit" element={<EditCustomer />} />
             <Route path="products" element={<Products />} />
+            <Route path="products/new" element={<CreateProduct />} />
+            <Route path="products/:id/edit" element={<EditProduct />} />
             <Route path="invoices" element={<Invoices />} />
             <Route path="invoices/new" element={<CreateInvoice />} />
             <Route path="invoices/:id" element={<InvoiceDetails />} />
