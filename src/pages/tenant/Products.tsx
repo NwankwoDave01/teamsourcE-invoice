@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Copy, Filter, MoreHorizontal, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Copy, Filter, Loader2, MoreHorizontal, Package, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -24,20 +24,37 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { products as initialProducts, type Product } from "@/mock/data";
+import { useProducts, useDeleteProduct, type DBProduct } from "@/hooks/useCompanyData";
 import { formatNGN } from "@/lib/format";
 import { toast } from "sonner";
 
 export default function Products() {
   const navigate = useNavigate();
-  const [products, setProducts] = useState<Product[]>(initialProducts);
-  const [toDelete, setToDelete] = useState<Product | null>(null);
+  const { data: products = [], isLoading } = useProducts();
+  const del = useDeleteProduct();
+  const [toDelete, setToDelete] = useState<DBProduct | null>(null);
+  const [search, setSearch] = useState("");
 
-  const confirmDelete = () => {
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return products;
+    return products.filter((p) =>
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q) ||
+      (p.category?.toLowerCase().includes(q) ?? false),
+    );
+  }, [products, search]);
+
+  const confirmDelete = async () => {
     if (!toDelete) return;
-    setProducts((prev) => prev.filter((p) => p.id !== toDelete.id));
-    toast.success(`Item "${toDelete.name}" deleted`);
-    setToDelete(null);
+    try {
+      await del.mutateAsync(toDelete.id);
+      toast.success(`Item "${toDelete.name}" deleted`);
+    } catch (e: any) {
+      toast.error("Failed to delete", { description: e.message });
+    } finally {
+      setToDelete(null);
+    }
   };
 
   return (
@@ -57,13 +74,42 @@ export default function Products() {
         <Card className="flex flex-wrap items-center gap-2 p-3 shadow-elegant-sm">
           <div className="relative flex-1 min-w-[240px]">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input placeholder="Search by SKU or name" className="h-9 pl-9" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search by SKU or name"
+              className="h-9 pl-9"
+            />
           </div>
           <Button variant="outline" size="sm" className="gap-1.5"><Filter className="h-4 w-4" />Category</Button>
           <Button variant="outline" size="sm">Active only</Button>
         </Card>
 
         <Card className="shadow-elegant-sm">
+          {isLoading ? (
+            <div className="flex items-center justify-center px-6 py-16 text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading products…
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                <Package className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold">
+                  {products.length === 0 ? "No products yet" : "No products match your search"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {products.length === 0 ? "Add your first item to start building your catalog." : "Try a different search term."}
+                </p>
+              </div>
+              {products.length === 0 && (
+                <Button asChild size="sm" className="gap-1.5 mt-2">
+                  <Link to="/app/products/new"><Plus className="h-4 w-4" /> Add item</Link>
+                </Button>
+              )}
+            </div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-border bg-muted/30 text-xs uppercase tracking-wide text-muted-foreground">
@@ -79,14 +125,14 @@ export default function Products() {
                 </tr>
               </thead>
               <tbody>
-                {products.map((p) => (
+                {filtered.map((p) => (
                   <tr key={p.id} className="group border-b border-border last:border-0 hover:bg-muted/30">
                     <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{p.sku}</td>
                     <td className="px-5 py-3 font-medium">{p.name}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{p.category}</td>
-                    <td className="px-5 py-3 text-muted-foreground">{p.unit}</td>
-                    <td className="px-5 py-3 text-right tabular-nums">{formatNGN(p.price)}</td>
-                    <td className="px-5 py-3 text-right tabular-nums">{p.taxRate}%</td>
+                    <td className="px-5 py-3 text-muted-foreground">{p.category ?? "—"}</td>
+                    <td className="px-5 py-3 text-muted-foreground">{p.unit ?? "—"}</td>
+                    <td className="px-5 py-3 text-right tabular-nums">{formatNGN(Number(p.price))}</td>
+                    <td className="px-5 py-3 text-right tabular-nums">{Number(p.tax_rate)}%</td>
                     <td className="px-5 py-3">
                       <Badge variant="secondary" className={p.active ? "bg-success/15 text-success hover:bg-success/15" : ""}>
                         {p.active ? "Active" : "Inactive"}
@@ -132,6 +178,7 @@ export default function Products() {
               </tbody>
             </table>
           </div>
+          )}
         </Card>
       </div>
 
