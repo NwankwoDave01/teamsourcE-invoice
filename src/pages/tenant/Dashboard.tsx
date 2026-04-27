@@ -372,7 +372,6 @@ export default function Dashboard() {
                         </td>
                         <td className="px-5 py-3.5">
                           <p className="font-medium text-foreground">{inv.customer_name}</p>
-                          <p className="text-[11px] text-muted-foreground">by {inv.created_by}</p>
                         </td>
                         <td className="px-5 py-3.5 tabular-nums text-muted-foreground">{inv.issue_date}</td>
                         <td className="px-5 py-3.5 tabular-nums text-muted-foreground">{inv.due_date}</td>
