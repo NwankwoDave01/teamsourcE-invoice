@@ -27,14 +27,13 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { invoices, tenantMetrics, type InvoiceStatus } from "@/mock/data";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useInvoices, type DBInvoiceStatus } from "@/hooks/useCompanyData";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const countBy = (status: InvoiceStatus) => invoices.filter((i) => i.status === status).length;
-
 // Ordered pipeline (excluding Rejected, which is a terminal failure tracked separately)
-const PIPELINE: { status: InvoiceStatus; icon: typeof FileText; tone: string }[] = [
+const PIPELINE: { status: DBInvoiceStatus; icon: typeof FileText; tone: string }[] = [
   { status: "Draft",     icon: FileText,    tone: "text-muted-foreground" },
   { status: "In Review", icon: PenLine,     tone: "text-warning" },
   { status: "Approved",  icon: CheckCircle2,tone: "text-info" },
@@ -46,11 +45,13 @@ const PIPELINE: { status: InvoiceStatus; icon: typeof FileText; tone: string }[]
 ];
 
 export default function Dashboard() {
+  const { data: invoices = [], isLoading } = useInvoices();
+  const countBy = (status: DBInvoiceStatus) => invoices.filter((i) => i.status === status).length;
   const total = invoices.length;
   const rejected = countBy("Rejected");
 
   // Operational KPIs (8 invoice-state cards)
-  const operationalKpis: { label: string; value: number; status?: InvoiceStatus; icon: typeof FileText; accent: string }[] = [
+  const operationalKpis: { label: string; value: number; status?: DBInvoiceStatus; icon: typeof FileText; accent: string }[] = [
     { label: "Total invoices", value: total,                icon: Receipt,     accent: "text-primary" },
     { label: "Draft",          value: countBy("Draft"),     status: "Draft",     icon: FileText,    accent: "text-muted-foreground" },
     { label: "In Review",      value: countBy("In Review"), status: "In Review", icon: PenLine,     accent: "text-warning" },
@@ -64,19 +65,34 @@ export default function Dashboard() {
   const recent = invoices.slice(0, 6);
 
   // Upcoming due — Submitted/Validated/Approved invoices with closest due date
-  const today = new Date("2025-10-15");
+  const today = new Date();
   const upcoming = [...invoices]
     .filter((i) => ["Submitted", "Validated", "Approved", "Ready"].includes(i.status))
-    .sort((a, b) => +new Date(a.dueDate) - +new Date(b.dueDate))
+    .sort((a, b) => +new Date(a.due_date) - +new Date(b.due_date))
     .slice(0, 5);
 
   const pipelineMax = Math.max(...PIPELINE.map((p) => countBy(p.status)), 1);
 
-  // Compliance metrics
-  const submittedTotal = 312;
-  const validatedOk = 301;
-  const rejectedNrs = 4;
-  const validationRate = (validatedOk / submittedTotal) * 100;
+  // Financial KPIs from live data
+  const confirmedRevenue = invoices
+    .filter((i) => i.status === "Confirmed")
+    .reduce((s, i) => s + Number(i.total), 0);
+  const outstanding = invoices
+    .filter((i) => ["Submitted", "Validated", "Signed", "Approved", "Ready"].includes(i.status))
+    .reduce((s, i) => s + Number(i.total), 0);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const invoicesThisMonth = invoices.filter((i) => new Date(i.issue_date) >= monthStart).length;
+
+  // Compliance metrics computed from live data
+  const submittedTotal = invoices.filter((i) =>
+    ["Submitted", "Validated", "Signed", "Confirmed", "Rejected"].includes(i.status),
+  ).length;
+  const validatedOk = invoices.filter((i) =>
+    ["Validated", "Signed", "Confirmed"].includes(i.status),
+  ).length;
+  const rejectedNrs = countBy("Rejected");
+  const validationRate = submittedTotal > 0 ? (validatedOk / submittedTotal) * 100 : 0;
+  const tinVerified = new Set(invoices.filter((i) => i.customer_id).map((i) => i.customer_id)).size;
 
   return (
     <div>
