@@ -278,7 +278,7 @@ export default function Dashboard() {
             ) : (
               <div className="flex-1 space-y-2">
                 {upcoming.map((inv) => {
-                  const days = Math.round((+new Date(inv.dueDate) - +today) / 86400000);
+                  const days = Math.round((+new Date(inv.due_date) - +today) / 86400000);
                   const overdue = days < 0;
                   const urgent = days >= 0 && days <= 7;
                   return (
@@ -294,10 +294,10 @@ export default function Dashboard() {
                         "border-border bg-muted text-muted-foreground"
                       )}>
                         <span className="text-[9px] font-medium uppercase leading-none">
-                          {new Date(inv.dueDate).toLocaleString("en-GB", { month: "short" })}
+                          {new Date(inv.due_date).toLocaleString("en-GB", { month: "short" })}
                         </span>
                         <span className="text-sm font-semibold leading-tight">
-                          {new Date(inv.dueDate).getDate()}
+                          {new Date(inv.due_date).getDate()}
                         </span>
                       </div>
                       <div className="min-w-0 flex-1">
@@ -305,7 +305,7 @@ export default function Dashboard() {
                           <p className="truncate text-sm font-medium">{inv.number}</p>
                           <StatusBadge status={inv.status} />
                         </div>
-                        <p className="truncate text-xs text-muted-foreground">{inv.customerName}</p>
+                        <p className="truncate text-xs text-muted-foreground">{inv.customer_name}</p>
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="text-sm font-semibold tabular-nums">{formatNGN(inv.total)}</p>
@@ -371,11 +371,11 @@ export default function Dashboard() {
                           {inv.irn && <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{inv.irn}</p>}
                         </td>
                         <td className="px-5 py-3.5">
-                          <p className="font-medium text-foreground">{inv.customerName}</p>
-                          <p className="text-[11px] text-muted-foreground">by {inv.createdBy}</p>
+                          <p className="font-medium text-foreground">{inv.customer_name}</p>
+                          <p className="text-[11px] text-muted-foreground">by {inv.created_by}</p>
                         </td>
-                        <td className="px-5 py-3.5 tabular-nums text-muted-foreground">{inv.issueDate}</td>
-                        <td className="px-5 py-3.5 tabular-nums text-muted-foreground">{inv.dueDate}</td>
+                        <td className="px-5 py-3.5 tabular-nums text-muted-foreground">{inv.issue_date}</td>
+                        <td className="px-5 py-3.5 tabular-nums text-muted-foreground">{inv.due_date}</td>
                         <td className="px-5 py-3.5"><StatusBadge status={inv.status} /></td>
                         <td className="px-5 py-3.5 text-right tabular-nums font-semibold text-foreground">{formatNGN(inv.total)}</td>
                         <td className="px-5 py-3.5 text-right">
