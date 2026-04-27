@@ -36,11 +36,19 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { invoices, INVOICE_STATUSES, type InvoiceStatus } from "@/mock/data";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  useInvoices,
+  useUpdateInvoiceStatus,
+  useDeleteInvoice,
+  INVOICE_STATUSES,
+  type DBInvoiceStatus,
+} from "@/hooks/useCompanyData";
+import { toast } from "sonner";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const statusDot: Record<InvoiceStatus, string> = {
+const statusDot: Record<DBInvoiceStatus, string> = {
   Draft: "bg-muted-foreground/60",
   "In Review": "bg-warning",
   Approved: "bg-info",
@@ -53,13 +61,16 @@ const statusDot: Record<InvoiceStatus, string> = {
 };
 
 export default function Invoices() {
-  const [filter, setFilter] = useState<"All" | InvoiceStatus>("All");
+  const { data: invoices = [], isLoading } = useInvoices();
+  const updateStatus = useUpdateInvoiceStatus();
+  const deleteMut = useDeleteInvoice();
+  const [filter, setFilter] = useState<"All" | DBInvoiceStatus>("All");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const counts = useMemo(
     () => INVOICE_STATUSES.map((s) => ({ s, n: invoices.filter((i) => i.status === s).length })),
-    [],
+    [invoices],
   );
 
   const filtered = useMemo(() => {
@@ -69,11 +80,11 @@ export default function Invoices() {
       if (!q) return true;
       return (
         i.number.toLowerCase().includes(q) ||
-        i.customerName.toLowerCase().includes(q) ||
+        i.customer_name.toLowerCase().includes(q) ||
         (i.irn?.toLowerCase().includes(q) ?? false)
       );
     });
-  }, [filter, search]);
+  }, [filter, search, invoices]);
 
   const allSelected = filtered.length > 0 && filtered.every((i) => selected.has(i.id));
   const someSelected = selected.size > 0 && !allSelected;
@@ -98,6 +109,28 @@ export default function Invoices() {
     setSearch("");
   };
   const hasActiveFilters = filter !== "All" || search.trim().length > 0;
+
+  const bulkSubmit = async () => {
+    const ids = Array.from(selected);
+    try {
+      await Promise.all(ids.map((id) => updateStatus.mutateAsync({ id, status: "Submitted" })));
+      toast.success(`Submitted ${ids.length} invoice${ids.length === 1 ? "" : "s"} to NRS`);
+      setSelected(new Set());
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to submit invoices");
+    }
+  };
+
+  const bulkDelete = async () => {
+    const ids = Array.from(selected);
+    try {
+      await Promise.all(ids.map((id) => deleteMut.mutateAsync(id)));
+      toast.success(`Deleted ${ids.length} invoice${ids.length === 1 ? "" : "s"}`);
+      setSelected(new Set());
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to delete invoices");
+    }
+  };
 
   return (
     <div>
@@ -202,7 +235,7 @@ export default function Invoices() {
                 </button>
               </div>
               <div className="flex items-center gap-1.5">
-                <Button variant="outline" size="sm" className="gap-1.5">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={bulkSubmit}>
                   <Send className="h-3.5 w-3.5" />
                   Submit to NRS
                 </Button>
@@ -231,7 +264,7 @@ export default function Invoices() {
                       Mark as Draft
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem className="text-destructive focus:text-destructive">
+                    <DropdownMenuItem onClick={bulkDelete} className="text-destructive focus:text-destructive">
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
                     </DropdownMenuItem>
@@ -293,13 +326,12 @@ export default function Invoices() {
                           >
                             {inv.number}
                           </Link>
-                          <div className="mt-0.5 text-xs text-muted-foreground">by {inv.createdBy}</div>
                         </td>
                         <td className="px-3 py-4">
-                          <div className="font-medium text-foreground">{inv.customerName}</div>
+                          <div className="font-medium text-foreground">{inv.customer_name}</div>
                         </td>
-                        <td className="px-3 py-4 tabular-nums text-muted-foreground">{inv.issueDate}</td>
-                        <td className="px-3 py-4 tabular-nums text-muted-foreground">{inv.dueDate}</td>
+                        <td className="px-3 py-4 tabular-nums text-muted-foreground">{inv.issue_date}</td>
+                        <td className="px-3 py-4 tabular-nums text-muted-foreground">{inv.due_date}</td>
                         <td className="px-3 py-4 text-right tabular-nums font-semibold text-foreground">
                           {formatNGN(inv.total)}
                         </td>

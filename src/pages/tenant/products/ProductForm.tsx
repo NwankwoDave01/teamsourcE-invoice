@@ -12,6 +12,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -26,8 +27,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { products } from "@/mock/data";
 import { formatNGN } from "@/lib/format";
+import { useCreateProduct, useProduct, useUpdateProduct } from "@/hooks/useCompanyData";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -38,22 +39,57 @@ interface ProductFormProps {
 export default function ProductForm({ mode }: ProductFormProps) {
   const navigate = useNavigate();
   const { id } = useParams();
-  const existing = mode === "edit" ? products.find((p) => p.id === id) : undefined;
-
   const isEdit = mode === "edit";
+  const { data: existing, isLoading } = useProduct(isEdit ? id : undefined);
+  const createMut = useCreateProduct();
+  const updateMut = useUpdateProduct();
+
+  const [name, setName] = useState("");
+  const [sku, setSku] = useState("");
+  const [category, setCategory] = useState("");
+  const [unit, setUnit] = useState("Bag");
+  const [price, setPrice] = useState<number>(0);
+  const [taxRate, setTaxRate] = useState<number>(7.5);
+  const [active, setActive] = useState(true);
+
+  useEffect(() => {
+    if (existing) {
+      setName(existing.name);
+      setSku(existing.sku);
+      setCategory(existing.category ?? "");
+      setUnit(existing.unit ?? "Bag");
+      setPrice(Number(existing.price));
+      setTaxRate(Number(existing.tax_rate));
+      setActive(existing.active);
+    }
+  }, [existing]);
+
   const title = isEdit ? "Edit product" : "Add product";
   const description = isEdit
     ? "Update catalog details, pricing, and tax rate."
     : "Add a new product or service to your catalog.";
 
-  const handleSave = () => {
-    toast.success(isEdit ? "Product updated" : "Product created");
-    navigate("/app/products");
+  const handleSave = async () => {
+    if (!name.trim() || !sku.trim()) {
+      toast.error("Name and SKU are required");
+      return;
+    }
+    try {
+      if (isEdit && id) {
+        await updateMut.mutateAsync({ id, name, sku, category: category || null, unit, price, tax_rate: taxRate, active });
+        toast.success("Product updated");
+      } else {
+        await createMut.mutateAsync({ name, sku, category: category || null, unit, price, tax_rate: taxRate, active });
+        toast.success("Product created");
+      }
+      navigate("/app/products");
+    } catch (e: any) {
+      toast.error(e.message ?? "Failed to save product");
+    }
   };
 
-  const previewPrice = existing?.price ?? 0;
-  const previewTax = existing?.taxRate ?? 7.5;
-  const previewTotal = previewPrice + Math.round((previewPrice * previewTax) / 100);
+  const previewTotal = price + Math.round((price * taxRate) / 100);
+  const saving = createMut.isPending || updateMut.isPending;
 
   return (
     <div>
@@ -69,7 +105,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
                 Cancel
               </Link>
             </Button>
-            <Button size="sm" onClick={handleSave} className="gap-1.5">
+            <Button size="sm" onClick={handleSave} disabled={saving} className="gap-1.5">
               <Save className="h-4 w-4" />
               {isEdit ? "Save changes" : "Create product"}
             </Button>
@@ -89,7 +125,8 @@ export default function ProductForm({ mode }: ProductFormProps) {
             <div className="grid gap-5 md:grid-cols-2">
               <Field label="Item name" required>
                 <Input
-                  defaultValue={existing?.name}
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Premium Parboiled Rice 50kg"
                 />
               </Field>
@@ -97,7 +134,8 @@ export default function ProductForm({ mode }: ProductFormProps) {
                 <div className="relative">
                   <Hash className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    defaultValue={existing?.sku}
+                    value={sku}
+                    onChange={(e) => setSku(e.target.value)}
                     placeholder="e.g. SF-RICE-50"
                     className="pl-9 font-mono"
                   />
@@ -108,14 +146,15 @@ export default function ProductForm({ mode }: ProductFormProps) {
                 <div className="relative">
                   <Tag className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
-                    defaultValue={existing?.category}
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
                     placeholder="e.g. Grains"
                     className="pl-9"
                   />
                 </div>
               </Field>
               <Field label="Unit of measure">
-                <Select defaultValue={existing?.unit ?? "Bag"}>
+                <Select value={unit} onValueChange={setUnit}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -146,7 +185,8 @@ export default function ProductForm({ mode }: ProductFormProps) {
                   </span>
                   <Input
                     type="number"
-                    defaultValue={existing?.price}
+                    value={price}
+                    onChange={(e) => setPrice(Number(e.target.value))}
                     placeholder="0"
                     className="pl-7 tabular-nums"
                   />
@@ -158,7 +198,8 @@ export default function ProductForm({ mode }: ProductFormProps) {
                   <Input
                     type="number"
                     step="0.1"
-                    defaultValue={existing?.taxRate ?? 7.5}
+                    value={taxRate}
+                    onChange={(e) => setTaxRate(Number(e.target.value))}
                     className="pl-9 tabular-nums"
                   />
                 </div>
@@ -176,7 +217,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
                   </p>
                 </div>
               </div>
-              <Switch defaultChecked={existing?.active ?? true} />
+              <Switch checked={active} onCheckedChange={setActive} />
             </div>
           </SectionCard>
 
@@ -213,8 +254,8 @@ export default function ProductForm({ mode }: ProductFormProps) {
               {isEdit && existing ? (
                 <>
                   <div className="space-y-3 px-5 py-4 text-sm">
-                    <SummaryRow label="Unit price" value={formatNGN(existing.price)} />
-                    <SummaryRow label={`VAT (${existing.taxRate}%)`} value={formatNGN(Math.round((existing.price * existing.taxRate) / 100))} />
+                    <SummaryRow label="Unit price" value={formatNGN(price)} />
+                    <SummaryRow label={`VAT (${taxRate}%)`} value={formatNGN(Math.round((price * taxRate) / 100))} />
                   </div>
                   <div className="border-t border-border bg-gradient-to-br from-primary/5 to-primary/10 px-5 py-4">
                     <div className="flex items-baseline justify-between">
@@ -222,7 +263,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
                         <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
                           Billed total
                         </p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">Per {existing.unit?.toLowerCase()}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">Per {unit.toLowerCase()}</p>
                       </div>
                       <p className="text-2xl font-semibold tabular-nums text-foreground">
                         {formatNGN(previewTotal)}
@@ -238,7 +279,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
               )}
 
               <div className="space-y-2 border-t border-border p-4">
-                <Button onClick={handleSave} className="w-full gap-1.5" size="sm">
+                <Button onClick={handleSave} disabled={saving} className="w-full gap-1.5" size="sm">
                   <Save className="h-4 w-4" />
                   {isEdit ? "Save changes" : "Create product"}
                 </Button>

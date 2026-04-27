@@ -27,14 +27,13 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import { invoices, tenantMetrics, type InvoiceStatus } from "@/mock/data";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useInvoices, type DBInvoiceStatus } from "@/hooks/useCompanyData";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const countBy = (status: InvoiceStatus) => invoices.filter((i) => i.status === status).length;
-
 // Ordered pipeline (excluding Rejected, which is a terminal failure tracked separately)
-const PIPELINE: { status: InvoiceStatus; icon: typeof FileText; tone: string }[] = [
+const PIPELINE: { status: DBInvoiceStatus; icon: typeof FileText; tone: string }[] = [
   { status: "Draft",     icon: FileText,    tone: "text-muted-foreground" },
   { status: "In Review", icon: PenLine,     tone: "text-warning" },
   { status: "Approved",  icon: CheckCircle2,tone: "text-info" },
@@ -46,11 +45,13 @@ const PIPELINE: { status: InvoiceStatus; icon: typeof FileText; tone: string }[]
 ];
 
 export default function Dashboard() {
+  const { data: invoices = [], isLoading } = useInvoices();
+  const countBy = (status: DBInvoiceStatus) => invoices.filter((i) => i.status === status).length;
   const total = invoices.length;
   const rejected = countBy("Rejected");
 
   // Operational KPIs (8 invoice-state cards)
-  const operationalKpis: { label: string; value: number; status?: InvoiceStatus; icon: typeof FileText; accent: string }[] = [
+  const operationalKpis: { label: string; value: number; status?: DBInvoiceStatus; icon: typeof FileText; accent: string }[] = [
     { label: "Total invoices", value: total,                icon: Receipt,     accent: "text-primary" },
     { label: "Draft",          value: countBy("Draft"),     status: "Draft",     icon: FileText,    accent: "text-muted-foreground" },
     { label: "In Review",      value: countBy("In Review"), status: "In Review", icon: PenLine,     accent: "text-warning" },
@@ -64,19 +65,34 @@ export default function Dashboard() {
   const recent = invoices.slice(0, 6);
 
   // Upcoming due — Submitted/Validated/Approved invoices with closest due date
-  const today = new Date("2025-10-15");
+  const today = new Date();
   const upcoming = [...invoices]
     .filter((i) => ["Submitted", "Validated", "Approved", "Ready"].includes(i.status))
-    .sort((a, b) => +new Date(a.dueDate) - +new Date(b.dueDate))
+    .sort((a, b) => +new Date(a.due_date) - +new Date(b.due_date))
     .slice(0, 5);
 
   const pipelineMax = Math.max(...PIPELINE.map((p) => countBy(p.status)), 1);
 
-  // Compliance metrics
-  const submittedTotal = 312;
-  const validatedOk = 301;
-  const rejectedNrs = 4;
-  const validationRate = (validatedOk / submittedTotal) * 100;
+  // Financial KPIs from live data
+  const confirmedRevenue = invoices
+    .filter((i) => i.status === "Confirmed")
+    .reduce((s, i) => s + Number(i.total), 0);
+  const outstanding = invoices
+    .filter((i) => ["Submitted", "Validated", "Signed", "Approved", "Ready"].includes(i.status))
+    .reduce((s, i) => s + Number(i.total), 0);
+  const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+  const invoicesThisMonth = invoices.filter((i) => new Date(i.issue_date) >= monthStart).length;
+
+  // Compliance metrics computed from live data
+  const submittedTotal = invoices.filter((i) =>
+    ["Submitted", "Validated", "Signed", "Confirmed", "Rejected"].includes(i.status),
+  ).length;
+  const validatedOk = invoices.filter((i) =>
+    ["Validated", "Signed", "Confirmed"].includes(i.status),
+  ).length;
+  const rejectedNrs = countBy("Rejected");
+  const validationRate = submittedTotal > 0 ? (validatedOk / submittedTotal) * 100 : 0;
+  const tinVerified = new Set(invoices.filter((i) => i.customer_id).map((i) => i.customer_id)).size;
 
   return (
     <div>
@@ -98,10 +114,10 @@ export default function Dashboard() {
         <section className="space-y-3">
           <SectionLabel icon={Banknote} title="Financial overview" hint="Money in motion across your customers" />
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Confirmed Revenue" value={formatNGN(tenantMetrics.totalRevenue)} delta={{ value: "+12.4%", positive: true }} icon={Banknote} />
-            <StatCard label="Outstanding" value={formatNGN(tenantMetrics.outstanding)} delta={{ value: "-3.1%", positive: true }} icon={Clock} hint="Submitted & awaiting confirmation" />
-            <StatCard label="Invoices this month" value={String(tenantMetrics.invoicesThisMonth)} delta={{ value: "+8 invoices", positive: true }} icon={Receipt} />
-            <StatCard label="NRS Validation Rate" value={`${tenantMetrics.validationRate}%`} delta={{ value: "+0.6%", positive: true }} icon={ShieldCheck} />
+            <StatCard label="Confirmed Revenue" value={formatNGN(confirmedRevenue)} icon={Banknote} />
+            <StatCard label="Outstanding" value={formatNGN(outstanding)} icon={Clock} hint="Submitted & awaiting confirmation" />
+            <StatCard label="Invoices this month" value={String(invoicesThisMonth)} icon={Receipt} />
+            <StatCard label="NRS Validation Rate" value={`${validationRate.toFixed(1)}%`} icon={ShieldCheck} />
           </div>
         </section>
 
@@ -262,7 +278,7 @@ export default function Dashboard() {
             ) : (
               <div className="flex-1 space-y-2">
                 {upcoming.map((inv) => {
-                  const days = Math.round((+new Date(inv.dueDate) - +today) / 86400000);
+                  const days = Math.round((+new Date(inv.due_date) - +today) / 86400000);
                   const overdue = days < 0;
                   const urgent = days >= 0 && days <= 7;
                   return (
@@ -278,10 +294,10 @@ export default function Dashboard() {
                         "border-border bg-muted text-muted-foreground"
                       )}>
                         <span className="text-[9px] font-medium uppercase leading-none">
-                          {new Date(inv.dueDate).toLocaleString("en-GB", { month: "short" })}
+                          {new Date(inv.due_date).toLocaleString("en-GB", { month: "short" })}
                         </span>
                         <span className="text-sm font-semibold leading-tight">
-                          {new Date(inv.dueDate).getDate()}
+                          {new Date(inv.due_date).getDate()}
                         </span>
                       </div>
                       <div className="min-w-0 flex-1">
@@ -289,7 +305,7 @@ export default function Dashboard() {
                           <p className="truncate text-sm font-medium">{inv.number}</p>
                           <StatusBadge status={inv.status} />
                         </div>
-                        <p className="truncate text-xs text-muted-foreground">{inv.customerName}</p>
+                        <p className="truncate text-xs text-muted-foreground">{inv.customer_name}</p>
                       </div>
                       <div className="shrink-0 text-right">
                         <p className="text-sm font-semibold tabular-nums">{formatNGN(inv.total)}</p>
@@ -355,11 +371,10 @@ export default function Dashboard() {
                           {inv.irn && <p className="mt-0.5 font-mono text-[10px] text-muted-foreground">{inv.irn}</p>}
                         </td>
                         <td className="px-5 py-3.5">
-                          <p className="font-medium text-foreground">{inv.customerName}</p>
-                          <p className="text-[11px] text-muted-foreground">by {inv.createdBy}</p>
+                          <p className="font-medium text-foreground">{inv.customer_name}</p>
                         </td>
-                        <td className="px-5 py-3.5 tabular-nums text-muted-foreground">{inv.issueDate}</td>
-                        <td className="px-5 py-3.5 tabular-nums text-muted-foreground">{inv.dueDate}</td>
+                        <td className="px-5 py-3.5 tabular-nums text-muted-foreground">{inv.issue_date}</td>
+                        <td className="px-5 py-3.5 tabular-nums text-muted-foreground">{inv.due_date}</td>
                         <td className="px-5 py-3.5"><StatusBadge status={inv.status} /></td>
                         <td className="px-5 py-3.5 text-right tabular-nums font-semibold text-foreground">{formatNGN(inv.total)}</td>
                         <td className="px-5 py-3.5 text-right">
