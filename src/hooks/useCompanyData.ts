@@ -384,6 +384,54 @@ export function useAllCompanies() {
   });
 }
 
+/* ----------------------------- Admin: platform users ----------------------------- */
+export function useAllPlatformUsers() {
+  return useQuery({
+    queryKey: ["platform_users"],
+    queryFn: async () => {
+      const { data: profiles, error } = await supabase.from("profiles").select("id, display_name, created_at");
+      if (error) throw error;
+      if (!profiles?.length) return [];
+      const ids = profiles.map((p) => p.id);
+      const [{ data: roles }, { data: members }] = await Promise.all([
+        supabase.from("user_roles").select("user_id, role, company_id").in("user_id", ids),
+        supabase.from("company_members").select("user_id, company_id, status, last_active_at").in("user_id", ids),
+      ]);
+      const { data: companies } = await supabase
+        .from("companies")
+        .select("id, name");
+      return profiles.map((p) => {
+        const member = members?.find((m) => m.user_id === p.id);
+        const role = roles?.find((r) => r.user_id === p.id);
+        const company = companies?.find((c) => c.id === member?.company_id);
+        return {
+          id: p.id,
+          name: p.display_name ?? "—",
+          email: "—",
+          company: company?.name ?? "—",
+          role: role?.role ?? "staff_user",
+          status: member?.status ?? "Active",
+          lastActive: member?.last_active_at ?? null,
+        };
+      });
+    },
+  });
+}
+
+/* ----------------------------- Admin: platform-wide invoice traffic ----------------------------- */
+export function useAllInvoices() {
+  return useQuery({
+    queryKey: ["all_invoices"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("invoices")
+        .select("id, status, total, issue_date, customer_name, company_id, created_at");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
 /* ----------------------------- One-time seed for new workspaces ----------------------------- */
 export async function seedDemoData(companyId: string, userId: string) {
   const { data: existing } = await supabase
