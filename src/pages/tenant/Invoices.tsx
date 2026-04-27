@@ -235,9 +235,9 @@ export default function Invoices() {
                 </button>
               </div>
               <div className="flex items-center gap-1.5">
-                <Button variant="outline" size="sm" className="gap-1.5">
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={bulkSubmit}>
                   <Send className="h-3.5 w-3.5" />
-                  <button onClick={bulkSubmit}>Submit to NRS</button>
+                  Submit to NRS
                 </Button>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Download className="h-3.5 w-3.5" />
