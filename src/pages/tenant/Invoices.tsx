@@ -326,7 +326,6 @@ export default function Invoices() {
                           >
                             {inv.number}
                           </Link>
-                          <div className="mt-0.5 text-xs text-muted-foreground">by {inv.created_by}</div>
                         </td>
                         <td className="px-3 py-4">
                           <div className="font-medium text-foreground">{inv.customer_name}</div>
