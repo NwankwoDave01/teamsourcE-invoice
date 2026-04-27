@@ -114,10 +114,10 @@ export default function Dashboard() {
         <section className="space-y-3">
           <SectionLabel icon={Banknote} title="Financial overview" hint="Money in motion across your customers" />
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Confirmed Revenue" value={formatNGN(tenantMetrics.totalRevenue)} delta={{ value: "+12.4%", positive: true }} icon={Banknote} />
-            <StatCard label="Outstanding" value={formatNGN(tenantMetrics.outstanding)} delta={{ value: "-3.1%", positive: true }} icon={Clock} hint="Submitted & awaiting confirmation" />
-            <StatCard label="Invoices this month" value={String(tenantMetrics.invoicesThisMonth)} delta={{ value: "+8 invoices", positive: true }} icon={Receipt} />
-            <StatCard label="NRS Validation Rate" value={`${tenantMetrics.validationRate}%`} delta={{ value: "+0.6%", positive: true }} icon={ShieldCheck} />
+            <StatCard label="Confirmed Revenue" value={formatNGN(confirmedRevenue)} icon={Banknote} />
+            <StatCard label="Outstanding" value={formatNGN(outstanding)} icon={Clock} hint="Submitted & awaiting confirmation" />
+            <StatCard label="Invoices this month" value={String(invoicesThisMonth)} icon={Receipt} />
+            <StatCard label="NRS Validation Rate" value={`${validationRate.toFixed(1)}%`} icon={ShieldCheck} />
           </div>
         </section>
 
