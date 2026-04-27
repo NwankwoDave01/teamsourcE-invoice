@@ -326,13 +326,13 @@ export default function Invoices() {
                           >
                             {inv.number}
                           </Link>
-                          <div className="mt-0.5 text-xs text-muted-foreground">by {inv.createdBy}</div>
+                          <div className="mt-0.5 text-xs text-muted-foreground">by {inv.created_by}</div>
                         </td>
                         <td className="px-3 py-4">
-                          <div className="font-medium text-foreground">{inv.customerName}</div>
+                          <div className="font-medium text-foreground">{inv.customer_name}</div>
                         </td>
-                        <td className="px-3 py-4 tabular-nums text-muted-foreground">{inv.issueDate}</td>
-                        <td className="px-3 py-4 tabular-nums text-muted-foreground">{inv.dueDate}</td>
+                        <td className="px-3 py-4 tabular-nums text-muted-foreground">{inv.issue_date}</td>
+                        <td className="px-3 py-4 tabular-nums text-muted-foreground">{inv.due_date}</td>
                         <td className="px-3 py-4 text-right tabular-nums font-semibold text-foreground">
                           {formatNGN(inv.total)}
                         </td>
