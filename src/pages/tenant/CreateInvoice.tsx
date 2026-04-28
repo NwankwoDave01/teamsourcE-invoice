@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCustomers, useProducts, useInvoices, useCreateInvoice } from "@/hooks/useCompanyData";
+import { INVOICE_TYPE_OPTIONS, TRANSACTION_TYPE_OPTIONS, PAYMENT_MEANS_OPTIONS } from "@/lib/nrs/codes";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -68,6 +69,12 @@ export default function CreateInvoice() {
   const [poRef, setPoRef] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([newLine()]);
+  const [invoiceType, setInvoiceType] = useState<string>("commercial");
+  const [transactionType, setTransactionType] = useState<string>("B2B");
+  const [supplyDate, setSupplyDate] = useState<string>("");
+  const [paymentTerms, setPaymentTerms] = useState<string>("");
+  const [paymentMeansCode, setPaymentMeansCode] = useState<string>("30");
+  const [exchangeRate, setExchangeRate] = useState<number>(1);
 
   // Auto-generate next invoice number
   useEffect(() => {
@@ -123,6 +130,12 @@ export default function CreateInvoice() {
         due_date: dueDate,
         notes: notes || undefined,
         po_reference: poRef || undefined,
+        invoice_type: invoiceType,
+        transaction_type: transactionType,
+        supply_date: supplyDate || null,
+        payment_terms: paymentTerms || null,
+        payment_means_code: paymentMeansCode,
+        exchange_rate: exchangeRate,
         lines: lines.map((l) => ({
           product_id: l.product_id,
           description: l.description,
