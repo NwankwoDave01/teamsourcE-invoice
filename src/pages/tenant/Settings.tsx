@@ -14,21 +14,48 @@ import { toast } from "sonner";
 export default function Settings() {
   const { data: company, isLoading } = useCurrentCompany();
   const update = useUpdateCompany();
-  const [form, setForm] = useState({ name: "", tin: "", industry: "" });
+  const [form, setForm] = useState({
+    name: "", tin: "", industry: "",
+    legal_name: "", rc_number: "", vat_number: "", email: "", phone: "",
+    address_line1: "", address_line2: "", city: "", state: "", lga: "",
+    postcode: "", country_code: "NG", industry_code: "",
+  });
 
   useEffect(() => {
-    if (company) setForm({ name: company.name, tin: company.tin, industry: company.industry ?? "" });
+    if (company) {
+      const c = company as any;
+      setForm({
+        name: company.name,
+        tin: company.tin,
+        industry: company.industry ?? "",
+        legal_name: c.legal_name ?? "",
+        rc_number: c.rc_number ?? "",
+        vat_number: c.vat_number ?? "",
+        email: c.email ?? "",
+        phone: c.phone ?? "",
+        address_line1: c.address_line1 ?? "",
+        address_line2: c.address_line2 ?? "",
+        city: c.city ?? "",
+        state: c.state ?? "",
+        lga: c.lga ?? "",
+        postcode: c.postcode ?? "",
+        country_code: c.country_code ?? "NG",
+        industry_code: c.industry_code ?? "",
+      });
+    }
   }, [company]);
 
   const handleSave = async () => {
     if (!company) return;
     try {
-      await update.mutateAsync({ id: company.id, ...form });
+      await update.mutateAsync({ id: company.id, ...(form as any) });
       toast.success("Company profile updated");
     } catch (e: any) {
       toast.error("Failed to save", { description: e.message });
     }
   };
+
+  const set = (k: keyof typeof form) => (v: string) => setForm({ ...form, [k]: v });
 
   return (
     <div>
@@ -55,13 +82,31 @@ export default function Settings() {
               <>
               <div className="grid gap-4 md:grid-cols-2">
                 <Field label="Legal name">
-                  <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                  <Input value={form.name} onChange={(e) => set("name")(e.target.value)} />
                 </Field>
                 <Field label="Industry">
-                  <Input value={form.industry} onChange={(e) => setForm({ ...form, industry: e.target.value })} />
+                  <Input value={form.industry} onChange={(e) => set("industry")(e.target.value)} />
                 </Field>
                 <Field label="TIN">
-                  <Input value={form.tin} onChange={(e) => setForm({ ...form, tin: e.target.value })} />
+                  <Input value={form.tin} onChange={(e) => set("tin")(e.target.value)} />
+                </Field>
+                <Field label="Registered legal name (NRS)">
+                  <Input value={form.legal_name} onChange={(e) => set("legal_name")(e.target.value)} placeholder="As registered with CAC" />
+                </Field>
+                <Field label="RC number">
+                  <Input value={form.rc_number} onChange={(e) => set("rc_number")(e.target.value)} placeholder="RC-XXXXXXX" className="font-mono" />
+                </Field>
+                <Field label="VAT number">
+                  <Input value={form.vat_number} onChange={(e) => set("vat_number")(e.target.value)} placeholder="Optional" className="font-mono" />
+                </Field>
+                <Field label="Industry code">
+                  <Input value={form.industry_code} onChange={(e) => set("industry_code")(e.target.value)} placeholder="ISIC / NAICS (optional)" className="font-mono" />
+                </Field>
+                <Field label="Email">
+                  <Input type="email" value={form.email} onChange={(e) => set("email")(e.target.value)} placeholder="billing@company.com" />
+                </Field>
+                <Field label="Phone">
+                  <Input value={form.phone} onChange={(e) => set("phone")(e.target.value)} placeholder="+234 800 000 0000" />
                 </Field>
                 <Field label="Plan">
                   <Input value={company?.plan ?? ""} disabled />
@@ -72,14 +117,41 @@ export default function Settings() {
                 <Field label="Created">
                   <Input value={company ? new Date(company.created_at).toLocaleDateString() : ""} disabled />
                 </Field>
-                <div className="md:col-span-2">
-                  <Field label="Registered address">
-                    <Textarea rows={3} placeholder="Add your registered address" />
-                  </Field>
-                </div>
+                <Field label="Address line 1">
+                  <Input value={form.address_line1} onChange={(e) => set("address_line1")(e.target.value)} placeholder="Street address" />
+                </Field>
+                <Field label="Address line 2">
+                  <Input value={form.address_line2} onChange={(e) => set("address_line2")(e.target.value)} placeholder="Suite, building, floor (optional)" />
+                </Field>
+                <Field label="City">
+                  <Input value={form.city} onChange={(e) => set("city")(e.target.value)} placeholder="e.g. Lagos" />
+                </Field>
+                <Field label="State">
+                  <Input value={form.state} onChange={(e) => set("state")(e.target.value)} placeholder="e.g. Lagos" />
+                </Field>
+                <Field label="LGA">
+                  <Input value={form.lga} onChange={(e) => set("lga")(e.target.value)} placeholder="Local Government Area" />
+                </Field>
+                <Field label="Postcode">
+                  <Input value={form.postcode} onChange={(e) => set("postcode")(e.target.value)} placeholder="e.g. 100001" />
+                </Field>
+                <Field label="Country code">
+                  <Input value={form.country_code} onChange={(e) => set("country_code")(e.target.value.toUpperCase())} placeholder="NG" maxLength={2} className="font-mono uppercase" />
+                </Field>
               </div>
               <div className="mt-6 flex justify-end gap-2">
-                <Button variant="outline" onClick={() => company && setForm({ name: company.name, tin: company.tin, industry: company.industry ?? "" })}>
+                <Button variant="outline" onClick={() => {
+                  if (!company) return;
+                  const c = company as any;
+                  setForm({
+                    name: company.name, tin: company.tin, industry: company.industry ?? "",
+                    legal_name: c.legal_name ?? "", rc_number: c.rc_number ?? "", vat_number: c.vat_number ?? "",
+                    email: c.email ?? "", phone: c.phone ?? "",
+                    address_line1: c.address_line1 ?? "", address_line2: c.address_line2 ?? "",
+                    city: c.city ?? "", state: c.state ?? "", lga: c.lga ?? "",
+                    postcode: c.postcode ?? "", country_code: c.country_code ?? "NG", industry_code: c.industry_code ?? "",
+                  });
+                }}>
                   Reset
                 </Button>
                 <Button onClick={handleSave} disabled={update.isPending}>

@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCustomers, useProducts, useInvoices, useCreateInvoice } from "@/hooks/useCompanyData";
+import { INVOICE_TYPE_OPTIONS, TRANSACTION_TYPE_OPTIONS, PAYMENT_MEANS_OPTIONS } from "@/lib/nrs/codes";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -68,6 +69,12 @@ export default function CreateInvoice() {
   const [poRef, setPoRef] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([newLine()]);
+  const [invoiceType, setInvoiceType] = useState<string>("commercial");
+  const [transactionType, setTransactionType] = useState<string>("B2B");
+  const [supplyDate, setSupplyDate] = useState<string>("");
+  const [paymentTerms, setPaymentTerms] = useState<string>("");
+  const [paymentMeansCode, setPaymentMeansCode] = useState<string>("30");
+  const [exchangeRate, setExchangeRate] = useState<number>(1);
 
   // Auto-generate next invoice number
   useEffect(() => {
@@ -123,6 +130,12 @@ export default function CreateInvoice() {
         due_date: dueDate,
         notes: notes || undefined,
         po_reference: poRef || undefined,
+        invoice_type: invoiceType,
+        transaction_type: transactionType,
+        supply_date: supplyDate || null,
+        payment_terms: paymentTerms || null,
+        payment_means_code: paymentMeansCode,
+        exchange_rate: exchangeRate,
         lines: lines.map((l) => ({
           product_id: l.product_id,
           description: l.description,
@@ -227,6 +240,62 @@ export default function CreateInvoice() {
               </Field>
               <Field label="PO reference">
                 <Input value={poRef} onChange={(e) => setPoRef(e.target.value)} placeholder="e.g. PO-2025-447 (optional)" />
+              </Field>
+              <Field label="Invoice type">
+                <Select value={invoiceType} onValueChange={setInvoiceType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {INVOICE_TYPE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Transaction type">
+                <Select value={transactionType} onValueChange={setTransactionType}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TRANSACTION_TYPE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Supply date">
+                <div className="relative">
+                  <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input type="date" value={supplyDate} onChange={(e) => setSupplyDate(e.target.value)} className="pl-9" />
+                </div>
+                <FieldHint>Date goods/services were supplied. Defaults to issue date if blank.</FieldHint>
+              </Field>
+              <Field label="Payment terms">
+                <Input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="e.g. Net 30" />
+              </Field>
+              <Field label="Payment means">
+                <Select value={paymentMeansCode} onValueChange={setPaymentMeansCode}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {PAYMENT_MEANS_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field label="Exchange rate">
+                <Input
+                  type="number"
+                  step="0.0001"
+                  value={exchangeRate}
+                  onChange={(e) => setExchangeRate(Number(e.target.value))}
+                  className="tabular-nums"
+                />
+                <FieldHint>Required only for non-NGN invoices.</FieldHint>
               </Field>
             </div>
           </SectionCard>

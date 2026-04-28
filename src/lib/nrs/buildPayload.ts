@@ -19,11 +19,12 @@ import { round2 } from "./codes";
  * the payload so the user can still preview.
  */
 export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult> {
-  const { data: invoice, error: invErr } = await supabase
+  const { data: invoiceRaw, error: invErr } = await supabase
     .from("invoices")
     .select("*")
     .eq("id", invoiceId)
     .maybeSingle();
+  const invoice = invoiceRaw as any;
   if (invErr) throw invErr;
   if (!invoice) {
     return {
@@ -34,13 +35,14 @@ export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult
     };
   }
 
-  const [{ data: lines }, { data: company }, customerRes] = await Promise.all([
+  const [{ data: lines }, { data: companyRaw }, customerRes] = await Promise.all([
     supabase.from("invoice_lines").select("*").eq("invoice_id", invoiceId).order("position"),
     supabase.from("companies").select("*").eq("id", invoice.company_id).maybeSingle(),
     invoice.customer_id
       ? supabase.from("customers").select("*").eq("id", invoice.customer_id).maybeSingle()
       : Promise.resolve({ data: null }),
   ]);
+  const company = companyRaw as any;
   const customer = (customerRes as any).data ?? null;
 
   const issues = validateForNrs({
