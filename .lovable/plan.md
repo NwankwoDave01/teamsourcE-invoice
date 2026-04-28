@@ -1,72 +1,77 @@
-# Wire UI to Live Supabase Backend
+## Add NRS-required fields to UI forms
 
-The schema, RLS, auth, and data hooks are already in place. The remaining work is replacing `src/mock/data.ts` consumers with live Supabase queries through the existing hooks in `src/hooks/useCompanyData.ts`, while keeping the refined UI intact (no visual rebuilds).
+Goal: expose every additive NRS column (already present in the database via the migration) to the existing Customer, Product, Settings, and Invoice forms — without changing layouts. All fields stay optional and backward compatible. After this, "Preview NRS Payload" will surface fewer warnings.
 
-## 1. Tenant pages — wire to live data
+### 1. Customer form (`src/pages/tenant/customers/CustomerForm.tsx`)
 
-**Dashboard** (`src/pages/tenant/Dashboard.tsx`)
-- Replace `invoices`/`customers`/`products` mock imports with `useInvoices()`, `useCustomers()`, `useProducts()`.
-- Compute KPIs (total/draft/in review/approved/submitted/validated/signed/rejected), pipeline counts, recent invoices, and upcoming due invoices from live data.
-- Add skeleton loading states and an empty state when the workspace has no invoices yet.
+Extend `FormState` with: `buyer_type`, `rc_number`, `address_line1`, `address_line2`, `state`, `lga`, `postcode`, `country_code` (default `NG`). Hydrate from `existing` in the `useEffect`.
 
-**Invoices list** (`src/pages/tenant/Invoices.tsx`)
-- Source list from `useInvoices()`. Keep filters, bulk-select, and status badges.
-- Bulk status updates use `useUpdateInvoiceStatus()` per selected row.
-- Loading skeleton + refined empty state preserved.
+Add fields into the existing `SectionCard`s — no new layout:
 
-**Create Invoice** (`src/pages/tenant/CreateInvoice.tsx`)
-- Customer picker from `useCustomers()`, product picker from `useProducts()`.
-- Auto-generate next invoice number (`INV-YYYY-#####`) by counting existing invoices.
-- Submit calls `useCreateInvoice()` → navigate to `/app/invoices/:id` on success. Toast on error.
+- **Business profile section** — add two new fields beside the existing TIN/City grid:
+  - `Buyer type` (Select: business / individual / government / foreign)
+  - `RC number` (Input, monospace)
+- **New SectionCard "Registered address"** (icon `MapPin`) inserted between "Business profile" and "Primary contact":
+  - Row 1: `Address line 1`, `Address line 2`
+  - Row 2: `State`, `LGA`
+  - Row 3: `Postcode`, `Country code` (default `NG`)
 
-**Invoice Details** (`src/pages/tenant/InvoiceDetails.tsx`)
-- Load via `useInvoice(id)` (already returns invoice + lines).
-- Status transition buttons call `useUpdateInvoiceStatus()`.
-- 404 state when invoice not found.
+Include all new keys in the `create`/`update` mutation payload (the hooks already spread `Partial<DBCustomer>` — no hook changes needed).
 
-**Customers list + form** (`src/pages/tenant/Customers.tsx`, `customers/CustomerForm.tsx`)
-- List from `useCustomers()`. Delete via direct `supabase.from("customers").delete()` with query invalidation.
-- Create uses `useCreateCustomer()`. Edit loads + updates via Supabase, then navigates back.
+### 2. Product form (`src/pages/tenant/products/ProductForm.tsx`)
 
-**Products list + form** (`src/pages/tenant/Products.tsx`, `products/ProductForm.tsx`)
-- Same pattern as customers, using `useProducts()` + `useCreateProduct()` and inline update/delete.
+Add state: `unitCode` (default `EA`), `taxCategory` (default `S`), `itemClassificationCode`. Hydrate from `existing`.
 
-**Team** (`src/pages/tenant/Team.tsx`)
-- List from `useTeam()` (already joins `company_members` + `profiles` + `user_roles`).
-- Invite button shows a "coming soon" toast for now (email invites are out of scope per plan).
+- **Item details section** — add `Item classification code (HS / CPC)` Input next to Category.
+- **Pricing & tax section** — add two fields under the existing price/tax row:
+  - `Unit code` (Select with common UN/ECE codes from `src/lib/nrs/codes.ts`: EA, KGM, LTR, HUR, etc., default EA)
+  - `Tax category` (Select: S — Standard, Z — Zero-rated, E — Exempt, O — Out of scope)
 
-**Audit Logs** (`src/pages/tenant/AuditLogs.tsx`)
-- Source from `useAuditLogs()`. Empty state when no logs.
+Pass new keys into create/update mutations. Note: keep the existing `unit` (display label) field untouched to preserve invoice rendering — `unit_code` is the NRS-compliant code that lives alongside it.
 
-**Reports** (`src/pages/tenant/Reports.tsx`)
-- Aggregate metrics computed from `useInvoices()` + `useCustomers()`.
+### 3. Company Settings (`src/pages/tenant/Settings.tsx`)
 
-**Settings** (`src/pages/tenant/Settings.tsx`)
-- Load from `useCurrentCompany()`. Update via `supabase.from("companies").update(...)` (gated to company admins by RLS).
+Extend `form` state with: `legal_name`, `rc_number`, `vat_number`, `email`, `phone`, `address_line1`, `address_line2`, `city`, `state`, `lga`, `postcode`, `country_code`, `industry_code`. Hydrate from `company`.
 
-## 2. Admin pages — wire to live data (super_admin only)
+Inside the existing **Company** tab `Card` (no new tabs, no layout change):
+- Replace the placeholder `Textarea` "Registered address" block with a structured grid containing the new fields, keeping the same 2-column layout used today.
+- Add `Legal name`, `RC number`, `VAT number`, `Email`, `Phone` to the existing top grid.
+- Add `Address line 1`, `Address line 2`, `City`, `State`, `LGA`, `Postcode`, `Country code`, `Industry code` in the same grid below.
 
-- **Overview** + **Companies**: use `useAllCompanies()`.
-- **Users**: query `profiles` + `user_roles` (super-admin only via RLS).
-- **Integration Health**: use `useIntegrationHealth()`. Seed a few rows on first super-admin visit if empty.
-- **System Logs**: use `useSystemLogs()`.
-- **Invoice Traffic**: aggregate across all companies (super-admin readable via `is_super_admin` RLS).
+`useUpdateCompany` already accepts `Partial<DBCompany>`, so `handleSave` just spreads the new keys.
 
-## 3. Cleanup
+### 4. Invoice — Create form (`src/pages/tenant/CreateInvoice.tsx`)
 
-- Remove all `import { ... } from "@/mock/data"` from tenant + admin pages.
-- Keep `src/mock/data.ts` only for any types still referenced by `StatusBadge.tsx` (or migrate `StatusBadge` to use the DB enum type from `useCompanyData.ts`).
-- Add toast notifications (`sonner`) on mutation success/failure across all pages.
-- Add `Loader2` skeletons for in-flight queries on every page.
+Add state: `invoiceType` (default `commercial`), `transactionType` (default `B2B`), `supplyDate`, `paymentTerms`, `paymentMeansCode` (default `30`), `exchangeRate` (default `1`).
 
-## 4. Verification
+Inside the existing **Customer & details** `SectionCard` grid:
+- `Invoice type` (Select)
+- `Transaction type` (Select)
+- `Supply date` (date input)
+- `Payment terms` (Input — free text e.g. "Net 30")
+- `Payment means code` (Select: 30 Bank transfer / 10 Cash / 48 Card / 42 Cheque / 97 Other)
+- `Exchange rate` (number input, default 1, hint "Required only for non-NGN")
 
-- TypeScript compile clean.
-- Manual flow: signup → seed runs → dashboard populated → create/edit/delete customer → create invoice → status transitions → log out / log in.
-- Run the Supabase linter to confirm no new RLS issues.
+Update `useCreateInvoice` (`src/hooks/useCompanyData.ts`) — extend the `input` type and the `.insert({...})` payload to include these six new columns. They're all nullable / have DB defaults, so existing callers/tests stay valid.
 
-## Out of scope (unchanged from earlier plan)
+### 5. Codes helper
 
-- Email-based team invitations (separate `invitations` table + edge function).
-- Real NRS/FIRS API calls (status transitions remain manual).
-- Storage buckets, Stripe billing, Google sign-in.
+Reuse `src/lib/nrs/codes.ts` for option lists (unit codes, tax categories, payment means, invoice types, transaction types, buyer types). If a list is missing, add it there so all forms share one source of truth.
+
+### Out of scope
+- No layout redesign, no new pages, no new tabs.
+- No required-field enforcement — everything stays optional.
+- No changes to `InvoiceDetails`, the NRS preview dialog, the build/validate logic, or the database (the migration from the prior step already added every column).
+- No edits to `src/integrations/supabase/types.ts` (auto-generated).
+
+### Files touched
+- `src/pages/tenant/customers/CustomerForm.tsx`
+- `src/pages/tenant/products/ProductForm.tsx`
+- `src/pages/tenant/Settings.tsx`
+- `src/pages/tenant/CreateInvoice.tsx`
+- `src/hooks/useCompanyData.ts` (extend `useCreateInvoice` input + insert)
+- `src/lib/nrs/codes.ts` (add option lists if missing)
+
+### Verification
+- Run `bunx tsc --noEmit`.
+- Manual: open each form, confirm new fields render inside the existing sections, save with new fields populated, then run "Preview NRS Payload" on a fresh invoice — warnings about missing TIN/address/codes should drop.
