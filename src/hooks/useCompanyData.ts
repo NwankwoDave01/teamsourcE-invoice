@@ -235,6 +235,12 @@ export function useCreateInvoice() {
       due_date: string;
       notes?: string;
       po_reference?: string;
+      invoice_type?: string;
+      transaction_type?: string;
+      supply_date?: string | null;
+      payment_terms?: string | null;
+      payment_means_code?: string | null;
+      exchange_rate?: number | null;
       lines: Array<{ product_id?: string | null; description: string; qty: number; unit_price: number; tax_rate: number }>;
     }) => {
       const subtotal = input.lines.reduce((s, l) => s + l.qty * l.unit_price, 0);
@@ -257,7 +263,13 @@ export function useCreateInvoice() {
           total,
           created_by: user?.id,
           status: "Draft",
-        })
+          ...(input.invoice_type ? { invoice_type: input.invoice_type } : {}),
+          ...(input.transaction_type ? { transaction_type: input.transaction_type } : {}),
+          ...(input.supply_date ? { supply_date: input.supply_date } : {}),
+          ...(input.payment_terms ? { payment_terms: input.payment_terms } : {}),
+          ...(input.payment_means_code ? { payment_means_code: input.payment_means_code } : {}),
+          ...(input.exchange_rate != null ? { exchange_rate: input.exchange_rate } : {}),
+        } as any)
         .select()
         .single();
       if (error) throw error;
