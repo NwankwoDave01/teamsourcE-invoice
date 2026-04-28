@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/select";
 import { formatNGN } from "@/lib/format";
 import { useCreateProduct, useProduct, useUpdateProduct } from "@/hooks/useCompanyData";
+import { UNIT_CODE_OPTIONS, TAX_CATEGORY_OPTIONS } from "@/lib/nrs/codes";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -51,9 +52,13 @@ export default function ProductForm({ mode }: ProductFormProps) {
   const [price, setPrice] = useState<number>(0);
   const [taxRate, setTaxRate] = useState<number>(7.5);
   const [active, setActive] = useState(true);
+  const [unitCode, setUnitCode] = useState<string>("EA");
+  const [taxCategory, setTaxCategory] = useState<"S" | "Z" | "E" | "O">("S");
+  const [classificationCode, setClassificationCode] = useState<string>("");
 
   useEffect(() => {
     if (existing) {
+      const ex = existing as any;
       setName(existing.name);
       setSku(existing.sku);
       setCategory(existing.category ?? "");
@@ -61,6 +66,9 @@ export default function ProductForm({ mode }: ProductFormProps) {
       setPrice(Number(existing.price));
       setTaxRate(Number(existing.tax_rate));
       setActive(existing.active);
+      setUnitCode(ex.unit_code ?? "EA");
+      setTaxCategory((ex.tax_category as "S" | "Z" | "E" | "O") ?? "S");
+      setClassificationCode(ex.item_classification_code ?? "");
     }
   }, [existing]);
 
@@ -76,10 +84,20 @@ export default function ProductForm({ mode }: ProductFormProps) {
     }
     try {
       if (isEdit && id) {
-        await updateMut.mutateAsync({ id, name, sku, category: category || null, unit, price, tax_rate: taxRate, active });
+        await updateMut.mutateAsync({
+          id, name, sku, category: category || null, unit, price, tax_rate: taxRate, active,
+          unit_code: unitCode,
+          tax_category: taxCategory,
+          item_classification_code: classificationCode || null,
+        } as any);
         toast.success("Product updated");
       } else {
-        await createMut.mutateAsync({ name, sku, category: category || null, unit, price, tax_rate: taxRate, active });
+        await createMut.mutateAsync({
+          name, sku, category: category || null, unit, price, tax_rate: taxRate, active,
+          unit_code: unitCode,
+          tax_category: taxCategory,
+          item_classification_code: classificationCode || null,
+        } as any);
         toast.success("Product created");
       }
       navigate("/app/products");
