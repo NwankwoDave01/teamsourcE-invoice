@@ -1,4 +1,5 @@
 import { useParams, Link } from "react-router-dom";
+import { useState } from "react";
 import {
   ArrowLeft,
   CheckCircle2,
@@ -8,6 +9,7 @@ import {
   Printer,
   Send,
   XCircle,
+  FileJson,
 } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -24,6 +26,7 @@ import {
 import { formatNGN, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { NrsPayloadPreviewDialog } from "@/components/nrs/NrsPayloadPreviewDialog";
 
 const NEXT_STATUS: Partial<Record<DBInvoiceStatus, DBInvoiceStatus>> = {
   Draft: "In Review",
@@ -51,6 +54,7 @@ export default function InvoiceDetails() {
   const { data: customer } = useCustomer(invoice?.customer_id ?? undefined);
   const { data: company } = useCurrentCompany();
   const updateStatus = useUpdateInvoiceStatus();
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -122,6 +126,15 @@ export default function InvoiceDetails() {
             <Button variant="outline" size="sm" className="gap-1.5">
               <Download className="h-4 w-4" />
               PDF
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPreviewOpen(true)}
+              className="gap-1.5"
+            >
+              <FileJson className="h-4 w-4" />
+              Preview NRS Payload
             </Button>
             {invoice.status !== "Confirmed" && invoice.status !== "Rejected" && nextStatus && (
               <Button size="sm" onClick={advance} disabled={updateStatus.isPending} className="gap-1.5">
@@ -256,6 +269,12 @@ export default function InvoiceDetails() {
           )}
         </div>
       </div>
+
+      <NrsPayloadPreviewDialog
+        invoiceId={invoice.id}
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+      />
     </div>
   );
 }
