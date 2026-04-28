@@ -48,6 +48,14 @@ type FormState = {
   city: string;
   email: string;
   phone: string;
+  buyer_type: "business" | "individual" | "government" | "foreign";
+  rc_number: string;
+  address_line1: string;
+  address_line2: string;
+  state: string;
+  lga: string;
+  postcode: string;
+  country_code: string;
 };
 
 export default function CustomerForm({ mode }: CustomerFormProps) {
@@ -61,10 +69,13 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
 
   const [form, setForm] = useState<FormState>({
     name: "", tin: "", status: "Active", city: "", email: "", phone: "",
+    buyer_type: "business", rc_number: "", address_line1: "", address_line2: "",
+    state: "", lga: "", postcode: "", country_code: "NG",
   });
 
   useEffect(() => {
     if (existing) {
+      const ex = existing as any;
       setForm({
         name: existing.name,
         tin: existing.tin ?? "",
@@ -72,6 +83,14 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
         city: existing.city ?? "",
         email: existing.email ?? "",
         phone: existing.phone ?? "",
+        buyer_type: (ex.buyer_type as FormState["buyer_type"]) ?? "business",
+        rc_number: ex.rc_number ?? "",
+        address_line1: ex.address_line1 ?? "",
+        address_line2: ex.address_line2 ?? "",
+        state: ex.state ?? "",
+        lga: ex.lga ?? "",
+        postcode: ex.postcode ?? "",
+        country_code: ex.country_code ?? "NG",
       });
     }
   }, [existing]);
@@ -90,9 +109,9 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
     }
     try {
       if (isEdit && id) {
-        await update.mutateAsync({ id, ...form });
+        await update.mutateAsync({ id, ...(form as any) });
       } else {
-        await create.mutateAsync(form as any);
+        await create.mutateAsync({ ...(form as any) });
       }
       toast.success(isEdit ? "Customer updated" : "Customer created");
       navigate("/app/customers");
