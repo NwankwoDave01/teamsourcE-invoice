@@ -186,6 +186,15 @@ export default function ProductForm({ mode }: ProductFormProps) {
                   </SelectContent>
                 </Select>
               </Field>
+              <Field label="Item classification (HS / CPC)">
+                <Input
+                  value={classificationCode}
+                  onChange={(e) => setClassificationCode(e.target.value)}
+                  placeholder="e.g. 1006.30"
+                  className="font-mono"
+                />
+                <FieldHint>HS or CPC code used for NRS item classification.</FieldHint>
+              </Field>
             </div>
           </SectionCard>
 
@@ -222,6 +231,31 @@ export default function ProductForm({ mode }: ProductFormProps) {
                   />
                 </div>
                 <FieldHint>Standard Nigerian VAT is 7.5%.</FieldHint>
+              </Field>
+              <Field label="Unit code (NRS)">
+                <Select value={unitCode} onValueChange={setUnitCode}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="max-h-72">
+                    {UNIT_CODE_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldHint>UN/ECE Rec 20 unit code for NRS reporting.</FieldHint>
+              </Field>
+              <Field label="Tax category">
+                <Select value={taxCategory} onValueChange={(v) => setTaxCategory(v as "S" | "Z" | "E" | "O")}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TAX_CATEGORY_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
             </div>
 
