@@ -215,6 +215,86 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                   />
                 </div>
               </Field>
+              <Field label="Buyer type">
+                <Select value={form.buyer_type} onValueChange={(v) => set("buyer_type")(v as FormState["buyer_type"])}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="business">Business</SelectItem>
+                    <SelectItem value="individual">Individual</SelectItem>
+                    <SelectItem value="government">Government</SelectItem>
+                    <SelectItem value="foreign">Foreign</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FieldHint>Used for NRS B2B / B2C / B2G classification.</FieldHint>
+              </Field>
+              <Field label="RC number">
+                <div className="relative">
+                  <Hash className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    value={form.rc_number}
+                    onChange={(e) => set("rc_number")(e.target.value)}
+                    placeholder="RC-XXXXXXX"
+                    className="pl-9 font-mono"
+                  />
+                </div>
+              </Field>
+            </div>
+          </SectionCard>
+
+          {/* ----- Registered address ----- */}
+          <SectionCard
+            icon={MapPin}
+            title="Registered address"
+            description="Required by NRS for B2B and B2G transactions."
+          >
+            <div className="grid gap-5 md:grid-cols-2">
+              <Field label="Address line 1">
+                <Input
+                  value={form.address_line1}
+                  onChange={(e) => set("address_line1")(e.target.value)}
+                  placeholder="Street address"
+                />
+              </Field>
+              <Field label="Address line 2">
+                <Input
+                  value={form.address_line2}
+                  onChange={(e) => set("address_line2")(e.target.value)}
+                  placeholder="Suite, building, floor (optional)"
+                />
+              </Field>
+              <Field label="State">
+                <Input
+                  value={form.state}
+                  onChange={(e) => set("state")(e.target.value)}
+                  placeholder="e.g. Lagos"
+                />
+              </Field>
+              <Field label="LGA">
+                <Input
+                  value={form.lga}
+                  onChange={(e) => set("lga")(e.target.value)}
+                  placeholder="Local Government Area"
+                />
+              </Field>
+              <Field label="Postcode">
+                <Input
+                  value={form.postcode}
+                  onChange={(e) => set("postcode")(e.target.value)}
+                  placeholder="e.g. 100001"
+                />
+              </Field>
+              <Field label="Country code">
+                <Input
+                  value={form.country_code}
+                  onChange={(e) => set("country_code")(e.target.value.toUpperCase())}
+                  placeholder="NG"
+                  maxLength={2}
+                  className="font-mono uppercase"
+                />
+                <FieldHint>ISO 3166-1 alpha-2 (e.g. NG).</FieldHint>
+              </Field>
             </div>
           </SectionCard>
 
