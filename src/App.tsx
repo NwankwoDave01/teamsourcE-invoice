@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import NotFound from "./pages/NotFound";
+import LandingPage from "./pages/LandingPage";
 
 import TenantLayout from "./layouts/TenantLayout";
 import AdminLayout from "./layouts/AdminLayout";
@@ -46,7 +47,8 @@ const App = () => (
       <BrowserRouter>
         <AuthProvider>
           <Routes>
-            <Route path="/" element={<Navigate to="/app/dashboard" replace />} />
+            <Route path="/" element={<LandingPage />} />
+           {/* <Route path="/" element={<Navigate to="/app/dashboard" replace />} />*/}
 
             <Route path="/auth/login" element={<Login />} />
             <Route path="/auth/signup" element={<Signup />} />
