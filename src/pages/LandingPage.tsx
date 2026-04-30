@@ -78,9 +78,12 @@ export default function LandingPage() {
 
       <section className="mx-auto grid max-w-7xl gap-6 px-6 pb-20 md:grid-cols-3">
         {[
-          ["Create invoices", "Build professional invoices with customers, products, VAT and totals."],
-          ["Internal approvals", "Review and approve invoices before compliance submission."],
-          ["NRS/FIRS ready", "Prepare structured invoice data for e-invoicing validation."],
+          ["Create invoices", "Build professional invoices with customers, products, VAT and totals.",],
+          ["Internal approvals", "Review and approve invoices before compliance submission.",],
+          ["NRS/FIRS ready", "Prepare structured invoice data for e-invoicing validation.",],
+          [ "Customer management","Store customer details, TIN, contact information and invoice history."],
+          ["Product catalog", "Manage products, services, pricing, VAT rates and invoice line items.",],
+          ["Audit & compliance logs", "Track invoice actions, approvals, changes and compliance activity.",],
         ].map(([title, text]) => (
           <div key={title} className="rounded-2xl border border-white/10 bg-white/5 p-6">
             <h3 className="text-xl font-bold">{title}</h3>
