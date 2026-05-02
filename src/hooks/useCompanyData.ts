@@ -241,10 +241,29 @@ export function useCreateInvoice() {
       payment_terms?: string | null;
       payment_means_code?: string | null;
       exchange_rate?: number | null;
-      lines: Array<{ product_id?: string | null; description: string; qty: number; unit_price: number; tax_rate: number }>;
+      lines: Array<{
+        product_id?: string | null;
+        description: string;
+        qty: number;
+        unit_price: number;
+        tax_rate: number;
+        unit_code?: string;
+        tax_category?: "S" | "Z" | "E" | "O";
+        discount_amount?: number;
+        item_classification_code?: string | null;
+      }>;
     }) => {
-      const subtotal = input.lines.reduce((s, l) => s + l.qty * l.unit_price, 0);
-      const tax = input.lines.reduce((s, l) => s + l.qty * l.unit_price * (l.tax_rate / 100), 0);
+      const subtotal = input.lines.reduce(
+        (s, l) => s + (l.qty * l.unit_price - (l.discount_amount ?? 0)),
+        0,
+      );
+      const tax = input.lines.reduce(
+        (s, l) =>
+          s +
+          (l.qty * l.unit_price - (l.discount_amount ?? 0)) *
+            ((l.tax_category ?? "S") === "S" ? l.tax_rate / 100 : 0),
+        0,
+      );
       const total = subtotal + tax;
 
       const { data: inv, error } = await supabase
@@ -275,16 +294,28 @@ export function useCreateInvoice() {
       if (error) throw error;
 
       const { error: linesError } = await supabase.from("invoice_lines").insert(
-        input.lines.map((l, i) => ({
-          invoice_id: inv.id,
-          product_id: l.product_id ?? null,
-          description: l.description,
-          qty: l.qty,
-          unit_price: l.unit_price,
-          tax_rate: l.tax_rate,
-          line_total: l.qty * l.unit_price * (1 + l.tax_rate / 100),
-          position: i,
-        })),
+        input.lines.map((l, i) => {
+          const discount = l.discount_amount ?? 0;
+          const cat = l.tax_category ?? "S";
+          const net = l.qty * l.unit_price - discount;
+          const lineTax = cat === "S" ? net * (l.tax_rate / 100) : 0;
+          return {
+            invoice_id: inv.id,
+            product_id: l.product_id ?? null,
+            description: l.description,
+            qty: l.qty,
+            unit_price: l.unit_price,
+            tax_rate: l.tax_rate,
+            line_total: net + lineTax,
+            position: i,
+            ...(l.unit_code ? { unit_code: l.unit_code } : {}),
+            ...(l.tax_category ? { tax_category: l.tax_category } : {}),
+            ...(discount ? { discount_amount: discount } : {}),
+            ...(l.item_classification_code
+              ? { item_classification_code: l.item_classification_code }
+              : {}),
+          };
+        }) as any,
       );
       if (linesError) throw linesError;
       return inv;

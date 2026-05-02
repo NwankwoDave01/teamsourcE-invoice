@@ -1,77 +1,67 @@
-## Add NRS-required fields to UI forms
 
-Goal: expose every additive NRS column (already present in the database via the migration) to the existing Customer, Product, Settings, and Invoice forms — without changing layouts. All fields stay optional and backward compatible. After this, "Preview NRS Payload" will surface fewer warnings.
+## Context
 
-### 1. Customer form (`src/pages/tenant/customers/CustomerForm.tsx`)
+I trust your confirmation that the additive NRS migration is live. I re-read all the forms and hooks. The good news: most of the wiring you asked for is already in place. There is **one real gap** plus one small visibility improvement.
 
-Extend `FormState` with: `buyer_type`, `rc_number`, `address_line1`, `address_line2`, `state`, `lga`, `postcode`, `country_code` (default `NG`). Hydrate from `existing` in the `useEffect`.
+### What's already correctly wired (no work needed)
 
-Add fields into the existing `SectionCard`s — no new layout:
+- **Settings.tsx + `useUpdateCompany`** — saves `legal_name, rc_number, vat_number, email, phone, address_line1/2, city, state, lga, postcode, country_code, industry_code`. Hydrates from `company`.
+- **CustomerForm.tsx + `useCreateCustomer` / `useUpdateCustomer`** — saves `buyer_type, rc_number, address_line1/2, state, lga, postcode, country_code` plus existing `email, phone, tin, city`. Hydrates from `existing`.
+- **ProductForm.tsx + `useCreateProduct` / `useUpdateProduct`** — saves `unit_code, tax_category, item_classification_code`. Hydrates from `existing`.
+- **CreateInvoice.tsx + `useCreateInvoice`** — saves the **header** fields `invoice_type, transaction_type, supply_date, payment_terms, payment_means_code, exchange_rate`.
+- **`buildPayload.ts`** — already does `select("*")` on invoices/companies/customers/lines, so once the columns exist (your migration) and the forms save them, the preview will read **real saved values** automatically. No change needed there.
 
-- **Business profile section** — add two new fields beside the existing TIN/City grid:
-  - `Buyer type` (Select: business / individual / government / foreign)
-  - `RC number` (Input, monospace)
-- **New SectionCard "Registered address"** (icon `MapPin`) inserted between "Business profile" and "Primary contact":
-  - Row 1: `Address line 1`, `Address line 2`
-  - Row 2: `State`, `LGA`
-  - Row 3: `Postcode`, `Country code` (default `NG`)
+### The actual gap: invoice **line** NRS fields are dropped on save
 
-Include all new keys in the `create`/`update` mutation payload (the hooks already spread `Partial<DBCustomer>` — no hook changes needed).
+In `CreateInvoice.tsx` the `LineDraft` type has only `description, qty, unit_price, tax_rate` and `useCreateInvoice` inserts the same minimal set. So even when the user picks a product whose `unit_code = "EA"` and `tax_category = "S"` are saved, none of that flows onto the invoice line, and the preview falls back to defaults for every line.
 
-### 2. Product form (`src/pages/tenant/products/ProductForm.tsx`)
+## Plan
 
-Add state: `unitCode` (default `EA`), `taxCategory` (default `S`), `itemClassificationCode`. Hydrate from `existing`.
+### 1. Extend `LineDraft` and the line-pick handler (`src/pages/tenant/CreateInvoice.tsx`)
+Add to `LineDraft`: `unit_code: string` (default `"EA"`), `tax_category: "S"|"Z"|"E"|"O"` (default `"S"`), `discount_amount: number` (default `0`), `item_classification_code: string | null` (default `null`).
 
-- **Item details section** — add `Item classification code (HS / CPC)` Input next to Category.
-- **Pricing & tax section** — add two fields under the existing price/tax row:
-  - `Unit code` (Select with common UN/ECE codes from `src/lib/nrs/codes.ts`: EA, KGM, LTR, HUR, etc., default EA)
-  - `Tax category` (Select: S — Standard, Z — Zero-rated, E — Exempt, O — Out of scope)
+In `pickProduct`, copy the product's `unit_code`, `tax_category`, `item_classification_code` onto the chosen line so users get correct values for free. No new UI fields; values flow from the product catalog.
 
-Pass new keys into create/update mutations. Note: keep the existing `unit` (display label) field untouched to preserve invoice rendering — `unit_code` is the NRS-compliant code that lives alongside it.
+Pass these fields into `createMut.mutateAsync({ lines: ... })`.
 
-### 3. Company Settings (`src/pages/tenant/Settings.tsx`)
+### 2. Extend `useCreateInvoice` line insert (`src/hooks/useCompanyData.ts`)
+Extend the `lines` element type to include `unit_code, tax_category, discount_amount, item_classification_code` (all optional). In the `invoice_lines` insert payload, spread these — guarded with `as any` until Supabase regenerates types — and recompute `line_total` to subtract `discount_amount` before tax (`(qty * unit_price - discount) * (1 + tax_rate/100)`).
 
-Extend `form` state with: `legal_name`, `rc_number`, `vat_number`, `email`, `phone`, `address_line1`, `address_line2`, `city`, `state`, `lga`, `postcode`, `country_code`, `industry_code`. Hydrate from `company`.
+### 3. Tiny read-only addition in `InvoiceDetails.tsx`
+Add an "NRS details" row in the existing detail panel showing `Invoice type`, `Transaction type`, `Supply date`, `Payment terms`, `Payment means`. No layout redesign — same card, two extra rows. This makes it obvious what the preview is about to consume.
 
-Inside the existing **Company** tab `Card` (no new tabs, no layout change):
-- Replace the placeholder `Textarea` "Registered address" block with a structured grid containing the new fields, keeping the same 2-column layout used today.
-- Add `Legal name`, `RC number`, `VAT number`, `Email`, `Phone` to the existing top grid.
-- Add `Address line 1`, `Address line 2`, `City`, `State`, `LGA`, `Postcode`, `Country code`, `Industry code` in the same grid below.
+### 4. No other changes
+- No DB migration.
+- No new pages, no homepage edits, no UI redesign.
+- No NRS API call.
+- No edit to `src/integrations/supabase/types.ts` (regenerated automatically; we keep the `as any` casts that are already there until it does).
 
-`useUpdateCompany` already accepts `Partial<DBCompany>`, so `handleSave` just spreads the new keys.
+### 5. TypeScript check
+The harness runs typecheck after the edits. I'll fix anything that surfaces.
 
-### 4. Invoice — Create form (`src/pages/tenant/CreateInvoice.tsx`)
+## What to test manually after the change
 
-Add state: `invoiceType` (default `commercial`), `transactionType` (default `B2B`), `supplyDate`, `paymentTerms`, `paymentMeansCode` (default `30`), `exchangeRate` (default `1`).
+1. **Settings → Company tab**: fill `Registered legal name`, `RC number`, `Address line 1`, `City`, `State`, `Country code`. Save → reload page → all fields persist.
+2. **Customers → New**: set `Buyer type = Business`, fill TIN, RC number, address line 1, state, country code. Save → reopen → fields persist.
+3. **Products → New**: set `Unit code = EA`, `Tax category = S`, `Item classification = 1006.30`. Save → reopen → fields persist.
+4. **Create Invoice**:
+   - Pick the customer + product from steps 2/3.
+   - Header: `Invoice type = Commercial`, `Transaction type = B2B`, `Supply date` = today, `Payment terms = Net 30`, `Payment means = 30 — Bank transfer`, `Exchange rate = 1`.
+   - Confirm the line picks up the product's unit code / tax category internally.
+   - Save the invoice.
+5. **Invoice Details page**: confirm new "NRS details" rows show what you entered.
+6. **Click "Preview NRS Payload"**:
+   - **Validation tab**: 0 errors. Warnings (if any) should be about things you intentionally left blank — not about TIN/address/unit code on the data you just filled.
+   - **JSON tab**, verify these reflect saved values:
+     - `supplier.legalName`, `supplier.rcNumber`, `supplier.address.line1/state/countryCode` → from Settings.
+     - `buyer.buyerType` = `business`, `buyer.rcNumber`, `buyer.address.*` → from the customer.
+     - `lines[0].unitCode` = `EA`, `taxCategory` = `S`, `itemCode` = `1006.30`.
+     - `invoiceTypeCode` = `380`, `transactionType` = `B2B`, `supplyDate` filled, `paymentMeansCode` = `30`, `paymentTerms` = `Net 30`.
+7. **Negative case**: create a second customer with no address / no TIN, issue an invoice to them → preview should show TIN/address as **warnings** (lenient), not errors, and still produce a JSON payload.
+8. **Backward compat**: open an old invoice created before the migration → it should still load, still preview, just with more warnings.
 
-Inside the existing **Customer & details** `SectionCard` grid:
-- `Invoice type` (Select)
-- `Transaction type` (Select)
-- `Supply date` (date input)
-- `Payment terms` (Input — free text e.g. "Net 30")
-- `Payment means code` (Select: 30 Bank transfer / 10 Cash / 48 Card / 42 Cheque / 97 Other)
-- `Exchange rate` (number input, default 1, hint "Required only for non-NGN")
+## Risks / notes
 
-Update `useCreateInvoice` (`src/hooks/useCompanyData.ts`) — extend the `input` type and the `.insert({...})` payload to include these six new columns. They're all nullable / have DB defaults, so existing callers/tests stay valid.
-
-### 5. Codes helper
-
-Reuse `src/lib/nrs/codes.ts` for option lists (unit codes, tax categories, payment means, invoice types, transaction types, buyer types). If a list is missing, add it there so all forms share one source of truth.
-
-### Out of scope
-- No layout redesign, no new pages, no new tabs.
-- No required-field enforcement — everything stays optional.
-- No changes to `InvoiceDetails`, the NRS preview dialog, the build/validate logic, or the database (the migration from the prior step already added every column).
-- No edits to `src/integrations/supabase/types.ts` (auto-generated).
-
-### Files touched
-- `src/pages/tenant/customers/CustomerForm.tsx`
-- `src/pages/tenant/products/ProductForm.tsx`
-- `src/pages/tenant/Settings.tsx`
-- `src/pages/tenant/CreateInvoice.tsx`
-- `src/hooks/useCompanyData.ts` (extend `useCreateInvoice` input + insert)
-- `src/lib/nrs/codes.ts` (add option lists if missing)
-
-### Verification
-- Run `bunx tsc --noEmit`.
-- Manual: open each form, confirm new fields render inside the existing sections, save with new fields populated, then run "Preview NRS Payload" on a fresh invoice — warnings about missing TIN/address/codes should drop.
+- `as any` casts remain in a couple of insert payloads until Supabase regenerates `types.ts`. They'll resolve themselves on next type sync. They don't affect runtime.
+- No data is sent to NRS. Preview remains an internal UBL-style mapping, as agreed.
+- If you do want the invoice line UI to also show editable `Unit code` / `Tax category` selectors per line (today they're only inherited from the picked product), say the word and I'll add them inside the existing line row — but the current request explicitly says "do not redesign UI" so I'm holding off.
