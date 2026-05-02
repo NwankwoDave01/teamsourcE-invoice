@@ -37,6 +37,10 @@ interface LineDraft {
   qty: number;
   unit_price: number;
   tax_rate: number;
+  unit_code: string;
+  tax_category: "S" | "Z" | "E" | "O";
+  discount_amount: number;
+  item_classification_code: string | null;
 }
 
 const newLine = (): LineDraft => ({
@@ -46,6 +50,10 @@ const newLine = (): LineDraft => ({
   qty: 1,
   unit_price: 0,
   tax_rate: 7.5,
+  unit_code: "EA",
+  tax_category: "S",
+  discount_amount: 0,
+  item_classification_code: null,
 });
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -104,11 +112,15 @@ export default function CreateInvoice() {
   const pickProduct = (lineId: string, productId: string) => {
     const p = products.find((p) => p.id === productId);
     if (!p) return;
+    const px = p as any;
     updateLine(lineId, {
       product_id: p.id,
       description: p.name,
       unit_price: Number(p.price),
       tax_rate: Number(p.tax_rate),
+      unit_code: px.unit_code ?? "EA",
+      tax_category: (px.tax_category as LineDraft["tax_category"]) ?? "S",
+      item_classification_code: px.item_classification_code ?? null,
     });
   };
 
@@ -142,6 +154,10 @@ export default function CreateInvoice() {
           qty: l.qty,
           unit_price: l.unit_price,
           tax_rate: l.tax_rate,
+          unit_code: l.unit_code,
+          tax_category: l.tax_category,
+          discount_amount: l.discount_amount,
+          item_classification_code: l.item_classification_code,
         })),
       });
       toast.success(status === "Draft" ? "Draft saved" : "Invoice created");
