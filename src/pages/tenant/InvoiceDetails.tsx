@@ -183,6 +183,47 @@ export default function InvoiceDetails() {
               </div>
             </div>
 
+            {(() => {
+              const inv = invoice as any;
+              const hasNrs =
+                inv.invoice_type ||
+                inv.transaction_type ||
+                inv.supply_date ||
+                inv.payment_terms ||
+                inv.payment_means_code;
+              if (!hasNrs) return null;
+              return (
+                <div className="mt-6 grid gap-4 rounded-md border border-border bg-muted/20 p-4 md:grid-cols-3">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Invoice type</p>
+                    <p className="mt-1 text-sm">{inv.invoice_type ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Transaction</p>
+                    <p className="mt-1 text-sm">{inv.transaction_type ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Supply date</p>
+                    <p className="mt-1 text-sm">{inv.supply_date ? formatDate(inv.supply_date) : "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Payment terms</p>
+                    <p className="mt-1 text-sm">{inv.payment_terms ?? "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-muted-foreground">Payment means</p>
+                    <p className="mt-1 text-sm">{inv.payment_means_code ?? "—"}</p>
+                  </div>
+                  {inv.exchange_rate != null && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-muted-foreground">Exchange rate</p>
+                      <p className="mt-1 text-sm tabular-nums">{inv.exchange_rate}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
             <div className="mt-6 overflow-hidden rounded-md border border-border">
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 text-xs uppercase tracking-wide text-muted-foreground">
