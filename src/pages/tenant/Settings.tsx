@@ -8,17 +8,35 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCurrentCompany, useUpdateCompany } from "@/hooks/useCompanyData";
+import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
 export default function Settings() {
   const { data: company, isLoading } = useCurrentCompany();
   const update = useUpdateCompany();
+  const { roles, companyId } = useAuth();
+  const isCompanyAdmin = roles.includes("company_admin") || roles.includes("super_admin");
   const [form, setForm] = useState({
     name: "", tin: "", industry: "",
     legal_name: "", rc_number: "", vat_number: "", email: "", phone: "",
     address_line1: "", address_line2: "", city: "", state: "", lga: "",
     postcode: "", country_code: "NG", industry_code: "",
+  });
+
+  // NRS Integration: NON-SECRET fields only.
+  // SECRETS (client secret, certificate password, private key, API keys) MUST NOT be
+  // stored here or in any client-readable column. They will be stored server-side as
+  // Supabase Edge Function secrets (e.g. NRS_CLIENT_SECRET, NRS_CERT_PASSWORD,
+  // NRS_PRIVATE_KEY) and accessed only from edge functions when calling the NRS API.
+  const [nrs, setNrs] = useState({
+    nrs_business_id: "",
+    nrs_service_id: "",
+    nrs_environment: "sandbox",
+    nrs_sandbox_base_url: "",
+    nrs_production_base_url: "",
+    nrs_certificate_id: "",
   });
 
   useEffect(() => {
@@ -42,6 +60,14 @@ export default function Settings() {
         country_code: c.country_code ?? "NG",
         industry_code: c.industry_code ?? "",
       });
+      setNrs({
+        nrs_business_id: c.nrs_business_id ?? "",
+        nrs_service_id: c.nrs_service_id ?? "",
+        nrs_environment: c.nrs_environment ?? "sandbox",
+        nrs_sandbox_base_url: c.nrs_sandbox_base_url ?? "",
+        nrs_production_base_url: c.nrs_production_base_url ?? "",
+        nrs_certificate_id: c.nrs_certificate_id ?? "",
+      });
     }
   }, [company]);
 
@@ -56,6 +82,21 @@ export default function Settings() {
   };
 
   const set = (k: keyof typeof form) => (v: string) => setForm({ ...form, [k]: v });
+  const setN = (k: keyof typeof nrs) => (v: string) => setNrs({ ...nrs, [k]: v });
+
+  const handleSaveNrs = async () => {
+    if (!company) return;
+    if (!isCompanyAdmin) {
+      toast.error("Only Company Admins can update NRS integration settings");
+      return;
+    }
+    try {
+      await update.mutateAsync({ id: company.id, ...(nrs as any) });
+      toast.success("NRS integration settings updated");
+    } catch (e: any) {
+      toast.error("Failed to save", { description: e.message });
+    }
+  };
 
   return (
     <div>
@@ -69,6 +110,7 @@ export default function Settings() {
             <TabsTrigger value="numbering">Invoice numbering</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
             <TabsTrigger value="integrations">Integrations</TabsTrigger>
+            <TabsTrigger value="nrs">NRS Integration</TabsTrigger>
           </TabsList>
 
           <TabsContent value="company">
@@ -184,6 +226,127 @@ export default function Settings() {
               </Card>
             </TabsContent>
           ))}
+
+          <TabsContent value="nrs">
+            <Card className="p-6 shadow-elegant-sm">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <h3 className="text-base font-semibold">NRS Integration</h3>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Non-secret connection settings for the Nigerian Revenue Service e-invoicing API.
+                  </p>
+                </div>
+                {!isCompanyAdmin && (
+                  <span className="rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
+                    Read-only — Company Admin required
+                  </span>
+                )}
+              </div>
+
+              {isLoading ? (
+                <div className="flex items-center justify-center py-12 text-muted-foreground">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
+                </div>
+              ) : (
+                <>
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <Field label="NRS Business ID">
+                      <Input
+                        value={nrs.nrs_business_id}
+                        onChange={(e) => setN("nrs_business_id")(e.target.value)}
+                        placeholder="Issued by NRS"
+                        className="font-mono"
+                        disabled={!isCompanyAdmin}
+                      />
+                    </Field>
+                    <Field label="NRS Service ID">
+                      <Input
+                        value={nrs.nrs_service_id}
+                        onChange={(e) => setN("nrs_service_id")(e.target.value)}
+                        placeholder="Issued by NRS"
+                        className="font-mono"
+                        disabled={!isCompanyAdmin}
+                      />
+                    </Field>
+                    <Field label="Environment">
+                      <Select
+                        value={nrs.nrs_environment}
+                        onValueChange={(v) => setN("nrs_environment")(v)}
+                        disabled={!isCompanyAdmin}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="sandbox">Sandbox</SelectItem>
+                          <SelectItem value="production">Production</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                    <Field label="Certificate ID">
+                      <Input
+                        value={nrs.nrs_certificate_id}
+                        onChange={(e) => setN("nrs_certificate_id")(e.target.value)}
+                        placeholder="Public certificate identifier"
+                        className="font-mono"
+                        disabled={!isCompanyAdmin}
+                      />
+                    </Field>
+                    <Field label="Sandbox base URL">
+                      <Input
+                        value={nrs.nrs_sandbox_base_url}
+                        onChange={(e) => setN("nrs_sandbox_base_url")(e.target.value)}
+                        placeholder="https://einvoice-sandbox.nrs.gov.ng"
+                        disabled={!isCompanyAdmin}
+                      />
+                    </Field>
+                    <Field label="Production base URL">
+                      <Input
+                        value={nrs.nrs_production_base_url}
+                        onChange={(e) => setN("nrs_production_base_url")(e.target.value)}
+                        placeholder="https://einvoice.nrs.gov.ng"
+                        disabled={!isCompanyAdmin}
+                      />
+                    </Field>
+                  </div>
+
+                  <div className="mt-4 rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+                    <strong className="font-medium text-foreground">Secrets are not stored here.</strong>{" "}
+                    API client secrets, certificate passwords, and private keys must be added later as
+                    server-side Edge Function secrets (e.g. <code className="font-mono">NRS_CLIENT_SECRET</code>,
+                    {" "}<code className="font-mono">NRS_CERT_PASSWORD</code>,
+                    {" "}<code className="font-mono">NRS_PRIVATE_KEY</code>) and accessed only from edge functions.
+                  </div>
+
+                  {isCompanyAdmin && (
+                    <div className="mt-6 flex justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        onClick={() => {
+                          if (!company) return;
+                          const c = company as any;
+                          setNrs({
+                            nrs_business_id: c.nrs_business_id ?? "",
+                            nrs_service_id: c.nrs_service_id ?? "",
+                            nrs_environment: c.nrs_environment ?? "sandbox",
+                            nrs_sandbox_base_url: c.nrs_sandbox_base_url ?? "",
+                            nrs_production_base_url: c.nrs_production_base_url ?? "",
+                            nrs_certificate_id: c.nrs_certificate_id ?? "",
+                          });
+                        }}
+                      >
+                        Reset
+                      </Button>
+                      <Button onClick={handleSaveNrs} disabled={update.isPending}>
+                        {update.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                        Save NRS settings
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </Card>
+          </TabsContent>
         </Tabs>
       </div>
     </div>
