@@ -308,12 +308,13 @@ export function useCreateInvoice() {
             tax_rate: l.tax_rate,
             line_total: net + lineTax,
             position: i,
-            ...(l.unit_code ? { unit_code: l.unit_code } : {}),
-            ...(l.tax_category ? { tax_category: l.tax_category } : {}),
-            ...(discount ? { discount_amount: discount } : {}),
-            ...(l.item_classification_code
-              ? { item_classification_code: l.item_classification_code }
-              : {}),
+            net_amount: net,
+            tax_amount: lineTax,
+            discount_amount: discount,
+            unit_code: (l.unit_code ?? "EA").toUpperCase(),
+            tax_category: cat,
+            tax_scheme: "VAT",
+            item_classification_code: l.item_classification_code ?? null,
           };
         }) as any,
       );
