@@ -27,6 +27,7 @@ import { formatNGN, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { NrsPayloadPreviewDialog } from "@/components/nrs/NrsPayloadPreviewDialog";
+import { supabase } from "@/integrations/supabase/client";
 
 const NEXT_STATUS: Partial<Record<DBInvoiceStatus, DBInvoiceStatus>> = {
   Draft: "In Review",
@@ -55,6 +56,7 @@ export default function InvoiceDetails() {
   const { data: company } = useCurrentCompany();
   const updateStatus = useUpdateInvoiceStatus();
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   if (isLoading) {
     return (
@@ -86,6 +88,26 @@ export default function InvoiceDetails() {
 
   const advance = async () => {
     if (!nextStatus) return;
+    // When advancing from Ready, route through the NRS submit edge function (mock for now).
+    if (invoice.status === "Ready") {
+      try {
+        setSubmitting(true);
+        const { data, error } = await supabase.functions.invoke("nrs-submit", {
+          body: { invoice_id: invoice.id },
+        });
+        if (error) throw error;
+        if (data?.ok === false) {
+          toast.error(data?.response?.message ?? "NRS submission rejected");
+        } else {
+          toast.success(`Submitted to NRS (mock). IRN: ${data?.irn ?? "—"}`);
+        }
+      } catch (e: any) {
+        toast.error(e.message ?? "NRS submission failed");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     try {
       await updateStatus.mutateAsync({ id: invoice.id, status: nextStatus });
       toast.success(`Invoice marked as ${nextStatus}`);
@@ -137,7 +159,7 @@ export default function InvoiceDetails() {
               Preview NRS Payload
             </Button>
             {invoice.status !== "Confirmed" && invoice.status !== "Rejected" && nextStatus && (
-              <Button size="sm" onClick={advance} disabled={updateStatus.isPending} className="gap-1.5">
+              <Button size="sm" onClick={advance} disabled={updateStatus.isPending || submitting} className="gap-1.5">
                 <Send className="h-4 w-4" />
                 {nextLabel}
               </Button>
