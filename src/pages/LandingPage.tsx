@@ -75,6 +75,28 @@ export default function LandingPage() {
             </span>
           </div>
 
+          <div className="mt-6 flex flex-wrap items-center gap-4">
+          <div className="rounded-xl border border-white/10 bg-white px-4 py-3 shadow-sm">
+           <img
+            src="/nrs_logo.png"
+            alt="NRS"
+            className="h-8 w-auto object-contain"
+           />
+         </div>
+
+          <div className="rounded-xl border border-white/10 bg-white px-4 py-3 shadow-sm">
+            <img
+            src="/firs_logo.png"
+            alt="FIRS"
+            className="h-8 w-auto object-contain"
+            />
+          </div>
+
+          <p className="text-sm text-slate-400">
+           Designed for Nigerian e-invoicing and compliance workflows.
+          </p>
+          </div>
+
           <div className="mt-8 flex flex-wrap gap-4">
             <Link
               to="/auth/signup"
