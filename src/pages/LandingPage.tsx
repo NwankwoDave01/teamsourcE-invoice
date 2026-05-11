@@ -22,7 +22,7 @@ export default function LandingPage() {
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-slate-950/80 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
           <div>
-            <p className="text-2xl font-bold tracking-tight">Nova</p>
+            <p className="text-2xl font-bold tracking-tight">Flow</p>
             <p className="text-xs uppercase tracking-widest text-cyan-300">by TeamSource</p>
           </div>
 
@@ -59,7 +59,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="mt-6 max-w-xl text-lg leading-8 text-slate-300">
-            Nova helps Nigerian businesses create invoices, manage customers and products,
+            Flow helps Nigerian businesses create invoices, manage customers and products,
             validate compliance data, and prepare for NRS/FIRS e-invoicing submission.
           </p>
 
@@ -202,7 +202,7 @@ export default function LandingPage() {
             </p>
             <h2 className="mt-3 text-3xl font-bold">Connect your systems through secure APIs.</h2>
             <p className="mt-4 text-slate-300">
-              Nova is designed to support future API access for invoice creation,
+              Flow is designed to support future API access for invoice creation,
               validation, submission workflows, and integration with ERPs or accounting tools.
             </p>
             <div className="mt-6 flex gap-4">
@@ -248,7 +248,7 @@ export default function LandingPage() {
       <footer id="resources" className="border-t border-white/10 px-6 py-10">
         <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-4">
           <div>
-            <h3 className="text-2xl font-bold">Nova</h3>
+            <h3 className="text-2xl font-bold">Flow</h3>
             <p className="mt-3 text-sm text-slate-400">
               Financial compliance and e-invoicing platform by TeamSource.
             </p>
