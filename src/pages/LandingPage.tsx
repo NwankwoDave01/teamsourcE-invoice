@@ -228,10 +228,10 @@ export default function LandingPage() {
               validation, submission workflows, and integration with ERPs or accounting tools.
             </p>
             <div className="mt-6 flex gap-4">
-              <a href="#resources" className="rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-slate-950">
+              <a href="/api-docs" className="rounded-xl bg-cyan-400 px-5 py-3 font-semibold text-slate-950">
                 API Documentation
               </a>
-              <a href="#resources" className="rounded-xl border border-white/20 px-5 py-3 font-semibold">
+              <a href="/sla" className="rounded-xl border border-white/20 px-5 py-3 font-semibold">
                 View SLA
               </a>
             </div>

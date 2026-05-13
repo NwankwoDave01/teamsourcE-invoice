@@ -7,6 +7,8 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import NotFound from "./pages/NotFound";
 import LandingPage from "./pages/LandingPage";
+import ApiDocs from "./pages/ApiDocs";
+import SLA from "./pages/SLA";
 
 import TenantLayout from "./layouts/TenantLayout";
 import AdminLayout from "./layouts/AdminLayout";
@@ -52,6 +54,8 @@ const App = () => (
 
             <Route path="/auth/login" element={<Login />} />
             <Route path="/auth/signup" element={<Signup />} />
+            <Route path="/api-docs" element={<ApiDocs />} />
+            <Route path="/sla" element={<SLA />} />
 
             <Route element={<ProtectedRoute />}>
               <Route path="/app" element={<TenantLayout />}>
