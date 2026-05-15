@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, Users, Package, FileText, FilePlus2,
-  BarChart3, UserCog, Settings, ScrollText, ShieldCheck, ChevronsLeft,
+  BarChart3, UserCog, Settings, ScrollText, ChevronsLeft,
   ChevronDown, List, UserPlus, PackagePlus,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
@@ -13,6 +13,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { BrandMark } from "@/components/shared/BrandMark";
 
 const main = [
   { title: "Dashboard", url: "/app/dashboard", icon: LayoutDashboard },
@@ -131,16 +132,8 @@ export function TenantSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border bg-sidebar px-4 py-4">
-        <Link to="/app/dashboard" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-gradient-primary shadow-elegant-md">
-            <ShieldCheck className="h-4.5 w-4.5 text-primary-foreground" />
-          </div>
-          {!collapsed && (
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold text-sidebar-primary-foreground">Vexa</span>
-              <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/60">E-Invoicing Suite</span>
-            </div>
-          )}
+        <Link to="/app/dashboard" className="flex items-center">
+          <BrandMark variant="tenant" size="sm" showText={!collapsed} />
         </Link>
       </SidebarHeader>
 
