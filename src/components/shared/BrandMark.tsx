@@ -42,11 +42,19 @@ export function BrandMark({
       </div>
       {showText && (
         <div className="flex flex-col leading-tight">
-          <span className={`font-semibold ${s.title} text-sidebar-primary-foreground`}>
+          <span
+            className={`font-semibold ${s.title} ${
+              variant === "auth" ? "text-foreground" : "text-sidebar-primary-foreground"
+            }`}
+          >
             {label}
           </span>
           {sub && (
-            <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/60">
+            <span
+              className={`text-[10px] uppercase tracking-wider ${
+                variant === "auth" ? "text-muted-foreground" : "text-sidebar-foreground/60"
+              }`}
+            >
               {sub}
             </span>
           )}
