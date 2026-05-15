@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Building2, Users, Activity, Plug, Terminal, Settings, ChevronsLeft, Shield,
+  LayoutDashboard, Building2, Users, Activity, Plug, Terminal, Settings, ChevronsLeft,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import { Link, useLocation } from "react-router-dom";
@@ -8,6 +8,7 @@ import {
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { BrandMark } from "@/components/shared/BrandMark";
 
 const items = [
   { title: "Overview", url: "/admin/overview", icon: LayoutDashboard },
@@ -27,16 +28,8 @@ export function AdminSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
       <SidebarHeader className="border-b border-sidebar-border bg-sidebar px-4 py-4">
-        <Link to="/admin/overview" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-success shadow-elegant-md">
-            <Shield className="h-4.5 w-4.5 text-success-foreground" />
-          </div>
-          {!collapsed && (
-            <div className="flex flex-col">
-              <span className="text-sm font-semibold text-sidebar-primary-foreground">Vexa Admin</span>
-              <span className="text-[10px] uppercase tracking-wider text-sidebar-foreground/60">Platform Console</span>
-            </div>
-          )}
+        <Link to="/admin/overview" className="flex items-center">
+          <BrandMark variant="admin" size="sm" showText={!collapsed} />
         </Link>
       </SidebarHeader>
 
