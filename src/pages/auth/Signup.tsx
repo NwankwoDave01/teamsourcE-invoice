@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
+import { BrandMark } from "@/components/shared/BrandMark";
+import { BRAND } from "@/lib/brand";
 
 export default function Signup() {
   const navigate = useNavigate();
@@ -47,18 +49,15 @@ export default function Signup() {
       toast({ title: "Sign-up failed", description: error.message, variant: "destructive" });
       return;
     }
-    toast({ title: "Workspace created", description: "Welcome to Vexa." });
+    toast({ title: "Workspace created", description: `Welcome to ${BRAND.name}.` });
     navigate("/app/dashboard", { replace: true });
   };
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-muted/40 via-background to-muted/30 px-4 py-8">
       <div className="w-full max-w-md">
-        <Link to="/" className="mb-6 flex items-center justify-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-primary shadow-elegant-md">
-            <ShieldCheck className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-lg font-semibold">Vexa</span>
+        <Link to="/" className="mb-6 flex items-center justify-center">
+          <BrandMark variant="auth" size="md" subtitle="" />
         </Link>
 
         <Card className="p-8 shadow-elegant">

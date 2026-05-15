@@ -5,11 +5,12 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { BRAND } from "@/lib/brand";
 
 export default function AdminSettings() {
   return (
     <div>
-      <PageHeader title="Platform Settings" description="Configure global behavior of the Vexa platform." />
+      <PageHeader title="Platform Settings" description={`Configure global behavior of the ${BRAND.name} platform.`} />
       <div className="p-6">
         <Tabs defaultValue="general" className="space-y-4">
           <TabsList>
@@ -23,8 +24,8 @@ export default function AdminSettings() {
           <TabsContent value="general">
             <Card className="p-6 shadow-elegant-sm space-y-4">
               <div className="grid gap-4 md:grid-cols-2">
-                <Field label="Platform name"><Input defaultValue="Vexa" /></Field>
-                <Field label="Support email"><Input defaultValue="support@vexa.ng" /></Field>
+                <Field label="Platform name"><Input defaultValue={BRAND.name} /></Field>
+                <Field label="Support email"><Input defaultValue={BRAND.supportEmail} /></Field>
                 <Field label="Default region"><Input defaultValue="Nigeria — Lagos (af-west)" /></Field>
                 <Field label="Timezone"><Input defaultValue="Africa/Lagos (UTC+1)" /></Field>
               </div>
