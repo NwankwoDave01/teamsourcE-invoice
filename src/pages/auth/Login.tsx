@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Loader2, ShieldCheck } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "@/hooks/use-toast";
+import { BrandMark } from "@/components/shared/BrandMark";
+import { BRAND } from "@/lib/brand";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -32,11 +34,8 @@ export default function Login() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-muted/40 via-background to-muted/30 px-4">
       <div className="w-full max-w-md">
-        <Link to="/" className="mb-6 flex items-center justify-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-md bg-gradient-primary shadow-elegant-md">
-            <ShieldCheck className="h-5 w-5 text-primary-foreground" />
-          </div>
-          <span className="text-lg font-semibold">Vexa</span>
+        <Link to="/" className="mb-6 flex items-center justify-center">
+          <BrandMark variant="auth" size="md" subtitle="" />
         </Link>
 
         <Card className="p-8 shadow-elegant">
@@ -64,7 +63,7 @@ export default function Login() {
           </form>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            New to Vexa?{" "}
+            New to {BRAND.name}?{" "}
             <Link to="/auth/signup" className="font-medium text-primary hover:underline">
               Create a workspace
             </Link>
