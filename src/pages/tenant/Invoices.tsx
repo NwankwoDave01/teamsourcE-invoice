@@ -293,7 +293,13 @@ export default function Invoices() {
                 </button>
               </div>
               <div className="flex items-center gap-1.5">
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={bulkSubmit}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={bulkSubmit}
+                  disabled={submittingNrs}
+                >
                   <Send className="h-3.5 w-3.5" />
                   Submit to NRS
                 </Button>
@@ -322,7 +328,10 @@ export default function Invoices() {
                       Mark as Draft
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={bulkDelete} className="text-destructive focus:text-destructive">
+                    <DropdownMenuItem
+                      onClick={() => setConfirmDelete(true)}
+                      className="text-destructive focus:text-destructive"
+                    >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
                     </DropdownMenuItem>
