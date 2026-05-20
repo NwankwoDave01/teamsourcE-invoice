@@ -206,22 +206,27 @@ Deno.serve(async (req: Request) => {
       return json({ error: `Environment '${environment}' not yet implemented` }, 501);
     }
 
-    // Log submission
+    // Log submission against actual nrs_submissions schema
+    // Columns: payload (jsonb), validation_errors (jsonb), result (enum), scenario (text),
+    //          mock (bool), created_by (uuid), company_id, invoice_id
+    const isMock = environment === "mock";
+    const result = response.status === false ? "rejected" : "validated";
+    const scenario = isMock
+      ? response.status === false ? "mock_failure" : "mock_success"
+      : environment;
+    const validationErrors = response.status === false
+      ? response.errors ?? [{ message: response.message }]
+      : null;
+
     const { error: logErr } = await supabase.from("nrs_submissions").insert({
       company_id: invoice.company_id,
       invoice_id: invoiceId,
-      environment,
-      endpoint: "/mock/invoice/submit",
-      irn,
-      request_payload: payload,
-      response_payload: response,
-      http_status: httpStatus,
-      status: submissionStatus,
-      error_code: response.status === false ? response.errors?.[0]?.code ?? null : null,
-      error_message: response.status === false ? response.message ?? null : null,
+      payload,
+      validation_errors: validationErrors,
+      result,
+      scenario,
+      mock: isMock,
       created_by: userData.user.id,
-      submitted_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
     });
     if (logErr) {
       console.error("nrs_submissions insert failed", logErr.message);

@@ -36,6 +36,16 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   useInvoices,
@@ -47,6 +57,8 @@ import {
 import { toast } from "sonner";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useQueryClient } from "@tanstack/react-query";
 
 const statusDot: Record<DBInvoiceStatus, string> = {
   Draft: "bg-muted-foreground/60",
@@ -64,9 +76,12 @@ export default function Invoices() {
   const { data: invoices = [], isLoading } = useInvoices();
   const updateStatus = useUpdateInvoiceStatus();
   const deleteMut = useDeleteInvoice();
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<"All" | DBInvoiceStatus>("All");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [submittingNrs, setSubmittingNrs] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const counts = useMemo(
     () => INVOICE_STATUSES.map((s) => ({ s, n: invoices.filter((i) => i.status === s).length })),
@@ -110,18 +125,59 @@ export default function Invoices() {
   };
   const hasActiveFilters = filter !== "All" || search.trim().length > 0;
 
-  const bulkSubmit = async () => {
-    const ids = Array.from(selected);
+  const submitInvoiceToNrs = async (id: string): Promise<{ ok: boolean; message?: string }> => {
+    const { data, error } = await supabase.functions.invoke("nrs-submit", {
+      body: { invoice_id: id },
+    });
+    if (error) return { ok: false, message: error.message };
+    if (data?.ok === false) {
+      return { ok: false, message: data?.response?.message ?? "NRS rejected" };
+    }
+    return { ok: true };
+  };
+
+  const submitRowToNrs = async (id: string) => {
+    const inv = invoices.find((i) => i.id === id);
+    if (!inv) return;
+    if (inv.status !== "Ready") {
+      toast.error(`Only invoices at "Ready" can be submitted (current: ${inv.status})`);
+      return;
+    }
+    setSubmittingNrs(true);
     try {
-      await Promise.all(ids.map((id) => updateStatus.mutateAsync({ id, status: "Submitted" })));
-      toast.success(`Submitted ${ids.length} invoice${ids.length === 1 ? "" : "s"} to NRS`);
-      setSelected(new Set());
-    } catch (e: any) {
-      toast.error(e.message ?? "Failed to submit invoices");
+      const res = await submitInvoiceToNrs(id);
+      if (res.ok) toast.success(`Submitted ${inv.number} to NRS (mock)`);
+      else toast.error(res.message ?? "NRS submission failed");
+      await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    } finally {
+      setSubmittingNrs(false);
     }
   };
 
-  const bulkDelete = async () => {
+  const bulkSubmit = async () => {
+    const ids = Array.from(selected);
+    const eligible = ids.filter((id) => invoices.find((i) => i.id === id)?.status === "Ready");
+    const skipped = ids.length - eligible.length;
+    if (eligible.length === 0) {
+      toast.error('No selected invoices are at "Ready" status');
+      return;
+    }
+    setSubmittingNrs(true);
+    try {
+      const results = await Promise.all(eligible.map((id) => submitInvoiceToNrs(id)));
+      const success = results.filter((r) => r.ok).length;
+      const failed = results.length - success;
+      if (success > 0) toast.success(`Submitted ${success} invoice${success === 1 ? "" : "s"} to NRS`);
+      if (failed > 0) toast.error(`${failed} submission${failed === 1 ? "" : "s"} failed`);
+      if (skipped > 0) toast.message(`Skipped ${skipped} not at "Ready"`);
+      setSelected(new Set());
+      await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+    } finally {
+      setSubmittingNrs(false);
+    }
+  };
+
+  const performBulkDelete = async () => {
     const ids = Array.from(selected);
     try {
       await Promise.all(ids.map((id) => deleteMut.mutateAsync(id)));
@@ -129,6 +185,8 @@ export default function Invoices() {
       setSelected(new Set());
     } catch (e: any) {
       toast.error(e.message ?? "Failed to delete invoices");
+    } finally {
+      setConfirmDelete(false);
     }
   };
 
@@ -235,7 +293,13 @@ export default function Invoices() {
                 </button>
               </div>
               <div className="flex items-center gap-1.5">
-                <Button variant="outline" size="sm" className="gap-1.5" onClick={bulkSubmit}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={bulkSubmit}
+                  disabled={submittingNrs}
+                >
                   <Send className="h-3.5 w-3.5" />
                   Submit to NRS
                 </Button>
@@ -264,7 +328,10 @@ export default function Invoices() {
                       Mark as Draft
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={bulkDelete} className="text-destructive focus:text-destructive">
+                    <DropdownMenuItem
+                      onClick={() => setConfirmDelete(true)}
+                      className="text-destructive focus:text-destructive"
+                    >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
                     </DropdownMenuItem>
@@ -340,7 +407,12 @@ export default function Invoices() {
                           <StatusBadge status={inv.status} />
                         </td>
                         <td className="px-5 py-4 text-right">
-                          <RowActions invoiceId={inv.id} />
+                          <RowActions
+                            invoiceId={inv.id}
+                            canSubmit={inv.status === "Ready"}
+                            submitting={submittingNrs}
+                            onSubmitNrs={() => submitRowToNrs(inv.id)}
+                          />
                         </td>
                       </tr>
                     );
@@ -368,6 +440,26 @@ export default function Invoices() {
           )}
         </Card>
       </div>
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selected.size} invoice{selected.size === 1 ? "" : "s"}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes the selected invoice{selected.size === 1 ? "" : "s"} and {selected.size === 1 ? "its" : "their"} line items. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={performBulkDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
@@ -421,7 +513,17 @@ function FilterButton({ icon: Icon, label }: { icon: typeof Filter; label: strin
   );
 }
 
-function RowActions({ invoiceId }: { invoiceId: string }) {
+function RowActions({
+  invoiceId,
+  canSubmit,
+  submitting,
+  onSubmitNrs,
+}: {
+  invoiceId: string;
+  canSubmit: boolean;
+  submitting: boolean;
+  onSubmitNrs: () => void;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -452,7 +554,13 @@ function RowActions({ invoiceId }: { invoiceId: string }) {
           Duplicate
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!canSubmit || submitting}
+          onSelect={(e) => {
+            e.preventDefault();
+            onSubmitNrs();
+          }}
+        >
           <Send className="mr-2 h-4 w-4" />
           Submit to NRS
         </DropdownMenuItem>
