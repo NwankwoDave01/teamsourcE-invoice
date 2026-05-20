@@ -28,6 +28,16 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { NrsPayloadPreviewDialog } from "@/components/nrs/NrsPayloadPreviewDialog";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const NEXT_STATUS: Partial<Record<DBInvoiceStatus, DBInvoiceStatus>> = {
   Draft: "In Review",
@@ -57,6 +67,7 @@ export default function InvoiceDetails() {
   const updateStatus = useUpdateInvoiceStatus();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [confirmReject, setConfirmReject] = useState(false);
 
   if (isLoading) {
     return (
@@ -116,12 +127,14 @@ export default function InvoiceDetails() {
     }
   };
 
-  const reject = async () => {
+  const performReject = async () => {
     try {
       await updateStatus.mutateAsync({ id: invoice.id, status: "Rejected" });
       toast.success("Invoice rejected");
     } catch (e: any) {
       toast.error(e.message ?? "Failed to update status");
+    } finally {
+      setConfirmReject(false);
     }
   };
 
@@ -314,7 +327,7 @@ export default function InvoiceDetails() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={reject}
+                onClick={() => setConfirmReject(true)}
                 disabled={updateStatus.isPending}
                 className="mt-5 w-full gap-1.5 text-destructive hover:bg-destructive/10 hover:text-destructive"
               >
@@ -338,6 +351,26 @@ export default function InvoiceDetails() {
         open={previewOpen}
         onOpenChange={setPreviewOpen}
       />
+
+      <AlertDialog open={confirmReject} onOpenChange={setConfirmReject}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reject invoice {invoice.number}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This marks the invoice as Rejected and removes it from the active compliance workflow. You will need to create a new invoice to resubmit.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={performReject}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Reject invoice
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
