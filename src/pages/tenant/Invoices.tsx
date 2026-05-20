@@ -407,7 +407,12 @@ export default function Invoices() {
                           <StatusBadge status={inv.status} />
                         </td>
                         <td className="px-5 py-4 text-right">
-                          <RowActions invoiceId={inv.id} />
+                          <RowActions
+                            invoiceId={inv.id}
+                            canSubmit={inv.status === "Ready"}
+                            submitting={submittingNrs}
+                            onSubmitNrs={() => submitRowToNrs(inv.id)}
+                          />
                         </td>
                       </tr>
                     );
