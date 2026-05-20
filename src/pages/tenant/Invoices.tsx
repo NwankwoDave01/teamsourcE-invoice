@@ -493,7 +493,17 @@ function FilterButton({ icon: Icon, label }: { icon: typeof Filter; label: strin
   );
 }
 
-function RowActions({ invoiceId }: { invoiceId: string }) {
+function RowActions({
+  invoiceId,
+  canSubmit,
+  submitting,
+  onSubmitNrs,
+}: {
+  invoiceId: string;
+  canSubmit: boolean;
+  submitting: boolean;
+  onSubmitNrs: () => void;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -524,7 +534,13 @@ function RowActions({ invoiceId }: { invoiceId: string }) {
           Duplicate
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem>
+        <DropdownMenuItem
+          disabled={!canSubmit || submitting}
+          onSelect={(e) => {
+            e.preventDefault();
+            onSubmitNrs();
+          }}
+        >
           <Send className="mr-2 h-4 w-4" />
           Submit to NRS
         </DropdownMenuItem>
