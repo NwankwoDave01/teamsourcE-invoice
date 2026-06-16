@@ -478,12 +478,18 @@ export function useAllInvoices() {
 
 /* ----------------------------- One-time seed for new workspaces ----------------------------- */
 export async function seedDemoData(companyId: string, userId: string) {
-  const { data: existing } = await supabase
+  const { count, error } = await supabase
     .from("customers")
     .select("id", { count: "exact", head: true })
     .eq("company_id", companyId);
+
+  if (error) {
+    console.error("Failed to check existing customers count:", error);
+    return;
+  }
+
   // If any customers exist, skip
-  if ((existing as any)?.length) return;
+  if (count && count > 0) return;
 
   const customers = [
     { name: "Adeola Ventures", email: "billing@adeolaventures.ng", phone: "+234 802 145 9921", tin: "NG-44192011", city: "Lagos" },
