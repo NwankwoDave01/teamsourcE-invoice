@@ -579,3 +579,25 @@ export async function seedDemoData(companyId: string, userId: string) {
     { company_id: companyId, actor_id: userId, action: "imported demo data", target: "—", category: "Settings", ip: "102.89.10.1" },
   ]);
 }
+
+/* ----------------------------- NRS Submission ----------------------------- */
+export function useSubmitToNRS() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (invoiceId: string) => {
+      // This calls the Edge Function we just deployed!
+      const { data, error } = await supabase.functions.invoke('nrs-submit', {
+        body: { invoice_id: invoiceId }
+      });
+      
+      if (error) throw new Error(`Function Error: ${error.message}`);
+      if (data?.error) throw new Error(`NRS Error: ${data.error}`);
+      
+      return data;
+    },
+    onSuccess: () => {
+      // Refresh the UI to show the new "Signed" status and IRN
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+    },
+  });
+}
