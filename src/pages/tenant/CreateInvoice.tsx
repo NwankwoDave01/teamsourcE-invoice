@@ -25,7 +25,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCustomers, useProducts, useInvoices, useCreateInvoice } from "@/hooks/useCompanyData";
-import { INVOICE_TYPE_OPTIONS, TRANSACTION_TYPE_OPTIONS } from "@/lib/nrs/codes";
+import { TRANSACTION_TYPE_OPTIONS } from "@/lib/nrs/codes";
 import { useNrsMasterData } from "@/hooks/useNrsMasterData";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -82,7 +82,7 @@ export default function CreateInvoice() {
   const [poRef, setPoRef] = useState("");
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([newLine()]);
-  const [invoiceType, setInvoiceType] = useState<string>("commercial");
+  const [invoiceType, setInvoiceType] = useState<string>("380");
   const [transactionType, setTransactionType] = useState<string>("B2B");
   const [supplyDate, setSupplyDate] = useState<string>("");
   const [paymentTerms, setPaymentTerms] = useState<string>("");
@@ -90,24 +90,9 @@ export default function CreateInvoice() {
   const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [currency, setCurrency] = useState<string>("NGN");
 
-  const { data: currenciesRaw } = useNrsMasterData("currencies");
-  const { data: paymentMeansRaw } = useNrsMasterData("payment-means");
-
-  const DEFAULT_CURRENCIES = [
-    { code: "NGN", label: "NGN — Nigerian Naira" },
-    { code: "USD", label: "USD — US Dollar" },
-    { code: "GBP", label: "GBP — British Pound" },
-    { code: "EUR", label: "EUR — Euro" },
-  ];
-
-  const DEFAULT_PAYMENT_MEANS = [
-    { code: "30", label: "Government / Bank Transfer" },
-    { code: "10", label: "Cash" },
-    { code: "48", label: "Credit Card" },
-  ];
-
-  const currencies = currenciesRaw && currenciesRaw.length > 0 ? currenciesRaw : DEFAULT_CURRENCIES;
-  const paymentMeans = paymentMeansRaw && paymentMeansRaw.length > 0 ? paymentMeansRaw : DEFAULT_PAYMENT_MEANS;
+  const { data: currencies = [] } = useNrsMasterData("currencies");
+  const { data: paymentMeans = [] } = useNrsMasterData("payment-means");
+  const { data: invoiceTypes = [] } = useNrsMasterData("invoice-types");
 
   // Auto-generate next invoice number
   useEffect(() => {
@@ -297,8 +282,8 @@ export default function CreateInvoice() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {INVOICE_TYPE_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    {invoiceTypes.map((o) => (
+                      <SelectItem key={o.code} value={o.code}>{o.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

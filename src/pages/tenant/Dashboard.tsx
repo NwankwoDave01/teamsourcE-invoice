@@ -249,11 +249,11 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-2">
-              <ComplianceRow icon={Send}        tone="info"        label="Submitted to NRS"       value="312" />
-              <ComplianceRow icon={CheckCircle2} tone="success"     label="Successfully validated" value="301" />
-              <ComplianceRow icon={ShieldX}     tone="destructive" label="Rejected by NRS"        value="4" badge="Action needed" />
-              <ComplianceRow icon={Clock}       tone="muted"       label="Avg. signing time"      value="2m 14s" />
-              <ComplianceRow icon={ShieldCheck} tone="success"     label="TIN verifications"      value="278" />
+              <ComplianceRow icon={Send}        tone="info"        label="Submitted to NRS"       value={String(submittedTotal)} />
+              <ComplianceRow icon={CheckCircle2} tone="success"     label="Successfully validated" value={String(validatedOk)} />
+              <ComplianceRow icon={ShieldX}     tone="destructive" label="Rejected by NRS"        value={String(rejectedNrs)} badge={rejectedNrs > 0 ? "Action needed" : undefined} />
+              <ComplianceRow icon={Clock}       tone="muted"       label="Avg. signing time"      value="—" />
+              <ComplianceRow icon={ShieldCheck} tone="success"     label="TIN verifications"      value={String(tinVerified)} />
             </div>
           </Card>
 
@@ -339,8 +339,8 @@ export default function Dashboard() {
             {recent.length === 0 ? (
               <EmptyState
                 icon={Receipt}
-                title="No invoices yet"
-                description="Create your first invoice to start tracking activity."
+                title="No invoices created yet"
+                description="Click 'New Invoice' to get started."
                 action={
                   <Button asChild size="sm" className="gap-1.5">
                     <Link to="/app/invoices/new"><Plus className="h-4 w-4" />New invoice</Link>

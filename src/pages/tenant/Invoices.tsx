@@ -114,7 +114,11 @@ export default function Invoices() {
   const toggleOne = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
       return next;
     });
   };
@@ -183,8 +187,9 @@ export default function Invoices() {
       await Promise.all(ids.map((id) => deleteMut.mutateAsync(id)));
       toast.success(`Deleted ${ids.length} invoice${ids.length === 1 ? "" : "s"}`);
       setSelected(new Set());
-    } catch (e: any) {
-      toast.error(e.message ?? "Failed to delete invoices");
+    } catch (e: unknown) {
+      const err = e as Error;
+      toast.error(err.message ?? "Failed to delete invoices");
     } finally {
       setConfirmDelete(false);
     }
@@ -593,12 +598,12 @@ function EmptyState({ hasFilters, onClear }: { hasFilters: boolean; onClear: () 
       </div>
       <div className="max-w-sm space-y-1.5">
         <h3 className="text-base font-semibold text-foreground">
-          {hasFilters ? "No invoices match your filters" : "No invoices yet"}
+          {hasFilters ? "No invoices match your filters" : "No invoices created yet"}
         </h3>
         <p className="text-sm text-muted-foreground">
           {hasFilters
             ? "Try adjusting your filters or search terms to find what you're looking for."
-            : "Create your first invoice to start tracking activity through the compliance pipeline."}
+            : "Click 'New Invoice' to get started."}
         </p>
       </div>
       <div className="flex items-center gap-2">
