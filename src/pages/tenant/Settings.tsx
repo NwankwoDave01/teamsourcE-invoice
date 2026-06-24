@@ -42,6 +42,7 @@ export default function Settings() {
   const [showPortalPassword, setShowPortalPassword] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [showApiSecret, setShowApiSecret] = useState(false);
+  const [showCertificateId, setShowCertificateId] = useState(false);
 
   useEffect(() => {
     if (company) {
@@ -105,6 +106,9 @@ export default function Settings() {
       await update.mutateAsync({
         id: company.id,
         ...nrs,
+        tin: form.tin,
+        legal_name: form.legal_name,
+        rc_number: form.rc_number,
         nrs_sandbox_base_url: sandboxUrl,
         nrs_production_base_url: productionUrl,
       });
@@ -332,11 +336,50 @@ export default function Settings() {
                 <div className="space-y-6">
                   <div className="grid gap-6 md:grid-cols-2">
                     
-                    {/* General Settings Card */}
+                    {/* Corporate Tax Identity Card */}
                     <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
                       <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
                         <span className="h-2 w-1 bg-primary rounded-full"></span>
-                        General Settings
+                        Corporate Tax Identity
+                      </h4>
+                      
+                      <div className="space-y-4">
+                        <Field label="Tax Identification Number (TIN)">
+                          <Input
+                            value={form.tin}
+                            onChange={(e) => set("tin")(e.target.value)}
+                            placeholder="NG-XXXXXXXX"
+                            className="font-mono"
+                            disabled={!isCompanyAdmin}
+                          />
+                        </Field>
+
+                        <Field label="Registered Legal Name">
+                          <Input
+                            value={form.legal_name}
+                            onChange={(e) => set("legal_name")(e.target.value)}
+                            placeholder="As registered with FIRS"
+                            disabled={!isCompanyAdmin}
+                          />
+                        </Field>
+
+                        <Field label="RC Number">
+                          <Input
+                            value={form.rc_number}
+                            onChange={(e) => set("rc_number")(e.target.value)}
+                            placeholder="RC-XXXXXXX"
+                            className="font-mono"
+                            disabled={!isCompanyAdmin}
+                          />
+                        </Field>
+                      </div>
+                    </Card>
+
+                    {/* API Gateway Settings Card */}
+                    <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
+                      <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
+                        <span className="h-2 w-1 bg-primary rounded-full"></span>
+                        API Gateway Settings
                       </h4>
                       
                       <div className="space-y-4">
@@ -356,38 +399,75 @@ export default function Settings() {
                           </Select>
                         </Field>
 
-                        <Field label="NRS Business ID">
-                          <Input
-                            value={nrs.nrs_business_id}
-                            onChange={(e) => setN("nrs_business_id")(e.target.value)}
-                            placeholder="Issued by NRS"
-                            className="font-mono"
-                            disabled={!isCompanyAdmin}
-                          />
-                        </Field>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Field label="NRS Business ID">
+                            <Input
+                              value={nrs.nrs_business_id}
+                              onChange={(e) => setN("nrs_business_id")(e.target.value)}
+                              placeholder="Issued by NRS"
+                              className="font-mono"
+                              disabled={!isCompanyAdmin}
+                            />
+                          </Field>
 
-                        <Field label="NRS Service ID">
-                          <Input
-                            value={nrs.nrs_service_id}
-                            onChange={(e) => setN("nrs_service_id")(e.target.value)}
-                            placeholder="Issued by NRS"
-                            className="font-mono"
-                            disabled={!isCompanyAdmin}
-                          />
-                        </Field>
+                          <Field label="NRS Service ID">
+                            <Input
+                              value={nrs.nrs_service_id}
+                              onChange={(e) => setN("nrs_service_id")(e.target.value)}
+                              placeholder="Issued by NRS"
+                              className="font-mono"
+                              disabled={!isCompanyAdmin}
+                            />
+                          </Field>
+                        </div>
 
                         <Field label="Certificate ID">
+                          <div className="relative flex items-center">
+                            <Input
+                              type={showCertificateId ? "text" : "password"}
+                              value={nrs.nrs_certificate_id}
+                              onChange={(e) => setN("nrs_certificate_id")(e.target.value)}
+                              placeholder="Public certificate identifier"
+                              className="pl-9 pr-10 font-mono"
+                              disabled={!isCompanyAdmin}
+                            />
+                            <Lock className="absolute left-3 h-4 w-4 text-muted-foreground" />
+                            <button
+                              type="button"
+                              onClick={() => setShowCertificateId(!showCertificateId)}
+                              className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
+                              disabled={!isCompanyAdmin}
+                            >
+                              {showCertificateId ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </Field>
+
+                        <Field label="Sandbox Base URL">
                           <Input
-                            value={nrs.nrs_certificate_id}
-                            onChange={(e) => setN("nrs_certificate_id")(e.target.value)}
-                            placeholder="Public certificate identifier (optional)"
-                            className="font-mono"
+                            value={nrs.nrs_sandbox_base_url}
+                            onChange={(e) => setN("nrs_sandbox_base_url")(e.target.value)}
+                            placeholder="https://einvoice-sandbox.nrs.gov.ng"
                             disabled={!isCompanyAdmin}
                           />
                         </Field>
+
+                        {nrs.nrs_environment === "production" && (
+                          <Field label="Production Base URL">
+                            <Input
+                              value={nrs.nrs_production_base_url}
+                              onChange={(e) => setN("nrs_production_base_url")(e.target.value)}
+                              placeholder="https://einvoice.nrs.gov.ng"
+                              disabled={!isCompanyAdmin}
+                            />
+                          </Field>
+                        )}
                       </div>
                     </Card>
 
+                  </div>
+
+                  <div className="grid gap-6 md:grid-cols-2">
                     {/* Portal Credentials Card */}
                     <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
                       <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
@@ -434,65 +514,64 @@ export default function Settings() {
                       </div>
                     </Card>
 
+                    {/* API Credentials Card */}
+                    <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
+                      <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
+                        <span className="h-2 w-1 bg-primary rounded-full"></span>
+                        API Access Credentials
+                      </h4>
+                      
+                      <div className="space-y-4">
+                        <Field label="NRS API Key">
+                          <div className="relative flex items-center">
+                            <Input
+                              type={showApiKey ? "text" : "password"}
+                              value={nrs.nrs_api_key}
+                              onChange={(e) => setN("nrs_api_key")(e.target.value)}
+                              placeholder="••••••••••••••••"
+                              className="pl-9 pr-10 font-mono"
+                              disabled={!isCompanyAdmin}
+                            />
+                            <Key className="absolute left-3 h-4 w-4 text-muted-foreground" />
+                            <button
+                              type="button"
+                              onClick={() => setShowApiKey(!showApiKey)}
+                              className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
+                              disabled={!isCompanyAdmin}
+                            >
+                              {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </Field>
+
+                        <Field label="NRS API Secret">
+                          <div className="relative flex items-center">
+                            <Input
+                              type={showApiSecret ? "text" : "password"}
+                              value={nrs.nrs_api_secret}
+                              onChange={(e) => setN("nrs_api_secret")(e.target.value)}
+                              placeholder="••••••••••••••••••••••••"
+                              className="pl-9 pr-10 font-mono"
+                              disabled={!isCompanyAdmin}
+                            />
+                            <Lock className="absolute left-3 h-4 w-4 text-muted-foreground" />
+                            <button
+                              type="button"
+                              onClick={() => setShowApiSecret(!showApiSecret)}
+                              className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
+                              disabled={!isCompanyAdmin}
+                            >
+                              {showApiSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </Field>
+                      </div>
+                    </Card>
                   </div>
 
-                  {/* API Credentials Card */}
-                  <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
-                    <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
-                      <span className="h-2 w-1 bg-primary rounded-full"></span>
-                      API Access Credentials
-                    </h4>
-                    
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <Field label="NRS API Key">
-                        <div className="relative flex items-center">
-                          <Input
-                            type={showApiKey ? "text" : "password"}
-                            value={nrs.nrs_api_key}
-                            onChange={(e) => setN("nrs_api_key")(e.target.value)}
-                            placeholder="••••••••••••••••"
-                            className="pl-9 pr-10 font-mono"
-                            disabled={!isCompanyAdmin}
-                          />
-                          <Key className="absolute left-3 h-4 w-4 text-muted-foreground" />
-                          <button
-                            type="button"
-                            onClick={() => setShowApiKey(!showApiKey)}
-                            className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
-                            disabled={!isCompanyAdmin}
-                          >
-                            {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                        </div>
-                      </Field>
-
-                      <Field label="NRS API Secret">
-                        <div className="relative flex items-center">
-                          <Input
-                            type={showApiSecret ? "text" : "password"}
-                            value={nrs.nrs_api_secret}
-                            onChange={(e) => setN("nrs_api_secret")(e.target.value)}
-                            placeholder="••••••••••••••••••••••••"
-                            className="pl-9 pr-10 font-mono"
-                            disabled={!isCompanyAdmin}
-                          />
-                          <Lock className="absolute left-3 h-4 w-4 text-muted-foreground" />
-                          <button
-                            type="button"
-                            onClick={() => setShowApiSecret(!showApiSecret)}
-                            className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
-                            disabled={!isCompanyAdmin}
-                          >
-                            {showApiSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </button>
-                        </div>
-                      </Field>
-                    </div>
-
-                    <div className="mt-2 text-xs text-muted-foreground flex items-center gap-1.5">
-                      <HelpCircle className="h-3.5 w-3.5 text-primary/80" />
-                      <span>Generate this in your NRS Developer Portal under 'API Credentials'</span>
-                    </div>
+                  <Card className="p-4 border-border bg-muted/30 flex items-center gap-2">
+                    <HelpCircle className="h-4 w-4 text-primary" />
+                    <span className="text-xs text-muted-foreground">Generate this in your NRS Developer Portal under 'API Credentials'</span>
                   </Card>
 
                   {/* Trust & Security / Actions Footer */}

@@ -210,6 +210,14 @@ export type Database = {
           status: Database["public"]["Enums"]["member_status"]
           tin: string | null
           updated_at: string
+          buyer_type: Database["public"]["Enums"]["nrs_buyer_type"] | null
+          rc_number: string | null
+          address_line1: string | null
+          address_line2: string | null
+          state: string | null
+          lga: string | null
+          postcode: string | null
+          country_code: string | null
         }
         Insert: {
           city?: string | null
@@ -222,6 +230,14 @@ export type Database = {
           status?: Database["public"]["Enums"]["member_status"]
           tin?: string | null
           updated_at?: string
+          buyer_type?: Database["public"]["Enums"]["nrs_buyer_type"] | null
+          rc_number?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          state?: string | null
+          lga?: string | null
+          postcode?: string | null
+          country_code?: string | null
         }
         Update: {
           city?: string | null
@@ -234,6 +250,14 @@ export type Database = {
           status?: Database["public"]["Enums"]["member_status"]
           tin?: string | null
           updated_at?: string
+          buyer_type?: Database["public"]["Enums"]["nrs_buyer_type"] | null
+          rc_number?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          state?: string | null
+          lga?: string | null
+          postcode?: string | null
+          country_code?: string | null
         }
         Relationships: [
           {
@@ -593,6 +617,7 @@ export type Database = {
         | "Confirmed"
         | "Rejected"
       member_status: "Active" | "Invited" | "Disabled"
+      nrs_buyer_type: "business" | "individual" | "government" | "foreign"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -748,6 +773,7 @@ export const Constants = {
         "Rejected",
       ],
       member_status: ["Active", "Invited", "Disabled"],
+      nrs_buyer_type: ["business", "individual", "government", "foreign"],
     },
   },
 } as const
