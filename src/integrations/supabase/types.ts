@@ -69,6 +69,29 @@ export type Database = {
           status: Database["public"]["Enums"]["company_status"]
           tin: string
           updated_at: string
+          legal_name: string | null
+          email: string | null
+          phone: string | null
+          rc_number: string | null
+          vat_number: string | null
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          state: string | null
+          lga: string | null
+          postcode: string | null
+          country_code: string
+          industry_code: string | null
+          nrs_business_id: string | null
+          nrs_service_id: string | null
+          nrs_environment: string | null
+          nrs_sandbox_base_url: string | null
+          nrs_production_base_url: string | null
+          nrs_certificate_id: string | null
+          nrs_api_key: string | null
+          nrs_api_secret: string | null
+          nrs_portal_email: string | null
+          nrs_portal_password: string | null
         }
         Insert: {
           created_at?: string
@@ -80,6 +103,29 @@ export type Database = {
           status?: Database["public"]["Enums"]["company_status"]
           tin: string
           updated_at?: string
+          legal_name?: string | null
+          email?: string | null
+          phone?: string | null
+          rc_number?: string | null
+          vat_number?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          state?: string | null
+          lga?: string | null
+          postcode?: string | null
+          country_code?: string
+          industry_code?: string | null
+          nrs_business_id?: string | null
+          nrs_service_id?: string | null
+          nrs_environment?: string | null
+          nrs_sandbox_base_url?: string | null
+          nrs_production_base_url?: string | null
+          nrs_certificate_id?: string | null
+          nrs_api_key?: string | null
+          nrs_api_secret?: string | null
+          nrs_portal_email?: string | null
+          nrs_portal_password?: string | null
         }
         Update: {
           created_at?: string
@@ -91,6 +137,29 @@ export type Database = {
           status?: Database["public"]["Enums"]["company_status"]
           tin?: string
           updated_at?: string
+          legal_name?: string | null
+          email?: string | null
+          phone?: string | null
+          rc_number?: string | null
+          vat_number?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          state?: string | null
+          lga?: string | null
+          postcode?: string | null
+          country_code?: string
+          industry_code?: string | null
+          nrs_business_id?: string | null
+          nrs_service_id?: string | null
+          nrs_environment?: string | null
+          nrs_sandbox_base_url?: string | null
+          nrs_production_base_url?: string | null
+          nrs_certificate_id?: string | null
+          nrs_api_key?: string | null
+          nrs_api_secret?: string | null
+          nrs_portal_email?: string | null
+          nrs_portal_password?: string | null
         }
         Relationships: []
       }
@@ -141,6 +210,14 @@ export type Database = {
           status: Database["public"]["Enums"]["member_status"]
           tin: string | null
           updated_at: string
+          buyer_type: Database["public"]["Enums"]["nrs_buyer_type"] | null
+          rc_number: string | null
+          address_line1: string | null
+          address_line2: string | null
+          state: string | null
+          lga: string | null
+          postcode: string | null
+          country_code: string | null
         }
         Insert: {
           city?: string | null
@@ -153,6 +230,14 @@ export type Database = {
           status?: Database["public"]["Enums"]["member_status"]
           tin?: string | null
           updated_at?: string
+          buyer_type?: Database["public"]["Enums"]["nrs_buyer_type"] | null
+          rc_number?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          state?: string | null
+          lga?: string | null
+          postcode?: string | null
+          country_code?: string | null
         }
         Update: {
           city?: string | null
@@ -165,6 +250,14 @@ export type Database = {
           status?: Database["public"]["Enums"]["member_status"]
           tin?: string | null
           updated_at?: string
+          buyer_type?: Database["public"]["Enums"]["nrs_buyer_type"] | null
+          rc_number?: string | null
+          address_line1?: string | null
+          address_line2?: string | null
+          state?: string | null
+          lga?: string | null
+          postcode?: string | null
+          country_code?: string | null
         }
         Relationships: [
           {
@@ -524,6 +617,7 @@ export type Database = {
         | "Confirmed"
         | "Rejected"
       member_status: "Active" | "Invited" | "Disabled"
+      nrs_buyer_type: "business" | "individual" | "government" | "foreign"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -679,6 +773,7 @@ export const Constants = {
         "Rejected",
       ],
       member_status: ["Active", "Invited", "Disabled"],
+      nrs_buyer_type: ["business", "individual", "government", "foreign"],
     },
   },
 } as const

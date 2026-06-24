@@ -1,9 +1,6 @@
 // NRS submission edge function — supports mock / sandbox / production environments.
-// In this iteration ONLY `mock` is implemented end-to-end. Sandbox & production
-// branches are stubbed and return 501 until real credentials & signing are wired.
-//
 // Secrets (NEVER committed, NEVER logged):
-//   NRS_API_KEY, NRS_API_SECRET, NRS_PRIVATE_KEY_PEM, NRS_PRIVATE_KEY_PASSPHRASE
+//   NRS_API_KEY, NRS_API_SECRET, NRS_TAXPAYER_EMAIL, NRS_TAXPAYER_PASSWORD
 // All NRS HTTP calls happen here, never in the browser.
 
 // @ts-ignore deno remote import
@@ -17,6 +14,139 @@ const corsHeaders = {
 
 // deno-lint-ignore no-explicit-any
 declare const Deno: any;
+
+const NRS_AUTHENTICATE_PATH = "/api/v1/utilities/authenticate";
+const NRS_VALIDATE_PATH = "/api/v1/invoice/validate";
+const INVOICE_TYPE_CODE: Record<string, string> = {
+  commercial: "380",
+  credit_note: "381",
+  debit_note: "383",
+  corrected: "384",
+  proforma: "325",
+};
+const TAX_CATEGORY_ID: Record<string, string> = {
+  S: "STANDARD_VAT",
+  Z: "ZERO_RATED",
+  E: "VAT_EXEMPT",
+  O: "OUT_OF_SCOPE",
+};
+
+function joinUrl(baseUrl: string, path: string): string {
+  const base = baseUrl.replace(/\/+$/, "");
+  const suffix = path.startsWith("/") ? path : `/${path}`;
+  return `${base}${suffix}`;
+}
+
+function requireEnv(name: string): string {
+  const value = Deno.env.get(name)?.trim();
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+function omitEmpty(value: any): any {
+  if (Array.isArray(value)) {
+    return value.map(omitEmpty).filter((item) => item !== undefined);
+  }
+
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value)
+      .map(([key, entryValue]) => [key, omitEmpty(entryValue)])
+      .filter(([, entryValue]) => entryValue !== undefined);
+    return Object.fromEntries(entries);
+  }
+
+  return value === null || value === undefined || value === "" ? undefined : value;
+}
+
+function getNrsBaseUrl(company: any, environment: string): string {
+  const configured = environment === "production"
+    ? company?.nrs_production_base_url
+    : company?.nrs_sandbox_base_url;
+  const baseUrl = String(configured ?? "").trim();
+  if (!baseUrl) {
+    throw new Error(`NRS ${environment} base URL is required`);
+  }
+  return baseUrl;
+}
+
+function getNrsApiCredentials() {
+  return {
+    apiKey: requireEnv("NRS_API_KEY"),
+    apiSecret: requireEnv("NRS_API_SECRET"),
+  };
+}
+
+async function readResponseBody(res: Response): Promise<any> {
+  const text = await res.text();
+  if (!text) return null;
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { message: text };
+  }
+}
+
+async function authenticateNrsTaxpayer(baseUrl: string, credentials: { apiKey: string; apiSecret: string }) {
+  const authEndpoint = joinUrl(baseUrl, NRS_AUTHENTICATE_PATH);
+
+  const authRes = await fetch(authEndpoint, {
+    method: "POST",
+    headers: {
+      "Accept": "application/json",
+      "Content-Type": "application/json",
+      "x-api-key": credentials.apiKey,
+      "x-api-secret": credentials.apiSecret,
+    },
+    body: JSON.stringify({
+      email: requireEnv("NRS_TAXPAYER_EMAIL"),
+      password: requireEnv("NRS_TAXPAYER_PASSWORD"),
+    }),
+  });
+  const authBody = await readResponseBody(authRes);
+
+  if (!authRes.ok) {
+    throw new Error(`NRS taxpayer authentication failed with HTTP ${authRes.status}`);
+  }
+
+  return authBody;
+}
+
+async function validateNrsInvoice(baseUrl: string, payload: any) {
+  const credentials = getNrsApiCredentials();
+  await authenticateNrsTaxpayer(baseUrl, credentials);
+  const validateEndpoint = joinUrl(baseUrl, NRS_VALIDATE_PATH);
+
+  const validateRes = await fetch(validateEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": credentials.apiKey,
+      "x-api-secret": credentials.apiSecret,
+    },
+    body: JSON.stringify(payload),
+  });
+  const responseBody = await readResponseBody(validateRes);
+
+  if (!validateRes.ok) {
+    const failedResponse = typeof responseBody === "object" && responseBody !== null
+      ? responseBody
+      : { message: `NRS validation failed with HTTP ${validateRes.status}` };
+    return {
+      httpStatus: validateRes.status,
+      response: {
+        ...failedResponse,
+        status: false,
+        message: failedResponse.message ?? `NRS validation failed with HTTP ${validateRes.status}`,
+      },
+    };
+  }
+
+  return {
+    httpStatus: validateRes.status,
+    response: responseBody ?? { status: true, message: "NRS validation successful" },
+  };
+}
 
 function buildIrn(invoiceNumber: string, serviceId: string | null | undefined, issueDate: string): string {
   const inv = (invoiceNumber ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "INV";
@@ -34,6 +164,22 @@ function b64encode(s: string): string {
   return (globalThis as any).btoa(unescape(encodeURIComponent(s)));
 }
 
+function buildParty(source: any, fallbackName: string | null | undefined) {
+  return omitEmpty({
+    party_name: source?.legal_name ?? source?.name ?? fallbackName,
+    tin: source?.tin ?? null,
+    email: source?.email ?? null,
+    telephone: source?.phone ?? null,
+    business_description: source?.industry ?? source?.industry_code ?? null,
+    postal_address: {
+      street_name: source?.address_line1 ?? null,
+      city_name: source?.city ?? null,
+      postal_zone: source?.postcode ?? null,
+      country: (source?.country_code ?? "NG").toUpperCase(),
+    },
+  });
+}
+
 function buildPayload(invoice: any, lines: any[], company: any, customer: any, irn: string) {
   const builtLines = (lines ?? []).map((l: any, idx: number) => {
     const qty = Number(l.qty ?? 0);
@@ -43,76 +189,109 @@ function buildPayload(invoice: any, lines: any[], company: any, customer: any, i
     const cat = (l.tax_category ?? "S") as string;
     const net = round2(qty * unitPrice - discount);
     const taxAmount = cat === "S" ? round2(net * (taxRate / 100)) : 0;
+    const unitCode = (l.unit_code ?? "EA").toUpperCase();
+    const gross = round2(qty * unitPrice);
     return {
-      lineUuid: l.line_uuid ?? l.id,
       position: l.position ?? idx,
-      itemCode: l.item_classification_code ?? null,
-      itemName: l.description,
-      description: l.description,
-      unitCode: (l.unit_code ?? "EA").toUpperCase(),
+      hsn_code: l.item_classification_code ?? null,
+      product_category: l.product_category ?? l.description,
+      discount_rate: gross > 0 ? round2((discount / gross) * 100) : 0,
+      discount_amount: discount,
+      fee_rate: 0,
+      fee_amount: 0,
+      invoiced_quantity: qty,
+      line_extension_amount: net,
+      item: {
+        name: l.description,
+        description: l.description,
+        sellers_item_identification: l.line_uuid ?? l.id,
+      },
+      price: {
+        price_amount: unitPrice,
+        base_quantity: 1,
+        price_unit: `${invoice.currency ?? "NGN"} per ${unitCode}`,
+      },
       quantity: qty,
-      unitPrice,
-      discountAmount: discount,
-      netAmount: net,
-      taxCategory: cat,
-      taxScheme: l.tax_scheme ?? "VAT",
-      taxRate,
-      taxableAmount: cat === "S" ? net : 0,
-      taxAmount,
-      lineTotal: round2(net + taxAmount),
+      net_amount: net,
+      tax_category: cat,
+      tax_rate: taxRate,
+      taxable_amount: cat === "S" ? net : 0,
+      tax_amount: taxAmount,
     };
   });
 
-  const subtotal = round2(builtLines.reduce((s, l) => s + l.netAmount, 0));
-  const taxTotal = round2(builtLines.reduce((s, l) => s + l.taxAmount, 0));
-  const taxableAmount = round2(builtLines.reduce((s, l) => s + l.taxableAmount, 0));
+  const subtotal = round2(builtLines.reduce((s, l) => s + l.net_amount, 0));
+  const taxTotal = round2(builtLines.reduce((s, l) => s + l.tax_amount, 0));
+  const taxableAmount = round2(builtLines.reduce((s, l) => s + l.taxable_amount, 0));
   const discountTotal = Number(invoice.discount_total ?? 0);
   const grandTotal = round2(subtotal + taxTotal - discountTotal);
   const currency = (invoice.currency ?? "NGN").toUpperCase();
+  const invoiceType = invoice.invoice_type ?? "commercial";
+  const taxSubtotals = Object.values(
+    builtLines.reduce((groups: Record<string, any>, line: any) => {
+      const key = `${line.tax_category}:${line.tax_rate}`;
+      if (!groups[key]) {
+        groups[key] = {
+          taxable_amount: 0,
+          tax_amount: 0,
+          tax_category: {
+            id: TAX_CATEGORY_ID[line.tax_category] ?? line.tax_category,
+            percent: line.tax_rate,
+          },
+        };
+      }
+      groups[key].taxable_amount = round2(groups[key].taxable_amount + line.taxable_amount);
+      groups[key].tax_amount = round2(groups[key].tax_amount + line.tax_amount);
+      return groups;
+    }, {}),
+  );
 
-  return {
-    documentUuid: invoice.document_uuid ?? invoice.id,
+  return omitEmpty({
+    business_id: company?.nrs_business_id ?? null,
     irn,
-    businessId: company?.nrs_business_id ?? null,
-    invoiceNumber: invoice.number,
-    invoiceTypeCode: "380",
-    transactionType: invoice.transaction_type ?? "B2B",
-    issueDate: invoice.issue_date,
-    dueDate: invoice.due_date,
-    supplyDate: invoice.supply_date ?? invoice.issue_date,
-    currencyCode: currency,
-    exchangeRate: Number(invoice.exchange_rate ?? 1),
-    supplier: {
-      tin: company?.tin ?? null,
-      legalName: company?.legal_name ?? company?.name ?? null,
-      tradeName: company?.name ?? "",
-      email: company?.email ?? null,
-      phone: company?.phone ?? null,
-      address: {
-        line1: company?.address_line1 ?? null,
-        city: company?.city ?? null,
-        state: company?.state ?? null,
-        postcode: company?.postcode ?? null,
-        countryCode: (company?.country_code ?? "NG").toUpperCase(),
-      },
+    issue_date: invoice.issue_date,
+    due_date: invoice.due_date,
+    invoice_type_code: INVOICE_TYPE_CODE[invoiceType] ?? "380",
+    payment_status: invoice.payment_status ?? "PENDING",
+    note: invoice.notes ?? null,
+    tax_point_date: invoice.supply_date ?? invoice.issue_date,
+    document_currency_code: currency,
+    tax_currency_code: currency,
+    accounting_cost: String(invoice.accounting_cost ?? subtotal),
+    buyer_reference: invoice.customer_name ?? null,
+    accounting_supplier_party: buildParty(company, company?.name),
+    accounting_customer_party: buildParty(customer, invoice.customer_name),
+    actual_delivery_date: invoice.supply_date ?? invoice.issue_date,
+    payment_means: invoice.payment_means_code
+      ? [{ payment_means_code: invoice.payment_means_code, payment_due_date: invoice.due_date }]
+      : undefined,
+    payment_terms_note: invoice.payment_terms ?? null,
+    allowance_charge: discountTotal > 0
+      ? [{ charge_indicator: false, amount: discountTotal }]
+      : undefined,
+    tax_total: [{
+      tax_amount: taxTotal,
+      tax_subtotal: taxSubtotals,
+    }],
+    legal_monetary_total: {
+      line_extension_amount: subtotal,
+      tax_exclusive_amount: taxableAmount || subtotal,
+      tax_inclusive_amount: round2(subtotal + taxTotal),
+      payable_amount: grandTotal,
     },
-    buyer: {
-      buyerType: customer?.buyer_type ?? "business",
-      tin: customer?.tin ?? null,
-      legalName: customer?.name ?? invoice.customer_name,
-      email: customer?.email ?? null,
-      phone: customer?.phone ?? null,
-      address: {
-        line1: customer?.address_line1 ?? null,
-        city: customer?.city ?? null,
-        state: customer?.state ?? null,
-        postcode: customer?.postcode ?? null,
-        countryCode: (customer?.country_code ?? "NG").toUpperCase(),
-      },
-    },
-    lines: builtLines,
-    totals: { subtotal, discountTotal, taxableAmount, taxTotal, grandTotal, currency },
-  };
+    invoice_line: builtLines.map((line: any) => omitEmpty({
+      hsn_code: line.hsn_code,
+      product_category: line.product_category,
+      discount_rate: line.discount_rate,
+      discount_amount: line.discount_amount,
+      fee_rate: line.fee_rate,
+      fee_amount: line.fee_amount,
+      invoiced_quantity: line.invoiced_quantity,
+      line_extension_amount: line.line_extension_amount,
+      item: line.item,
+      price: line.price,
+    })),
+  });
 }
 
 Deno.serve(async (req: Request) => {
@@ -202,8 +381,15 @@ Deno.serve(async (req: Request) => {
         };
       }
     } else {
-      // sandbox / production not implemented yet — do NOT call real NRS
-      return json({ error: `Environment '${environment}' not yet implemented` }, 501);
+      const baseUrl = getNrsBaseUrl(company, environment);
+      const nrsResult = await validateNrsInvoice(baseUrl, payload);
+      response = nrsResult.response;
+      httpStatus = nrsResult.httpStatus;
+
+      if (response.status === false) {
+        submissionStatus = "rejected";
+        nextInvoiceStatus = "Rejected";
+      }
     }
 
     // Log submission against actual nrs_submissions schema

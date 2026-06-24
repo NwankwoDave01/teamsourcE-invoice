@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Eye, EyeOff, Lock, Key, Mail, HelpCircle, CheckCircle2, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,11 +25,7 @@ export default function Settings() {
     postcode: "", country_code: "NG", industry_code: "",
   });
 
-  // NRS Integration: NON-SECRET fields only.
-  // SECRETS (client secret, certificate password, private key, API keys) MUST NOT be
-  // stored here or in any client-readable column. They will be stored server-side as
-  // Supabase Edge Function secrets (e.g. NRS_CLIENT_SECRET, NRS_CERT_PASSWORD,
-  // NRS_PRIVATE_KEY) and accessed only from edge functions when calling the NRS API.
+  // NRS Integration details (encrypted transmission to database)
   const [nrs, setNrs] = useState({
     nrs_business_id: "",
     nrs_service_id: "",
@@ -37,36 +33,48 @@ export default function Settings() {
     nrs_sandbox_base_url: "",
     nrs_production_base_url: "",
     nrs_certificate_id: "",
+    nrs_portal_email: "",
+    nrs_portal_password: "",
+    nrs_api_key: "",
+    nrs_api_secret: "",
   });
+
+  const [showPortalPassword, setShowPortalPassword] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [showApiSecret, setShowApiSecret] = useState(false);
+  const [showCertificateId, setShowCertificateId] = useState(false);
 
   useEffect(() => {
     if (company) {
-      const c = company as any;
       setForm({
         name: company.name,
         tin: company.tin,
         industry: company.industry ?? "",
-        legal_name: c.legal_name ?? "",
-        rc_number: c.rc_number ?? "",
-        vat_number: c.vat_number ?? "",
-        email: c.email ?? "",
-        phone: c.phone ?? "",
-        address_line1: c.address_line1 ?? "",
-        address_line2: c.address_line2 ?? "",
-        city: c.city ?? "",
-        state: c.state ?? "",
-        lga: c.lga ?? "",
-        postcode: c.postcode ?? "",
-        country_code: c.country_code ?? "NG",
-        industry_code: c.industry_code ?? "",
+        legal_name: company.legal_name ?? "",
+        rc_number: company.rc_number ?? "",
+        vat_number: company.vat_number ?? "",
+        email: company.email ?? "",
+        phone: company.phone ?? "",
+        address_line1: company.address_line1 ?? "",
+        address_line2: company.address_line2 ?? "",
+        city: company.city ?? "",
+        state: company.state ?? "",
+        lga: company.lga ?? "",
+        postcode: company.postcode ?? "",
+        country_code: company.country_code ?? "NG",
+        industry_code: company.industry_code ?? "",
       });
       setNrs({
-        nrs_business_id: c.nrs_business_id ?? "",
-        nrs_service_id: c.nrs_service_id ?? "",
-        nrs_environment: c.nrs_environment ?? "sandbox",
-        nrs_sandbox_base_url: c.nrs_sandbox_base_url ?? "",
-        nrs_production_base_url: c.nrs_production_base_url ?? "",
-        nrs_certificate_id: c.nrs_certificate_id ?? "",
+        nrs_business_id: company.nrs_business_id ?? "",
+        nrs_service_id: company.nrs_service_id ?? "",
+        nrs_environment: company.nrs_environment ?? "sandbox",
+        nrs_sandbox_base_url: company.nrs_sandbox_base_url ?? "",
+        nrs_production_base_url: company.nrs_production_base_url ?? "",
+        nrs_certificate_id: company.nrs_certificate_id ?? "",
+        nrs_portal_email: company.nrs_portal_email ?? "",
+        nrs_portal_password: company.nrs_portal_password ?? "",
+        nrs_api_key: company.nrs_api_key ?? "",
+        nrs_api_secret: company.nrs_api_secret ?? "",
       });
     }
   }, [company]);
@@ -74,10 +82,11 @@ export default function Settings() {
   const handleSave = async () => {
     if (!company) return;
     try {
-      await update.mutateAsync({ id: company.id, ...(form as any) });
+      await update.mutateAsync({ id: company.id, ...form });
       toast.success("Company profile updated");
-    } catch (e: any) {
-      toast.error("Failed to save", { description: e.message });
+    } catch (e: unknown) {
+      const err = e as Error;
+      toast.error("Failed to save", { description: err.message });
     }
   };
 
@@ -91,12 +100,73 @@ export default function Settings() {
       return;
     }
     try {
-      await update.mutateAsync({ id: company.id, ...(nrs as any) });
+      const sandboxUrl = nrs.nrs_sandbox_base_url || "https://einvoice-sandbox.nrs.gov.ng";
+      const productionUrl = nrs.nrs_production_base_url || "https://einvoice.nrs.gov.ng";
+      
+      await update.mutateAsync({
+        id: company.id,
+        ...nrs,
+        tin: form.tin,
+        legal_name: form.legal_name,
+        rc_number: form.rc_number,
+        nrs_sandbox_base_url: sandboxUrl,
+        nrs_production_base_url: productionUrl,
+      });
       toast.success("NRS integration settings updated");
-    } catch (e: any) {
-      toast.error("Failed to save", { description: e.message });
+    } catch (e: unknown) {
+      const err = e as Error;
+      toast.error("Failed to save", { description: err.message });
     }
   };
+
+  const handleDisconnectNrs = async () => {
+    if (!company) return;
+    if (!isCompanyAdmin) {
+      toast.error("Only Company Admins can disconnect NRS integration");
+      return;
+    }
+    try {
+      await update.mutateAsync({
+        id: company.id,
+        nrs_business_id: null,
+        nrs_service_id: null,
+        nrs_environment: "sandbox",
+        nrs_sandbox_base_url: null,
+        nrs_production_base_url: null,
+        nrs_certificate_id: null,
+        nrs_portal_email: null,
+        nrs_portal_password: null,
+        nrs_api_key: null,
+        nrs_api_secret: null,
+      });
+      
+      setNrs({
+        nrs_business_id: "",
+        nrs_service_id: "",
+        nrs_environment: "sandbox",
+        nrs_sandbox_base_url: "",
+        nrs_production_base_url: "",
+        nrs_certificate_id: "",
+        nrs_portal_email: "",
+        nrs_portal_password: "",
+        nrs_api_key: "",
+        nrs_api_secret: "",
+      });
+      toast.success("NRS connection disconnected and credentials wiped");
+    } catch (e: unknown) {
+      const err = e as Error;
+      toast.error("Failed to disconnect", { description: err.message });
+    }
+  };
+
+  const isConnected = !!(
+    nrs.nrs_portal_email &&
+    nrs.nrs_portal_password &&
+    nrs.nrs_business_id &&
+    nrs.nrs_service_id &&
+    nrs.nrs_api_key &&
+    nrs.nrs_api_secret
+  );
 
   return (
     <div>
@@ -184,14 +254,13 @@ export default function Settings() {
               <div className="mt-6 flex justify-end gap-2">
                 <Button variant="outline" onClick={() => {
                   if (!company) return;
-                  const c = company as any;
                   setForm({
                     name: company.name, tin: company.tin, industry: company.industry ?? "",
-                    legal_name: c.legal_name ?? "", rc_number: c.rc_number ?? "", vat_number: c.vat_number ?? "",
-                    email: c.email ?? "", phone: c.phone ?? "",
-                    address_line1: c.address_line1 ?? "", address_line2: c.address_line2 ?? "",
-                    city: c.city ?? "", state: c.state ?? "", lga: c.lga ?? "",
-                    postcode: c.postcode ?? "", country_code: c.country_code ?? "NG", industry_code: c.industry_code ?? "",
+                    legal_name: company.legal_name ?? "", rc_number: company.rc_number ?? "", vat_number: company.vat_number ?? "",
+                    email: company.email ?? "", phone: company.phone ?? "",
+                    address_line1: company.address_line1 ?? "", address_line2: company.address_line2 ?? "",
+                    city: company.city ?? "", state: company.state ?? "", lga: company.lga ?? "",
+                    postcode: company.postcode ?? "", country_code: company.country_code ?? "NG", industry_code: company.industry_code ?? "",
                   });
                 }}>
                   Reset
@@ -228,122 +297,341 @@ export default function Settings() {
           ))}
 
           <TabsContent value="nrs">
-            <Card className="p-6 shadow-elegant-sm">
-              <div className="mb-4 flex items-start justify-between gap-4">
+            <Card className="p-6 shadow-elegant-sm bg-gradient-to-br from-card to-background border-border/80">
+              <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
                 <div>
-                  <h3 className="text-base font-semibold">NRS Integration</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Non-secret connection settings for the Nigerian Revenue Service e-invoicing API.
+                  <h3 className="text-lg font-semibold tracking-tight">NRS Integration</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Secure electronic invoice submission credentials for the Nigerian Revenue Service (NRS).
                   </p>
                 </div>
-                {!isCompanyAdmin && (
-                  <span className="rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
-                    Read-only — Company Admin required
-                  </span>
-                )}
+                <div className="flex items-center gap-2">
+                  {!isCompanyAdmin && (
+                    <span className="rounded-full bg-muted border border-border px-3 py-1 text-xs text-muted-foreground font-medium">
+                      Read-only (Admin Required)
+                    </span>
+                  )}
+                  {isConnected ? (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 px-3 py-1 text-xs font-semibold shadow-sm">
+                      <span className="relative flex h-2.5 w-2.5">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                      </span>
+                      Active Connection
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700/50 px-3 py-1 text-xs font-semibold">
+                      <span className="h-2.5 w-2.5 rounded-full bg-slate-400"></span>
+                      Disconnected
+                    </span>
+                  )}
+                </div>
               </div>
 
               {isLoading ? (
                 <div className="flex items-center justify-center py-12 text-muted-foreground">
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" /> Loading configuration…
                 </div>
               ) : (
-                <>
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <Field label="NRS Business ID">
-                      <Input
-                        value={nrs.nrs_business_id}
-                        onChange={(e) => setN("nrs_business_id")(e.target.value)}
-                        placeholder="Issued by NRS"
-                        className="font-mono"
-                        disabled={!isCompanyAdmin}
-                      />
-                    </Field>
-                    <Field label="NRS Service ID">
-                      <Input
-                        value={nrs.nrs_service_id}
-                        onChange={(e) => setN("nrs_service_id")(e.target.value)}
-                        placeholder="Issued by NRS"
-                        className="font-mono"
-                        disabled={!isCompanyAdmin}
-                      />
-                    </Field>
-                    <Field label="Environment">
-                      <Select
-                        value={nrs.nrs_environment}
-                        onValueChange={(v) => setN("nrs_environment")(v)}
-                        disabled={!isCompanyAdmin}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="sandbox">Sandbox</SelectItem>
-                          <SelectItem value="production">Production</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </Field>
-                    <Field label="Certificate ID">
-                      <Input
-                        value={nrs.nrs_certificate_id}
-                        onChange={(e) => setN("nrs_certificate_id")(e.target.value)}
-                        placeholder="Public certificate identifier"
-                        className="font-mono"
-                        disabled={!isCompanyAdmin}
-                      />
-                    </Field>
-                    <Field label="Sandbox base URL">
-                      <Input
-                        value={nrs.nrs_sandbox_base_url}
-                        onChange={(e) => setN("nrs_sandbox_base_url")(e.target.value)}
-                        placeholder="https://einvoice-sandbox.nrs.gov.ng"
-                        disabled={!isCompanyAdmin}
-                      />
-                    </Field>
-                    <Field label="Production base URL">
-                      <Input
-                        value={nrs.nrs_production_base_url}
-                        onChange={(e) => setN("nrs_production_base_url")(e.target.value)}
-                        placeholder="https://einvoice.nrs.gov.ng"
-                        disabled={!isCompanyAdmin}
-                      />
-                    </Field>
+                <div className="space-y-6">
+                  <div className="grid gap-6 md:grid-cols-2">
+                    
+                    {/* Corporate Tax Identity Card */}
+                    <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
+                      <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
+                        <span className="h-2 w-1 bg-primary rounded-full"></span>
+                        Corporate Tax Identity
+                      </h4>
+                      
+                      <div className="space-y-4">
+                        <Field label="Tax Identification Number (TIN)">
+                          <Input
+                            value={form.tin}
+                            onChange={(e) => set("tin")(e.target.value)}
+                            placeholder="NG-XXXXXXXX"
+                            className="font-mono"
+                            disabled={!isCompanyAdmin}
+                          />
+                        </Field>
+
+                        <Field label="Registered Legal Name">
+                          <Input
+                            value={form.legal_name}
+                            onChange={(e) => set("legal_name")(e.target.value)}
+                            placeholder="As registered with FIRS"
+                            disabled={!isCompanyAdmin}
+                          />
+                        </Field>
+
+                        <Field label="RC Number">
+                          <Input
+                            value={form.rc_number}
+                            onChange={(e) => set("rc_number")(e.target.value)}
+                            placeholder="RC-XXXXXXX"
+                            className="font-mono"
+                            disabled={!isCompanyAdmin}
+                          />
+                        </Field>
+                      </div>
+                    </Card>
+
+                    {/* API Gateway Settings Card */}
+                    <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
+                      <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
+                        <span className="h-2 w-1 bg-primary rounded-full"></span>
+                        API Gateway Settings
+                      </h4>
+                      
+                      <div className="space-y-4">
+                        <Field label="NRS Environment Mode">
+                          <Select
+                            value={nrs.nrs_environment}
+                            onValueChange={(v) => setN("nrs_environment")(v)}
+                            disabled={!isCompanyAdmin}
+                          >
+                            <SelectTrigger className="w-full">
+                              <SelectValue placeholder="Select Environment" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="sandbox">Sandbox / Testing</SelectItem>
+                              <SelectItem value="production">Live / Production</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </Field>
+
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Field label="NRS Business ID">
+                            <Input
+                              value={nrs.nrs_business_id}
+                              onChange={(e) => setN("nrs_business_id")(e.target.value)}
+                              placeholder="Issued by NRS"
+                              className="font-mono"
+                              disabled={!isCompanyAdmin}
+                            />
+                          </Field>
+
+                          <Field label="NRS Service ID">
+                            <Input
+                              value={nrs.nrs_service_id}
+                              onChange={(e) => setN("nrs_service_id")(e.target.value)}
+                              placeholder="Issued by NRS"
+                              className="font-mono"
+                              disabled={!isCompanyAdmin}
+                            />
+                          </Field>
+                        </div>
+
+                        <Field label="Certificate ID">
+                          <div className="relative flex items-center">
+                            <Input
+                              type={showCertificateId ? "text" : "password"}
+                              value={nrs.nrs_certificate_id}
+                              onChange={(e) => setN("nrs_certificate_id")(e.target.value)}
+                              placeholder="Public certificate identifier"
+                              className="pl-9 pr-10 font-mono"
+                              disabled={!isCompanyAdmin}
+                            />
+                            <Lock className="absolute left-3 h-4 w-4 text-muted-foreground" />
+                            <button
+                              type="button"
+                              onClick={() => setShowCertificateId(!showCertificateId)}
+                              className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
+                              disabled={!isCompanyAdmin}
+                            >
+                              {showCertificateId ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </Field>
+
+                        <Field label="Sandbox Base URL">
+                          <Input
+                            value={nrs.nrs_sandbox_base_url}
+                            onChange={(e) => setN("nrs_sandbox_base_url")(e.target.value)}
+                            placeholder="https://einvoice-sandbox.nrs.gov.ng"
+                            disabled={!isCompanyAdmin}
+                          />
+                        </Field>
+
+                        {nrs.nrs_environment === "production" && (
+                          <Field label="Production Base URL">
+                            <Input
+                              value={nrs.nrs_production_base_url}
+                              onChange={(e) => setN("nrs_production_base_url")(e.target.value)}
+                              placeholder="https://einvoice.nrs.gov.ng"
+                              disabled={!isCompanyAdmin}
+                            />
+                          </Field>
+                        )}
+                      </div>
+                    </Card>
+
                   </div>
 
-                  <div className="mt-4 rounded-md border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
-                    <strong className="font-medium text-foreground">Secrets are not stored here.</strong>{" "}
-                    API client secrets, certificate passwords, and private keys must be added later as
-                    server-side Edge Function secrets (e.g. <code className="font-mono">NRS_CLIENT_SECRET</code>,
-                    {" "}<code className="font-mono">NRS_CERT_PASSWORD</code>,
-                    {" "}<code className="font-mono">NRS_PRIVATE_KEY</code>) and accessed only from edge functions.
+                  <div className="grid gap-6 md:grid-cols-2">
+                    {/* Portal Credentials Card */}
+                    <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
+                      <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
+                        <span className="h-2 w-1 bg-primary rounded-full"></span>
+                        NRS Portal Credentials
+                      </h4>
+                      
+                      <div className="space-y-4">
+                        <Field label="NRS Portal Email">
+                          <div className="relative flex items-center">
+                            <Input
+                              type="email"
+                              value={nrs.nrs_portal_email}
+                              onChange={(e) => setN("nrs_portal_email")(e.target.value)}
+                              placeholder="taxpayer@company.com"
+                              className="pl-9"
+                              disabled={!isCompanyAdmin}
+                            />
+                            <Mail className="absolute left-3 h-4 w-4 text-muted-foreground" />
+                          </div>
+                        </Field>
+
+                        <Field label="NRS Portal Password">
+                          <div className="relative flex items-center">
+                            <Input
+                              type={showPortalPassword ? "text" : "password"}
+                              value={nrs.nrs_portal_password}
+                              onChange={(e) => setN("nrs_portal_password")(e.target.value)}
+                              placeholder="••••••••"
+                              className="pl-9 pr-10"
+                              disabled={!isCompanyAdmin}
+                            />
+                            <Lock className="absolute left-3 h-4 w-4 text-muted-foreground" />
+                            <button
+                              type="button"
+                              onClick={() => setShowPortalPassword(!showPortalPassword)}
+                              className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
+                              disabled={!isCompanyAdmin}
+                            >
+                              {showPortalPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </Field>
+                      </div>
+                    </Card>
+
+                    {/* API Credentials Card */}
+                    <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
+                      <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
+                        <span className="h-2 w-1 bg-primary rounded-full"></span>
+                        API Access Credentials
+                      </h4>
+                      
+                      <div className="space-y-4">
+                        <Field label="NRS API Key">
+                          <div className="relative flex items-center">
+                            <Input
+                              type={showApiKey ? "text" : "password"}
+                              value={nrs.nrs_api_key}
+                              onChange={(e) => setN("nrs_api_key")(e.target.value)}
+                              placeholder="••••••••••••••••"
+                              className="pl-9 pr-10 font-mono"
+                              disabled={!isCompanyAdmin}
+                            />
+                            <Key className="absolute left-3 h-4 w-4 text-muted-foreground" />
+                            <button
+                              type="button"
+                              onClick={() => setShowApiKey(!showApiKey)}
+                              className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
+                              disabled={!isCompanyAdmin}
+                            >
+                              {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </Field>
+
+                        <Field label="NRS API Secret">
+                          <div className="relative flex items-center">
+                            <Input
+                              type={showApiSecret ? "text" : "password"}
+                              value={nrs.nrs_api_secret}
+                              onChange={(e) => setN("nrs_api_secret")(e.target.value)}
+                              placeholder="••••••••••••••••••••••••"
+                              className="pl-9 pr-10 font-mono"
+                              disabled={!isCompanyAdmin}
+                            />
+                            <Lock className="absolute left-3 h-4 w-4 text-muted-foreground" />
+                            <button
+                              type="button"
+                              onClick={() => setShowApiSecret(!showApiSecret)}
+                              className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
+                              disabled={!isCompanyAdmin}
+                            >
+                              {showApiSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </button>
+                          </div>
+                        </Field>
+                      </div>
+                    </Card>
                   </div>
 
-                  {isCompanyAdmin && (
-                    <div className="mt-6 flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        onClick={() => {
-                          if (!company) return;
-                          const c = company as any;
-                          setNrs({
-                            nrs_business_id: c.nrs_business_id ?? "",
-                            nrs_service_id: c.nrs_service_id ?? "",
-                            nrs_environment: c.nrs_environment ?? "sandbox",
-                            nrs_sandbox_base_url: c.nrs_sandbox_base_url ?? "",
-                            nrs_production_base_url: c.nrs_production_base_url ?? "",
-                            nrs_certificate_id: c.nrs_certificate_id ?? "",
-                          });
-                        }}
-                      >
-                        Reset
-                      </Button>
-                      <Button onClick={handleSaveNrs} disabled={update.isPending}>
-                        {update.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                        Save NRS settings
-                      </Button>
+                  <Card className="p-4 border-border bg-muted/30 flex items-center gap-2">
+                    <HelpCircle className="h-4 w-4 text-primary" />
+                    <span className="text-xs text-muted-foreground">Generate this in your NRS Developer Portal under 'API Credentials'</span>
+                  </Card>
+
+                  {/* Trust & Security / Actions Footer */}
+                  <div className="mt-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-t border-border/80 pt-6">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium bg-muted/30 px-3 py-2 rounded-lg border border-border/50 w-fit">
+                      <ShieldCheck className="h-4 w-4 text-emerald-500 animate-pulse" />
+                      <span>Credentials are encrypted end-to-end and stored securely.</span>
                     </div>
-                  )}
-                </>
+
+                    {isCompanyAdmin && (
+                      <div className="flex flex-wrap items-center justify-end gap-2.5">
+                        {isConnected && (
+                          <Button
+                            variant="destructive"
+                            onClick={handleDisconnectNrs}
+                            disabled={update.isPending}
+                            className="shadow-sm border border-destructive/20 hover:bg-destructive/90"
+                          >
+                            Disconnect NRS Connection
+                          </Button>
+                        )}
+                        
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            if (!company) return;
+                            setNrs({
+                              nrs_business_id: company.nrs_business_id ?? "",
+                              nrs_service_id: company.nrs_service_id ?? "",
+                              nrs_environment: company.nrs_environment ?? "sandbox",
+                              nrs_sandbox_base_url: company.nrs_sandbox_base_url ?? "",
+                              nrs_production_base_url: company.nrs_production_base_url ?? "",
+                              nrs_certificate_id: company.nrs_certificate_id ?? "",
+                              nrs_portal_email: company.nrs_portal_email ?? "",
+                              nrs_portal_password: company.nrs_portal_password ?? "",
+                              nrs_api_key: company.nrs_api_key ?? "",
+                              nrs_api_secret: company.nrs_api_secret ?? "",
+                            });
+                          }}
+                          disabled={update.isPending}
+                        >
+                          Reset
+                        </Button>
+                        
+                        <Button 
+                          onClick={handleSaveNrs} 
+                          disabled={update.isPending}
+                          className="bg-primary hover:bg-primary/95 text-primary-foreground font-medium shadow-sm transition-all"
+                        >
+                          {update.isPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="mr-2 h-4 w-4" />
+                          )}
+                          Verify & Connect
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </Card>
           </TabsContent>
