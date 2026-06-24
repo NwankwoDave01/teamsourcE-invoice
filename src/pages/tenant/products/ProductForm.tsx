@@ -28,10 +28,47 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { formatNGN } from "@/lib/format";
-import { useCreateProduct, useProduct, useUpdateProduct } from "@/hooks/useCompanyData";
-import { UNIT_CODE_OPTIONS, TAX_CATEGORY_OPTIONS } from "@/lib/nrs/codes";
+import { useCreateProduct, useProduct, useUpdateProduct, type DBProduct } from "@/hooks/useCompanyData";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useNrsMasterData } from "@/hooks/useNrsMasterData";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { useMemo } from "react";
+
+const DEFAULT_UNITS = [
+  { code: "EA", label: "Each" },
+  { code: "Bag", label: "Bag" },
+  { code: "Carton", label: "Carton" },
+  { code: "Jerry can", label: "Jerry can" },
+  { code: "Trip", label: "Trip" },
+  { code: "Hour", label: "Hour" },
+  { code: "Piece", label: "Piece" },
+];
+
+const DEFAULT_TAX_CATEGORIES = [
+  { code: "S", label: "Standard Rated VAT (7.5%)" },
+  { code: "Z", label: "Zero Rated VAT (0%)" },
+  { code: "E", label: "VAT Exempt (0%)" },
+  { code: "O", label: "Out of Scope (0%)" },
+];
+
+const DEFAULT_CLASSIFICATIONS = [
+  { code: "1006.30", label: "1006.30 - Rice, semi-milled or wholly milled" },
+  { code: "2106.90", label: "2106.90 - Food preparations, n.e.s." },
+  { code: "8517.12", label: "8517.12 - Telephones for cellular networks" },
+  { code: "8471.30", label: "8471.30 - Portable automatic data processing machines" },
+  { code: "9983.11", label: "9983.11 - Management consulting services" },
+  { code: "9983.13", label: "9983.13 - Information technology consulting services" },
+];
 
 interface ProductFormProps {
   mode: "create" | "edit";
@@ -55,10 +92,24 @@ export default function ProductForm({ mode }: ProductFormProps) {
   const [unitCode, setUnitCode] = useState<string>("EA");
   const [taxCategory, setTaxCategory] = useState<"S" | "Z" | "E" | "O">("S");
   const [classificationCode, setClassificationCode] = useState<string>("");
+  const [openClassification, setOpenClassification] = useState(false);
+
+  const { data: unitCodesRaw } = useNrsMasterData("unit-codes");
+  const { data: taxCategoriesRaw } = useNrsMasterData("tax-categories");
+  const { data: hsCodesRaw } = useNrsMasterData("hs-codes");
+  const { data: serviceCodesRaw } = useNrsMasterData("services-codes");
+
+  const unitCodes = unitCodesRaw && unitCodesRaw.length > 0 ? unitCodesRaw : DEFAULT_UNITS;
+  const taxCategories = taxCategoriesRaw && taxCategoriesRaw.length > 0 ? taxCategoriesRaw : DEFAULT_TAX_CATEGORIES;
+
+  const classificationOptions = useMemo(() => {
+    const combined = [...(hsCodesRaw ?? []), ...(serviceCodesRaw ?? [])];
+    return combined.length > 0 ? combined : DEFAULT_CLASSIFICATIONS;
+  }, [hsCodesRaw, serviceCodesRaw]);
 
   useEffect(() => {
     if (existing) {
-      const ex = existing as any;
+      const ex = existing as DBProduct;
       setName(existing.name);
       setSku(existing.sku);
       setCategory(existing.category ?? "");
@@ -89,7 +140,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
           unit_code: unitCode,
           tax_category: taxCategory,
           item_classification_code: classificationCode || null,
-        } as any);
+        });
         toast.success("Product updated");
       } else {
         await createMut.mutateAsync({
@@ -97,12 +148,13 @@ export default function ProductForm({ mode }: ProductFormProps) {
           unit_code: unitCode,
           tax_category: taxCategory,
           item_classification_code: classificationCode || null,
-        } as any);
+        });
         toast.success("Product created");
       }
       navigate("/app/products");
-    } catch (e: any) {
-      toast.error(e.message ?? "Failed to save product");
+    } catch (e: unknown) {
+      const err = e as Error;
+      toast.error(err.message ?? "Failed to save product");
     }
   };
 
@@ -187,12 +239,53 @@ export default function ProductForm({ mode }: ProductFormProps) {
                 </Select>
               </Field>
               <Field label="Item classification (HS / CPC)">
-                <Input
-                  value={classificationCode}
-                  onChange={(e) => setClassificationCode(e.target.value)}
-                  placeholder="e.g. 1006.30"
-                  className="font-mono"
-                />
+                <Popover open={openClassification} onOpenChange={setOpenClassification}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={openClassification}
+                      className="w-full justify-between font-mono text-left h-10 font-normal animate-none"
+                    >
+                      <span className="truncate">
+                        {classificationCode
+                          ? classificationOptions.find((o) => o.code === classificationCode)?.label || classificationCode
+                          : "Select classification code..."}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[350px] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Search code or description..." />
+                      <CommandList className="max-h-[250px]">
+                        <CommandEmpty>No classification found.</CommandEmpty>
+                        <CommandGroup>
+                          {classificationOptions.map((o) => (
+                            <CommandItem
+                              key={o.code}
+                              value={`${o.code} ${o.label}`}
+                              onSelect={() => {
+                                setClassificationCode(o.code);
+                                setOpenClassification(false);
+                              }}
+                              className="text-xs"
+                            >
+                              <Check
+                                className={cn(
+                                  "mr-2 h-4 w-4",
+                                  classificationCode === o.code ? "opacity-100" : "opacity-0"
+                                )}
+                              />
+                              <span className="font-mono font-medium mr-1.5">{o.code}</span>
+                              <span className="text-muted-foreground truncate">{o.label}</span>
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 <FieldHint>HS or CPC code used for NRS item classification.</FieldHint>
               </Field>
             </div>
@@ -238,8 +331,8 @@ export default function ProductForm({ mode }: ProductFormProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="max-h-72">
-                    {UNIT_CODE_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    {unitCodes.map((o) => (
+                      <SelectItem key={o.code} value={o.code}>{o.label} ({o.code})</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -251,8 +344,8 @@ export default function ProductForm({ mode }: ProductFormProps) {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {TAX_CATEGORY_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    {taxCategories.map((o) => (
+                      <SelectItem key={o.code} value={o.code}>{o.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

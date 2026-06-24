@@ -299,6 +299,27 @@ export type Database = {
         }
         Relationships: []
       }
+      nrs_master_data: {
+        Row: {
+          resource_type: string
+          code: string
+          label: string
+          metadata: Json | null
+        }
+        Insert: {
+          resource_type: string
+          code: string
+          label: string
+          metadata?: Json | null
+        }
+        Update: {
+          resource_type?: string
+          code?: string
+          label?: string
+          metadata?: Json | null
+        }
+        Relationships: []
+      }
       invoice_lines: {
         Row: {
           created_at: string
@@ -444,6 +465,11 @@ export type Database = {
           tax_rate: number
           unit: string | null
           updated_at: string
+          item_classification_code: string | null
+          unit_code: string | null
+          tax_category: Database["public"]["Enums"]["nrs_tax_category"] | null
+          tax_scheme: string | null
+          item_type: string | null
         }
         Insert: {
           active?: boolean
@@ -457,6 +483,11 @@ export type Database = {
           tax_rate?: number
           unit?: string | null
           updated_at?: string
+          item_classification_code?: string | null
+          unit_code?: string | null
+          tax_category?: Database["public"]["Enums"]["nrs_tax_category"] | null
+          tax_scheme?: string | null
+          item_type?: string | null
         }
         Update: {
           active?: boolean
@@ -470,6 +501,11 @@ export type Database = {
           tax_rate?: number
           unit?: string | null
           updated_at?: string
+          item_classification_code?: string | null
+          unit_code?: string | null
+          tax_category?: Database["public"]["Enums"]["nrs_tax_category"] | null
+          tax_scheme?: string | null
+          item_type?: string | null
         }
         Relationships: [
           {
@@ -618,6 +654,7 @@ export type Database = {
         | "Rejected"
       member_status: "Active" | "Invited" | "Disabled"
       nrs_buyer_type: "business" | "individual" | "government" | "foreign"
+      nrs_tax_category: "S" | "Z" | "E" | "O"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -774,6 +811,7 @@ export const Constants = {
       ],
       member_status: ["Active", "Invited", "Disabled"],
       nrs_buyer_type: ["business", "individual", "government", "foreign"],
+      nrs_tax_category: ["S", "Z", "E", "O"],
     },
   },
 } as const

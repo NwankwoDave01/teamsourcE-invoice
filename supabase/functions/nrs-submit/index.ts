@@ -17,6 +17,8 @@ declare const Deno: any;
 
 const NRS_AUTHENTICATE_PATH = "/api/v1/utilities/authenticate";
 const NRS_VALIDATE_PATH = "/api/v1/invoice/validate";
+const NRS_SIGN_PATH = "/api/v1/invoice/sign";
+const NRS_TRANSMIT_PATH = "/api/v1/invoice/transmit";
 const INVOICE_TYPE_CODE: Record<string, string> = {
   commercial: "380",
   credit_note: "381",
@@ -145,6 +147,80 @@ async function validateNrsInvoice(baseUrl: string, payload: any) {
   return {
     httpStatus: validateRes.status,
     response: responseBody ?? { status: true, message: "NRS validation successful" },
+  };
+}
+
+async function signNrsInvoice(baseUrl: string, credentials: { apiKey: string; apiSecret: string }, payload: any) {
+  const signEndpoint = joinUrl(baseUrl, NRS_SIGN_PATH);
+
+  const signRes = await fetch(signEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": credentials.apiKey,
+      "x-api-secret": credentials.apiSecret,
+    },
+    body: JSON.stringify(payload),
+  });
+  const responseBody = await readResponseBody(signRes);
+
+  if (!signRes.ok) {
+    const failedResponse = typeof responseBody === "object" && responseBody !== null
+      ? responseBody
+      : { message: `NRS signing failed with HTTP ${signRes.status}` };
+    return {
+      ok: false,
+      status: signRes.status,
+      message: failedResponse.message ?? `NRS signing failed with HTTP ${signRes.status}`,
+      response: {
+        ...failedResponse,
+        status: false,
+        message: failedResponse.message ?? `NRS signing failed with HTTP ${signRes.status}`,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    status: signRes.status,
+    data: responseBody,
+  };
+}
+
+async function transmitNrsInvoice(baseUrl: string, credentials: { apiKey: string; apiSecret: string }, irn: string, payload: any) {
+  const transmitEndpoint = joinUrl(baseUrl, `${NRS_TRANSMIT_PATH}/${encodeURIComponent(irn)}`);
+
+  const transmitRes = await fetch(transmitEndpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": credentials.apiKey,
+      "x-api-secret": credentials.apiSecret,
+    },
+    body: JSON.stringify(payload),
+  });
+  const responseBody = await readResponseBody(transmitRes);
+
+  if (!transmitRes.ok) {
+    const failedResponse = typeof responseBody === "object" && responseBody !== null
+      ? responseBody
+      : { message: `NRS transmission failed with HTTP ${transmitRes.status}` };
+    return {
+      ok: false,
+      status: transmitRes.status,
+      message: failedResponse.message ?? `NRS transmission failed with HTTP ${transmitRes.status}`,
+      response: {
+        ...failedResponse,
+        status: false,
+        message: failedResponse.message ?? `NRS transmission failed with HTTP ${transmitRes.status}`,
+      },
+    };
+  }
+
+  return {
+    ok: true,
+    status: transmitRes.status,
+    data: responseBody,
   };
 }
 
@@ -382,13 +458,47 @@ Deno.serve(async (req: Request) => {
       }
     } else {
       const baseUrl = getNrsBaseUrl(company, environment);
-      const nrsResult = await validateNrsInvoice(baseUrl, payload);
-      response = nrsResult.response;
-      httpStatus = nrsResult.httpStatus;
+      const credentials = getNrsApiCredentials();
 
-      if (response.status === false) {
+      // Step 0: Session Authentication
+      await authenticateNrsTaxpayer(baseUrl, credentials);
+
+      // Step 1: Validate
+      const validateResult = await validateNrsInvoice(baseUrl, payload);
+      response = validateResult.response;
+      httpStatus = validateResult.httpStatus;
+
+      if (validateResult.response.status === false) {
         submissionStatus = "rejected";
         nextInvoiceStatus = "Rejected";
+      } else {
+        // Step 2: Sign
+        const signResult = await signNrsInvoice(baseUrl, credentials, payload);
+        if (!signResult.ok) {
+          response = signResult.response ?? { status: false, message: signResult.message };
+          httpStatus = signResult.status;
+          submissionStatus = "rejected";
+          nextInvoiceStatus = "Rejected";
+        } else {
+          // Stashing the signed payload
+          const signedPayload = signResult.data;
+
+          // Step 3: Transmit to Ledger
+          const transmitResult = await transmitNrsInvoice(baseUrl, credentials, irn, signedPayload);
+          if (!transmitResult.ok) {
+            // Validate & Sign succeeded, but transmission failed.
+            // Mark invoice as Signed so we can recover later.
+            response = transmitResult.response ?? { status: false, message: transmitResult.message };
+            httpStatus = transmitResult.status;
+            submissionStatus = "failed";
+            nextInvoiceStatus = "Signed";
+          } else {
+            response = transmitResult.data ?? { status: true, message: "Invoice cleared and ledger transmitted" };
+            httpStatus = 200;
+            submissionStatus = "validated";
+            nextInvoiceStatus = "Validated";
+          }
+        }
       }
     }
 
@@ -396,7 +506,9 @@ Deno.serve(async (req: Request) => {
     // Columns: payload (jsonb), validation_errors (jsonb), result (enum), scenario (text),
     //          mock (bool), created_by (uuid), company_id, invoice_id
     const isMock = environment === "mock";
-    const result = response.status === false ? "rejected" : "validated";
+    const result = response.status === false
+      ? (nextInvoiceStatus === "Signed" ? "failed" : "rejected")
+      : "validated";
     const scenario = isMock
       ? response.status === false ? "mock_failure" : "mock_success"
       : environment;

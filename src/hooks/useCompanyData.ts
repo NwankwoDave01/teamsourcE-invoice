@@ -241,6 +241,7 @@ export function useCreateInvoice() {
       payment_terms?: string | null;
       payment_means_code?: string | null;
       exchange_rate?: number | null;
+      currency?: string;
       lines: Array<{
         product_id?: string | null;
         description: string;
@@ -288,6 +289,7 @@ export function useCreateInvoice() {
           ...(input.payment_terms ? { payment_terms: input.payment_terms } : {}),
           ...(input.payment_means_code ? { payment_means_code: input.payment_means_code } : {}),
           ...(input.exchange_rate != null ? { exchange_rate: input.exchange_rate } : {}),
+          ...(input.currency ? { currency: input.currency } : {}),
         } as any)
         .select()
         .single();

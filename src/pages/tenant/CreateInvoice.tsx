@@ -25,7 +25,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCustomers, useProducts, useInvoices, useCreateInvoice } from "@/hooks/useCompanyData";
-import { INVOICE_TYPE_OPTIONS, TRANSACTION_TYPE_OPTIONS, PAYMENT_MEANS_OPTIONS } from "@/lib/nrs/codes";
+import { INVOICE_TYPE_OPTIONS, TRANSACTION_TYPE_OPTIONS } from "@/lib/nrs/codes";
+import { useNrsMasterData } from "@/hooks/useNrsMasterData";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -83,6 +84,26 @@ export default function CreateInvoice() {
   const [paymentTerms, setPaymentTerms] = useState<string>("");
   const [paymentMeansCode, setPaymentMeansCode] = useState<string>("30");
   const [exchangeRate, setExchangeRate] = useState<number>(1);
+  const [currency, setCurrency] = useState<string>("NGN");
+
+  const { data: currenciesRaw } = useNrsMasterData("currencies");
+  const { data: paymentMeansRaw } = useNrsMasterData("payment-means");
+
+  const DEFAULT_CURRENCIES = [
+    { code: "NGN", label: "NGN — Nigerian Naira" },
+    { code: "USD", label: "USD — US Dollar" },
+    { code: "GBP", label: "GBP — British Pound" },
+    { code: "EUR", label: "EUR — Euro" },
+  ];
+
+  const DEFAULT_PAYMENT_MEANS = [
+    { code: "30", label: "Government / Bank Transfer" },
+    { code: "10", label: "Cash" },
+    { code: "48", label: "Credit Card" },
+  ];
+
+  const currencies = currenciesRaw && currenciesRaw.length > 0 ? currenciesRaw : DEFAULT_CURRENCIES;
+  const paymentMeans = paymentMeansRaw && paymentMeansRaw.length > 0 ? paymentMeansRaw : DEFAULT_PAYMENT_MEANS;
 
   // Auto-generate next invoice number
   useEffect(() => {
@@ -112,15 +133,14 @@ export default function CreateInvoice() {
   const pickProduct = (lineId: string, productId: string) => {
     const p = products.find((p) => p.id === productId);
     if (!p) return;
-    const px = p as any;
     updateLine(lineId, {
       product_id: p.id,
       description: p.name,
       unit_price: Number(p.price),
       tax_rate: Number(p.tax_rate),
-      unit_code: px.unit_code ?? "EA",
-      tax_category: (px.tax_category as LineDraft["tax_category"]) ?? "S",
-      item_classification_code: px.item_classification_code ?? null,
+      unit_code: p.unit_code ?? "EA",
+      tax_category: (p.tax_category as LineDraft["tax_category"]) ?? "S",
+      item_classification_code: p.item_classification_code ?? null,
     });
   };
 
@@ -148,6 +168,7 @@ export default function CreateInvoice() {
         payment_terms: paymentTerms || null,
         payment_means_code: paymentMeansCode,
         exchange_rate: exchangeRate,
+        currency,
         lines: lines.map((l) => ({
           product_id: l.product_id,
           description: l.description,
@@ -162,8 +183,9 @@ export default function CreateInvoice() {
       });
       toast.success(status === "Draft" ? "Draft saved" : "Invoice created");
       navigate(`/app/invoices/${inv.id}`);
-    } catch (e: any) {
-      toast.error(e.message ?? "Failed to create invoice");
+    } catch (e: unknown) {
+      const err = e as Error;
+      toast.error(err.message ?? "Failed to create invoice");
     }
   };
 
@@ -245,12 +267,16 @@ export default function CreateInvoice() {
                 </div>
               </Field>
               <Field label="Currency">
-                <Select defaultValue="NGN">
+                <Select value={currency} onValueChange={setCurrency}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="NGN">NGN — Nigerian Naira</SelectItem>
+                    {currencies.map((c) => (
+                      <SelectItem key={c.code} value={c.code}>
+                        {c.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </Field>
@@ -297,8 +323,8 @@ export default function CreateInvoice() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {PAYMENT_MEANS_OPTIONS.map((o) => (
-                      <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                    {paymentMeans.map((pm) => (
+                      <SelectItem key={pm.code} value={pm.code}>{pm.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -374,6 +400,12 @@ export default function CreateInvoice() {
                         placeholder="Description"
                         className="h-8 text-sm"
                       />
+                      {line.product_id && !line.item_classification_code && (
+                        <div className="text-[10px] text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/30 rounded px-2 py-0.5 mt-1 inline-flex items-center gap-1">
+                          <Info className="h-3 w-3 shrink-0" />
+                          <span>Compliance classification required for NRS submissions.</span>
+                        </div>
+                      )}
                     </div>
 
                     <Input
