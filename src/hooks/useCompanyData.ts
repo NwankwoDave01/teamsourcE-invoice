@@ -252,6 +252,8 @@ export function useCreateInvoice() {
         tax_category?: "S" | "Z" | "E" | "O";
         discount_amount?: number;
         item_classification_code?: string | null;
+        hsn_code?: string | null;
+        product_category?: string | null;
       }>;
     }) => {
       const subtotal = input.lines.reduce(
@@ -317,6 +319,8 @@ export function useCreateInvoice() {
             tax_category: cat,
             tax_scheme: "VAT",
             item_classification_code: l.item_classification_code ?? null,
+            hsn_code: l.hsn_code ?? null,
+            product_category: l.product_category ?? null,
           };
         }) as any,
       );

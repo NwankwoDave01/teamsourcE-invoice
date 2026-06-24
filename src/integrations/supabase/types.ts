@@ -332,6 +332,11 @@ export type Database = {
           qty: number
           tax_rate: number
           unit_price: number
+          item_classification_code: string | null
+          hsn_code: string | null
+          product_category: string | null
+          unit_code: string | null
+          tax_category: Database["public"]["Enums"]["nrs_tax_category"] | null
         }
         Insert: {
           created_at?: string
@@ -344,6 +349,11 @@ export type Database = {
           qty?: number
           tax_rate?: number
           unit_price?: number
+          item_classification_code?: string | null
+          hsn_code?: string | null
+          product_category?: string | null
+          unit_code?: string | null
+          tax_category?: Database["public"]["Enums"]["nrs_tax_category"] | null
         }
         Update: {
           created_at?: string
@@ -356,6 +366,11 @@ export type Database = {
           qty?: number
           tax_rate?: number
           unit_price?: number
+          item_classification_code?: string | null
+          hsn_code?: string | null
+          product_category?: string | null
+          unit_code?: string | null
+          tax_category?: Database["public"]["Enums"]["nrs_tax_category"] | null
         }
         Relationships: [
           {
@@ -466,6 +481,8 @@ export type Database = {
           unit: string | null
           updated_at: string
           item_classification_code: string | null
+          hsn_code: string | null
+          product_category: string | null
           unit_code: string | null
           tax_category: Database["public"]["Enums"]["nrs_tax_category"] | null
           tax_scheme: string | null
@@ -484,6 +501,8 @@ export type Database = {
           unit?: string | null
           updated_at?: string
           item_classification_code?: string | null
+          hsn_code?: string | null
+          product_category?: string | null
           unit_code?: string | null
           tax_category?: Database["public"]["Enums"]["nrs_tax_category"] | null
           tax_scheme?: string | null
@@ -502,6 +521,8 @@ export type Database = {
           unit?: string | null
           updated_at?: string
           item_classification_code?: string | null
+          hsn_code?: string | null
+          product_category?: string | null
           unit_code?: string | null
           tax_category?: Database["public"]["Enums"]["nrs_tax_category"] | null
           tax_scheme?: string | null
