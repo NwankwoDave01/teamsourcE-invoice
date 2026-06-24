@@ -17,6 +17,8 @@ export function useNrsMasterData(resourceType: string) {
         .eq("resource_type", resourceType)
         .order("label");
 
+      console.log("[NRS HOOK DEBUG] Type:", resourceType, "Data:", data, "Error:", error);
+
       if (error) {
         throw error;
       }

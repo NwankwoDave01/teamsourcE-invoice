@@ -68,6 +68,27 @@ const plusDays = (days: number) => {
   return d.toISOString().slice(0, 10);
 };
 
+const DEFAULT_CURRENCIES = [
+  { code: "NGN", label: "NGN — Nigerian Naira" },
+  { code: "USD", label: "USD — US Dollar" },
+  { code: "GBP", label: "GBP — British Pound" },
+  { code: "EUR", label: "EUR — Euro" },
+];
+
+const DEFAULT_INVOICE_TYPES = [
+  { code: "380", label: "Commercial Invoice" },
+  { code: "381", label: "Credit Note" },
+  { code: "383", label: "Debit Note" },
+];
+
+const DEFAULT_PAYMENT_MEANS = [
+  { code: "30", label: "Bank Transfer" },
+  { code: "10", label: "Cash" },
+  { code: "42", label: "Cheque" },
+  { code: "48", label: "Credit Card" },
+  { code: "97", label: "Other" },
+];
+
 export default function CreateInvoice() {
   const navigate = useNavigate();
   const { data: customers = [] } = useCustomers();
@@ -90,9 +111,17 @@ export default function CreateInvoice() {
   const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [currency, setCurrency] = useState<string>("NGN");
 
-  const { data: currencies = [] } = useNrsMasterData("currencies");
-  const { data: paymentMeans = [] } = useNrsMasterData("payment-means");
-  const { data: invoiceTypes = [] } = useNrsMasterData("invoice-types");
+  const { data: currenciesRaw } = useNrsMasterData("currencies");
+  const { data: paymentMeansRaw } = useNrsMasterData("payment-means");
+  const { data: invoiceTypesRaw } = useNrsMasterData("invoice-types");
+
+  console.log("[NRS UI DEBUG] Raw Currencies:", currenciesRaw);
+  console.log("[NRS UI DEBUG] Raw Invoice Types:", invoiceTypesRaw);
+  console.log("[NRS UI DEBUG] Raw Payment Means:", paymentMeansRaw);
+
+  const currencies = currenciesRaw ?? [];
+  const paymentMeans = paymentMeansRaw ?? [];
+  const invoiceTypes = invoiceTypesRaw ?? [];
 
   // Auto-generate next invoice number
   useEffect(() => {
