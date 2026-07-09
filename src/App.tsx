@@ -9,6 +9,7 @@ import NotFound from "./pages/NotFound";
 import LandingPage from "./pages/LandingPage";
 import ApiDocs from "./pages/ApiDocs";
 import SLA from "./pages/SLA";
+import PrivacyPolicy from "./pages/PrivacyPolicy";
 
 import TenantLayout from "./layouts/TenantLayout";
 import AdminLayout from "./layouts/AdminLayout";
@@ -56,6 +57,7 @@ const App = () => (
             <Route path="/auth/signup" element={<Signup />} />
             <Route path="/api-docs" element={<ApiDocs />} />
             <Route path="/sla" element={<SLA />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicy />} />
 
             <Route element={<ProtectedRoute />}>
               <Route path="/app" element={<TenantLayout />}>
