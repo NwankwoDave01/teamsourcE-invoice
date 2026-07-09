@@ -559,6 +559,10 @@ export default function LandingPage() {
                 Service Level Agreement
               </a>
 
+              <a href="/privacy-policy" className="block hover:text-white">
+                Privacy Policy
+              </a>
+
               <p>NRS Compliance Guide</p>
             </div>
           </div>
