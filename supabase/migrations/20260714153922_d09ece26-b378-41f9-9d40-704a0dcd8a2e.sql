@@ -1,0 +1,35 @@
+
+ALTER TABLE public.companies
+  ADD COLUMN IF NOT EXISTS legal_name text,
+  ADD COLUMN IF NOT EXISTS rc_number text,
+  ADD COLUMN IF NOT EXISTS vat_number text,
+  ADD COLUMN IF NOT EXISTS email text,
+  ADD COLUMN IF NOT EXISTS phone text,
+  ADD COLUMN IF NOT EXISTS address_line1 text,
+  ADD COLUMN IF NOT EXISTS address_line2 text,
+  ADD COLUMN IF NOT EXISTS city text,
+  ADD COLUMN IF NOT EXISTS state text,
+  ADD COLUMN IF NOT EXISTS lga text,
+  ADD COLUMN IF NOT EXISTS postcode text,
+  ADD COLUMN IF NOT EXISTS country_code text DEFAULT 'NG',
+  ADD COLUMN IF NOT EXISTS industry_code text,
+  ADD COLUMN IF NOT EXISTS nrs_business_id text,
+  ADD COLUMN IF NOT EXISTS nrs_service_id text,
+  ADD COLUMN IF NOT EXISTS nrs_environment text DEFAULT 'sandbox',
+  ADD COLUMN IF NOT EXISTS nrs_sandbox_base_url text,
+  ADD COLUMN IF NOT EXISTS nrs_production_base_url text,
+  ADD COLUMN IF NOT EXISTS nrs_certificate_id text,
+  ADD COLUMN IF NOT EXISTS nrs_portal_email text,
+  ADD COLUMN IF NOT EXISTS nrs_portal_password text,
+  ADD COLUMN IF NOT EXISTS nrs_api_key text,
+  ADD COLUMN IF NOT EXISTS nrs_api_secret text;
+
+ALTER TABLE public.customers
+  ADD COLUMN IF NOT EXISTS buyer_type text DEFAULT 'business',
+  ADD COLUMN IF NOT EXISTS rc_number text,
+  ADD COLUMN IF NOT EXISTS address_line1 text,
+  ADD COLUMN IF NOT EXISTS address_line2 text,
+  ADD COLUMN IF NOT EXISTS state text,
+  ADD COLUMN IF NOT EXISTS lga text,
+  ADD COLUMN IF NOT EXISTS postcode text,
+  ADD COLUMN IF NOT EXISTS country_code text DEFAULT 'NG';

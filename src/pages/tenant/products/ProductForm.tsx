@@ -62,12 +62,12 @@ const DEFAULT_TAX_CATEGORIES = [
 ];
 
 const DEFAULT_CLASSIFICATIONS = [
-  { code: "1006.30", label: "1006.30 - Rice, semi-milled or wholly milled" },
-  { code: "2106.90", label: "2106.90 - Food preparations, n.e.s." },
-  { code: "8517.12", label: "8517.12 - Telephones for cellular networks" },
-  { code: "8471.30", label: "8471.30 - Portable automatic data processing machines" },
-  { code: "9983.11", label: "9983.11 - Management consulting services" },
-  { code: "9983.13", label: "9983.13 - Information technology consulting services" },
+  { code: "1006.30", label: "1006.30 - Rice, semi-milled or wholly milled", metadata: null as Record<string, unknown> | null },
+  { code: "2106.90", label: "2106.90 - Food preparations, n.e.s.", metadata: null as Record<string, unknown> | null },
+  { code: "8517.12", label: "8517.12 - Telephones for cellular networks", metadata: null as Record<string, unknown> | null },
+  { code: "8471.30", label: "8471.30 - Portable automatic data processing machines", metadata: null as Record<string, unknown> | null },
+  { code: "9983.11", label: "9983.11 - Management consulting services", metadata: null as Record<string, unknown> | null },
+  { code: "9983.13", label: "9983.13 - Information technology consulting services", metadata: null as Record<string, unknown> | null },
 ];
 
 interface ProductFormProps {
@@ -90,7 +90,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
   const [taxRate, setTaxRate] = useState<number>(7.5);
   const [active, setActive] = useState(true);
   const [unitCode, setUnitCode] = useState<string>("EA");
-  const [taxCategory, setTaxCategory] = useState<"S" | "Z" | "E" | "O">("S");
+  const [taxCategory, setTaxCategory] = useState<string>("S");
   const [classificationCode, setClassificationCode] = useState<string>("");
   const [openClassification, setOpenClassification] = useState(false);
   const [hsnCode, setHsnCode] = useState<string>("");
@@ -120,7 +120,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
       setTaxRate(Number(existing.tax_rate));
       setActive(existing.active);
       setUnitCode(ex.unit_code ?? "EA");
-      setTaxCategory((ex.tax_category as "S" | "Z" | "E" | "O") ?? "S");
+      setTaxCategory(ex.tax_category ?? "S");
       setClassificationCode(ex.item_classification_code ?? "");
       setHsnCode(ex.hsn_code ?? "");
       setProductCategory(ex.product_category ?? "");
@@ -281,51 +281,19 @@ export default function ProductForm({ mode }: ProductFormProps) {
 
                                 // Check metadata for default tax rate or code
                                 if (o.metadata) {
-                                  const metadata = o.metadata;
-                                  const values = Object.values(metadata).map(v => String(v).toUpperCase());
-                                  
-                                  let selectedCategory: "S" | "Z" | "E" | "O" | null = null;
-                                  let selectedRate: number | null = null;
-
-                                  const mapCodeToCategory = (code: string) => {
-                                    const c = code.toUpperCase();
-                                    if (c === "STANDARD_VAT" || c === "STANDARD" || c === "S") return "S";
-                                    if (c === "ZERO_VAT" || c === "ZERO" || c === "Z") return "Z";
-                                    if (c === "EXEMPT_VAT" || c === "EXEMPT" || c === "E") return "E";
-                                    if (c === "OUT_OF_SCOPE" || c === "O") return "O";
-                                    return null;
-                                  };
-
-                                  const taxCategoryVal = metadata.tax_category || metadata.tax_code || metadata.default_tax_code || metadata.default_tax_category;
-                                  if (typeof taxCategoryVal === "string") {
-                                    const mapped = mapCodeToCategory(taxCategoryVal);
-                                    if (mapped) selectedCategory = mapped;
+                                  const metadata = o.metadata as Record<string, unknown>;
+                                  const taxCategoryVal =
+                                    metadata.tax_category ??
+                                    metadata.tax_code ??
+                                    metadata.default_tax_code ??
+                                    metadata.default_tax_category;
+                                  if (typeof taxCategoryVal === "string" && taxCategoryVal.trim()) {
+                                    // Preserve raw NRS code (e.g. "LOCAL_SALES_TAX") instead of coercing to S/Z/E/O.
+                                    setTaxCategory(taxCategoryVal);
                                   }
-
                                   const taxRateVal = metadata.tax_rate ?? metadata.default_tax_rate;
                                   if (typeof taxRateVal === "number") {
-                                    selectedRate = taxRateVal;
-                                    if (selectedRate === 7.5) selectedCategory = "S";
-                                    else if (selectedRate === 0 && !selectedCategory) selectedCategory = "Z";
-                                  }
-
-                                  if (!selectedCategory) {
-                                    for (const val of values) {
-                                      const mapped = mapCodeToCategory(val);
-                                      if (mapped) {
-                                        selectedCategory = mapped;
-                                        break;
-                                      }
-                                    }
-                                  }
-
-                                  if (selectedCategory) {
-                                    setTaxCategory(selectedCategory);
-                                    if (selectedCategory === "S") {
-                                      setTaxRate(selectedRate ?? 7.5);
-                                    } else {
-                                      setTaxRate(0);
-                                    }
+                                    setTaxRate(taxRateVal);
                                   }
                                 }
                               }}
@@ -399,7 +367,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
                 <FieldHint>UN/ECE Rec 20 unit code for NRS reporting.</FieldHint>
               </Field>
               <Field label="Tax category">
-                <Select value={taxCategory} onValueChange={(v) => setTaxCategory(v as "S" | "Z" | "E" | "O")}>
+                <Select value={taxCategory} onValueChange={setTaxCategory}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>

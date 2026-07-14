@@ -60,37 +60,106 @@ export type Database = {
       }
       companies: {
         Row: {
+          address_line1: string | null
+          address_line2: string | null
+          city: string | null
+          country_code: string | null
           created_at: string
           created_by: string | null
+          email: string | null
           id: string
           industry: string | null
+          industry_code: string | null
+          legal_name: string | null
+          lga: string | null
           name: string
+          nrs_api_key: string | null
+          nrs_api_secret: string | null
+          nrs_business_id: string | null
+          nrs_certificate_id: string | null
+          nrs_environment: string | null
+          nrs_portal_email: string | null
+          nrs_portal_password: string | null
+          nrs_production_base_url: string | null
+          nrs_sandbox_base_url: string | null
+          nrs_service_id: string | null
+          phone: string | null
           plan: Database["public"]["Enums"]["company_plan"]
+          postcode: string | null
+          rc_number: string | null
+          state: string | null
           status: Database["public"]["Enums"]["company_status"]
           tin: string
           updated_at: string
+          vat_number: string | null
         }
         Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          country_code?: string | null
           created_at?: string
           created_by?: string | null
+          email?: string | null
           id?: string
           industry?: string | null
+          industry_code?: string | null
+          legal_name?: string | null
+          lga?: string | null
           name: string
+          nrs_api_key?: string | null
+          nrs_api_secret?: string | null
+          nrs_business_id?: string | null
+          nrs_certificate_id?: string | null
+          nrs_environment?: string | null
+          nrs_portal_email?: string | null
+          nrs_portal_password?: string | null
+          nrs_production_base_url?: string | null
+          nrs_sandbox_base_url?: string | null
+          nrs_service_id?: string | null
+          phone?: string | null
           plan?: Database["public"]["Enums"]["company_plan"]
+          postcode?: string | null
+          rc_number?: string | null
+          state?: string | null
           status?: Database["public"]["Enums"]["company_status"]
           tin: string
           updated_at?: string
+          vat_number?: string | null
         }
         Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          city?: string | null
+          country_code?: string | null
           created_at?: string
           created_by?: string | null
+          email?: string | null
           id?: string
           industry?: string | null
+          industry_code?: string | null
+          legal_name?: string | null
+          lga?: string | null
           name?: string
+          nrs_api_key?: string | null
+          nrs_api_secret?: string | null
+          nrs_business_id?: string | null
+          nrs_certificate_id?: string | null
+          nrs_environment?: string | null
+          nrs_portal_email?: string | null
+          nrs_portal_password?: string | null
+          nrs_production_base_url?: string | null
+          nrs_sandbox_base_url?: string | null
+          nrs_service_id?: string | null
+          phone?: string | null
           plan?: Database["public"]["Enums"]["company_plan"]
+          postcode?: string | null
+          rc_number?: string | null
+          state?: string | null
           status?: Database["public"]["Enums"]["company_status"]
           tin?: string
           updated_at?: string
+          vat_number?: string | null
         }
         Relationships: []
       }
@@ -131,37 +200,61 @@ export type Database = {
       }
       customers: {
         Row: {
+          address_line1: string | null
+          address_line2: string | null
+          buyer_type: string | null
           city: string | null
           company_id: string
+          country_code: string | null
           created_at: string
           email: string | null
           id: string
+          lga: string | null
           name: string
           phone: string | null
+          postcode: string | null
+          rc_number: string | null
+          state: string | null
           status: Database["public"]["Enums"]["member_status"]
           tin: string | null
           updated_at: string
         }
         Insert: {
+          address_line1?: string | null
+          address_line2?: string | null
+          buyer_type?: string | null
           city?: string | null
           company_id: string
+          country_code?: string | null
           created_at?: string
           email?: string | null
           id?: string
+          lga?: string | null
           name: string
           phone?: string | null
+          postcode?: string | null
+          rc_number?: string | null
+          state?: string | null
           status?: Database["public"]["Enums"]["member_status"]
           tin?: string | null
           updated_at?: string
         }
         Update: {
+          address_line1?: string | null
+          address_line2?: string | null
+          buyer_type?: string | null
           city?: string | null
           company_id?: string
+          country_code?: string | null
           created_at?: string
           email?: string | null
           id?: string
+          lga?: string | null
           name?: string
           phone?: string | null
+          postcode?: string | null
+          rc_number?: string | null
+          state?: string | null
           status?: Database["public"]["Enums"]["member_status"]
           tin?: string | null
           updated_at?: string
@@ -210,37 +303,64 @@ export type Database = {
         Row: {
           created_at: string
           description: string
+          discount_amount: number
+          hsn_code: string | null
           id: string
           invoice_id: string
+          item_classification_code: string | null
           line_total: number
+          net_amount: number | null
           position: number
+          product_category: string | null
           product_id: string | null
           qty: number
+          tax_amount: number | null
+          tax_category: string
           tax_rate: number
+          tax_scheme: string
+          unit_code: string
           unit_price: number
         }
         Insert: {
           created_at?: string
           description: string
+          discount_amount?: number
+          hsn_code?: string | null
           id?: string
           invoice_id: string
+          item_classification_code?: string | null
           line_total?: number
+          net_amount?: number | null
           position?: number
+          product_category?: string | null
           product_id?: string | null
           qty?: number
+          tax_amount?: number | null
+          tax_category?: string
           tax_rate?: number
+          tax_scheme?: string
+          unit_code?: string
           unit_price?: number
         }
         Update: {
           created_at?: string
           description?: string
+          discount_amount?: number
+          hsn_code?: string | null
           id?: string
           invoice_id?: string
+          item_classification_code?: string | null
           line_total?: number
+          net_amount?: number | null
           position?: number
+          product_category?: string | null
           product_id?: string | null
           qty?: number
+          tax_amount?: number | null
+          tax_category?: string
           tax_rate?: number
+          tax_scheme?: string
+          unit_code?: string
           unit_price?: number
         }
         Relationships: [
@@ -269,16 +389,22 @@ export type Database = {
           customer_id: string | null
           customer_name: string
           due_date: string
+          exchange_rate: number
           id: string
+          invoice_type: string
           irn: string | null
           issue_date: string
           notes: string | null
           number: string
+          payment_means_code: string
+          payment_terms: string | null
           po_reference: string | null
           status: Database["public"]["Enums"]["invoice_status"]
           subtotal: number
+          supply_date: string | null
           tax: number
           total: number
+          transaction_type: string
           updated_at: string
         }
         Insert: {
@@ -289,16 +415,22 @@ export type Database = {
           customer_id?: string | null
           customer_name: string
           due_date: string
+          exchange_rate?: number
           id?: string
+          invoice_type?: string
           irn?: string | null
           issue_date?: string
           notes?: string | null
           number: string
+          payment_means_code?: string
+          payment_terms?: string | null
           po_reference?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal?: number
+          supply_date?: string | null
           tax?: number
           total?: number
+          transaction_type?: string
           updated_at?: string
         }
         Update: {
@@ -309,16 +441,22 @@ export type Database = {
           customer_id?: string | null
           customer_name?: string
           due_date?: string
+          exchange_rate?: number
           id?: string
+          invoice_type?: string
           irn?: string | null
           issue_date?: string
           notes?: string | null
           number?: string
+          payment_means_code?: string
+          payment_terms?: string | null
           po_reference?: string | null
           status?: Database["public"]["Enums"]["invoice_status"]
           subtotal?: number
+          supply_date?: string | null
           tax?: number
           total?: number
+          transaction_type?: string
           updated_at?: string
         }
         Relationships: [
@@ -338,18 +476,94 @@ export type Database = {
           },
         ]
       }
+      nrs_master_data: {
+        Row: {
+          code: string
+          created_at: string
+          label: string
+          metadata: Json | null
+          resource_type: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          label: string
+          metadata?: Json | null
+          resource_type: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          label?: string
+          metadata?: Json | null
+          resource_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      nrs_submissions: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          invoice_id: string
+          mock: boolean
+          payload: Json | null
+          result: string | null
+          scenario: string | null
+          validation_errors: Json | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_id: string
+          mock?: boolean
+          payload?: Json | null
+          result?: string | null
+          scenario?: string | null
+          validation_errors?: Json | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          invoice_id?: string
+          mock?: boolean
+          payload?: Json | null
+          result?: string | null
+          scenario?: string | null
+          validation_errors?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nrs_submissions_invoice_id_fkey"
+            columns: ["invoice_id"]
+            isOneToOne: false
+            referencedRelation: "invoices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       products: {
         Row: {
           active: boolean
           category: string | null
           company_id: string
           created_at: string
+          hsn_code: string | null
           id: string
+          item_classification_code: string | null
           name: string
           price: number
+          product_category: string | null
           sku: string
+          tax_category: string
           tax_rate: number
           unit: string | null
+          unit_code: string
           updated_at: string
         }
         Insert: {
@@ -357,12 +571,17 @@ export type Database = {
           category?: string | null
           company_id: string
           created_at?: string
+          hsn_code?: string | null
           id?: string
+          item_classification_code?: string | null
           name: string
           price?: number
+          product_category?: string | null
           sku: string
+          tax_category?: string
           tax_rate?: number
           unit?: string | null
+          unit_code?: string
           updated_at?: string
         }
         Update: {
@@ -370,12 +589,17 @@ export type Database = {
           category?: string | null
           company_id?: string
           created_at?: string
+          hsn_code?: string | null
           id?: string
+          item_classification_code?: string | null
           name?: string
           price?: number
+          product_category?: string | null
           sku?: string
+          tax_category?: string
           tax_rate?: number
           unit?: string | null
+          unit_code?: string
           updated_at?: string
         }
         Relationships: [

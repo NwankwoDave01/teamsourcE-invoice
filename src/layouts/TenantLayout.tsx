@@ -2,8 +2,24 @@ import { Outlet } from "react-router-dom";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { TenantSidebar } from "@/components/shell/TenantSidebar";
 import { TopBar } from "@/components/shell/TopBar";
+import { useAuth } from "@/contexts/AuthContext";
+import CompanyOnboarding from "@/pages/tenant/onboarding/CompanyOnboarding";
+import { Loader2 } from "lucide-react";
 
 export default function TenantLayout() {
+  const { loading, user, companyId, isSuperAdmin } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (user && !companyId && !isSuperAdmin) {
+    return <CompanyOnboarding />;
+  }
 
   return (
     <SidebarProvider>
