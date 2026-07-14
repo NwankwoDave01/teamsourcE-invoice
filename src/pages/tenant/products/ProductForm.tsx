@@ -62,12 +62,12 @@ const DEFAULT_TAX_CATEGORIES = [
 ];
 
 const DEFAULT_CLASSIFICATIONS = [
-  { code: "1006.30", label: "1006.30 - Rice, semi-milled or wholly milled" },
-  { code: "2106.90", label: "2106.90 - Food preparations, n.e.s." },
-  { code: "8517.12", label: "8517.12 - Telephones for cellular networks" },
-  { code: "8471.30", label: "8471.30 - Portable automatic data processing machines" },
-  { code: "9983.11", label: "9983.11 - Management consulting services" },
-  { code: "9983.13", label: "9983.13 - Information technology consulting services" },
+  { code: "1006.30", label: "1006.30 - Rice, semi-milled or wholly milled", metadata: null as Record<string, unknown> | null },
+  { code: "2106.90", label: "2106.90 - Food preparations, n.e.s.", metadata: null as Record<string, unknown> | null },
+  { code: "8517.12", label: "8517.12 - Telephones for cellular networks", metadata: null as Record<string, unknown> | null },
+  { code: "8471.30", label: "8471.30 - Portable automatic data processing machines", metadata: null as Record<string, unknown> | null },
+  { code: "9983.11", label: "9983.11 - Management consulting services", metadata: null as Record<string, unknown> | null },
+  { code: "9983.13", label: "9983.13 - Information technology consulting services", metadata: null as Record<string, unknown> | null },
 ];
 
 interface ProductFormProps {
@@ -90,7 +90,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
   const [taxRate, setTaxRate] = useState<number>(7.5);
   const [active, setActive] = useState(true);
   const [unitCode, setUnitCode] = useState<string>("EA");
-  const [taxCategory, setTaxCategory] = useState<"S" | "Z" | "E" | "O">("S");
+  const [taxCategory, setTaxCategory] = useState<string>("S");
   const [classificationCode, setClassificationCode] = useState<string>("");
   const [openClassification, setOpenClassification] = useState(false);
   const [hsnCode, setHsnCode] = useState<string>("");
@@ -120,7 +120,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
       setTaxRate(Number(existing.tax_rate));
       setActive(existing.active);
       setUnitCode(ex.unit_code ?? "EA");
-      setTaxCategory((ex.tax_category as "S" | "Z" | "E" | "O") ?? "S");
+      setTaxCategory(ex.tax_category ?? "S");
       setClassificationCode(ex.item_classification_code ?? "");
       setHsnCode(ex.hsn_code ?? "");
       setProductCategory(ex.product_category ?? "");
