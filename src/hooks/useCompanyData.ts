@@ -249,7 +249,7 @@ export function useCreateInvoice() {
         unit_price: number;
         tax_rate: number;
         unit_code?: string;
-        tax_category?: "S" | "Z" | "E" | "O";
+        tax_category?: string;
         discount_amount?: number;
         item_classification_code?: string | null;
         hsn_code?: string | null;
@@ -264,7 +264,9 @@ export function useCreateInvoice() {
         (s, l) =>
           s +
           (l.qty * l.unit_price - (l.discount_amount ?? 0)) *
-            ((l.tax_category ?? "S") === "S" ? l.tax_rate / 100 : 0),
+            ((l.tax_category ?? "S") !== "Z" && (l.tax_category ?? "S") !== "E" && (l.tax_category ?? "S") !== "O"
+              ? l.tax_rate / 100
+              : 0),
         0,
       );
       const total = subtotal + tax;
@@ -302,7 +304,7 @@ export function useCreateInvoice() {
           const discount = l.discount_amount ?? 0;
           const cat = l.tax_category ?? "S";
           const net = l.qty * l.unit_price - discount;
-          const lineTax = cat === "S" ? net * (l.tax_rate / 100) : 0;
+          const lineTax = cat !== "Z" && cat !== "E" && cat !== "O" ? net * (l.tax_rate / 100) : 0;
           return {
             invoice_id: inv.id,
             product_id: l.product_id ?? null,

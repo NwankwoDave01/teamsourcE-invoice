@@ -39,7 +39,7 @@ interface LineDraft {
   unit_price: number;
   tax_rate: number;
   unit_code: string;
-  tax_category: "S" | "Z" | "E" | "O";
+  tax_category: string;
   discount_amount: number;
   item_classification_code: string | null;
   hsn_code: string | null;
@@ -157,7 +157,7 @@ export default function CreateInvoice() {
       unit_price: Number(p.price),
       tax_rate: Number(p.tax_rate),
       unit_code: p.unit_code ?? "EA",
-      tax_category: (p.tax_category as LineDraft["tax_category"]) ?? "S",
+      tax_category: p.tax_category ?? "S",
       item_classification_code: p.item_classification_code ?? null,
       hsn_code: p.hsn_code ?? null,
       product_category: p.product_category ?? null,
