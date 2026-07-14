@@ -1,67 +1,62 @@
 
-## Context
+# Stabilization Plan — NRS Schema Alignment + New-User Onboarding
 
-I trust your confirmation that the additive NRS migration is live. I re-read all the forms and hooks. The good news: most of the wiring you asked for is already in place. There is **one real gap** plus one small visibility improvement.
+## Root causes (verified against live DB)
 
-### What's already correctly wired (no work needed)
+1. **Product creation fails** — `products` table has no `hsn_code`, `product_category`, `tax_category`, `unit_code`, or `item_classification_code`. `ProductForm.tsx` sends them, PostgREST rejects with *"could not find hsn_code in schema"*. Also, `tax_category` is typed in TS as `"S" | "Z" | "E" | "O"`, so any NRS-provided string like `LOCAL_SALES_TAX` is coerced/rejected client-side.
+2. **Invoice creation fails** — `invoice_lines` is missing the same NRS columns (`hsn_code`, `product_category`, `tax_category`, `unit_code`, `discount_amount`, `net_amount`, `tax_amount`, `tax_scheme`, `item_classification_code`). `invoices` is missing `invoice_type`, `transaction_type`, `supply_date`, `payment_terms`, `payment_means_code`, `exchange_rate`. Same rigid enum for line `tax_category`.
+3. **`nrs_master_data` and `nrs_submissions` tables do not exist** — `useNrsMasterData("hs-codes")` and the `nrs-submit` edge function insert both hit missing tables, producing schema fetch errors that surface as *"Failed to fetch"* on other pages.
+4. **New-user blank dashboard** — the `handle_new_user` function exists but **no trigger on `auth.users` invokes it**, so new signups have no company / no membership. `useInvoices` is gated on `companyId`, but other side calls and layout render as broken. No onboarding UI intercepts the missing-company state.
 
-- **Settings.tsx + `useUpdateCompany`** — saves `legal_name, rc_number, vat_number, email, phone, address_line1/2, city, state, lga, postcode, country_code, industry_code`. Hydrates from `company`.
-- **CustomerForm.tsx + `useCreateCustomer` / `useUpdateCustomer`** — saves `buyer_type, rc_number, address_line1/2, state, lga, postcode, country_code` plus existing `email, phone, tin, city`. Hydrates from `existing`.
-- **ProductForm.tsx + `useCreateProduct` / `useUpdateProduct`** — saves `unit_code, tax_category, item_classification_code`. Hydrates from `existing`.
-- **CreateInvoice.tsx + `useCreateInvoice`** — saves the **header** fields `invoice_type, transaction_type, supply_date, payment_terms, payment_means_code, exchange_rate`.
-- **`buildPayload.ts`** — already does `select("*")` on invoices/companies/customers/lines, so once the columns exist (your migration) and the forms save them, the preview will read **real saved values** automatically. No change needed there.
+## Files affected
 
-### The actual gap: invoice **line** NRS fields are dropped on save
+- **Migration (new)** — add columns, create NRS tables, install `on_auth_user_created` trigger, seed baseline master data.
+- `src/integrations/supabase/types.ts` — auto-regenerated after migration runs.
+- `src/hooks/useCompanyData.ts` — widen `tax_category` typing to `string`; no more `"S" | "Z" | "E" | "O"` narrowing in create payloads.
+- `src/pages/tenant/products/ProductForm.tsx` — treat `tax_category` as free-form string; keep classification dropdown wired to `useNrsMasterData("hs-codes")` + `services-codes`, but stop coercing metadata codes that don't map (write the raw NRS code back).
+- `src/pages/tenant/CreateInvoice.tsx` — `LineDraft.tax_category: string`; pass through raw NRS values from the picked product without narrowing.
+- `src/layouts/TenantLayout.tsx` — when auth is ready and `companyId` is null, render `<CompanyOnboarding />` instead of the sidebar/outlet.
+- `src/pages/tenant/onboarding/CompanyOnboarding.tsx` (new) — Business Name, TIN, Location form; inserts into `companies`, `company_members`, `user_roles`, then calls `refreshMembership()`.
 
-In `CreateInvoice.tsx` the `LineDraft` type has only `description, qty, unit_price, tax_rate` and `useCreateInvoice` inserts the same minimal set. So even when the user picks a product whose `unit_code = "EA"` and `tax_category = "S"` are saved, none of that flows onto the invoice line, and the preview falls back to defaults for every line.
+## Implementation order
 
-## Plan
+1. **Database migration** (one call — user approves):
+   - `ALTER TABLE public.products` add: `unit_code text default 'EA'`, `tax_category text default 'S'`, `item_classification_code text`, `hsn_code text`, `product_category text`.
+   - `ALTER TABLE public.invoice_lines` add: `unit_code text default 'EA'`, `tax_category text default 'S'`, `tax_scheme text default 'VAT'`, `discount_amount numeric default 0`, `net_amount numeric`, `tax_amount numeric`, `item_classification_code text`, `hsn_code text`, `product_category text`.
+   - `ALTER TABLE public.invoices` add: `invoice_type text default '380'`, `transaction_type text default 'B2B'`, `supply_date date`, `payment_terms text`, `payment_means_code text default '30'`, `exchange_rate numeric default 1`.
+   - `CREATE TABLE public.nrs_master_data (resource_type text, code text, label text, metadata jsonb, primary key (resource_type, code))` — GRANT SELECT to `anon` + `authenticated`; RLS with public read policy (reference data). Seed baseline rows for `hs-codes`, `services-codes`, `unit-codes`, `tax-categories`, `currencies`, `invoice-types`, `payment-means`.
+   - `CREATE TABLE public.nrs_submissions (invoice_id uuid, payload jsonb, validation_errors jsonb, result text, scenario text, mock boolean, created_by uuid, created_at timestamptz)` — GRANT to `authenticated`/`service_role`; RLS scoped through invoice → company membership.
+   - `CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user()`.
+2. **Frontend type widening** — drop the `"S" | "Z" | "E" | "O"` unions in `ProductForm`, `CreateInvoice`, `useCreateInvoice`. Store whatever NRS returns.
+3. **Onboarding component** — build the missing-company intercept in `TenantLayout` with a polished single-card form.
+4. **Validation** — run `tsgo` build, click through Product create, Invoice create, and simulate a fresh signup (no company row) to confirm the onboarding path renders and creates the company.
 
-### 1. Extend `LineDraft` and the line-pick handler (`src/pages/tenant/CreateInvoice.tsx`)
-Add to `LineDraft`: `unit_code: string` (default `"EA"`), `tax_category: "S"|"Z"|"E"|"O"` (default `"S"`), `discount_amount: number` (default `0`), `item_classification_code: string | null` (default `null`).
+## Design constraints
 
-In `pickProduct`, copy the product's `unit_code`, `tax_category`, `item_classification_code` onto the chosen line so users get correct values for free. No new UI fields; values flow from the product catalog.
+- No visual redesign of existing pages. Onboarding follows current card + `PageHeader`-less shell language.
+- No PDF/Void/Duplicate work (out of scope).
+- Reference data reads are safe to expose to `anon` (public codes); writes remain service-role.
+- All new columns default so existing rows/inserts remain valid.
 
-Pass these fields into `createMut.mutateAsync({ lines: ... })`.
+## Risk analysis
 
-### 2. Extend `useCreateInvoice` line insert (`src/hooks/useCompanyData.ts`)
-Extend the `lines` element type to include `unit_code, tax_category, discount_amount, item_classification_code` (all optional). In the `invoice_lines` insert payload, spread these — guarded with `as any` until Supabase regenerates types — and recompute `line_total` to subtract `discount_amount` before tax (`(qty * unit_price - discount) * (1 + tax_rate/100)`).
+| Risk | Mitigation |
+| --- | --- |
+| Migration widening columns changes app types mid-flight | Types regenerate automatically after approval; frontend edits ship in the same turn. |
+| Seed data collides with real government values | Use `on conflict (resource_type, code) do nothing` in inserts. |
+| `on_auth_user_created` trigger fires for existing users | Trigger is `AFTER INSERT` only, so pre-existing users are unaffected. Existing accounts without a company will hit the new onboarding intercept. |
+| Legacy enum consumers (`buildPayload`, `nrs-submit`) rely on S/Z/E/O | Payload builder already treats unknown categories as non-VAT; we keep NRS codes as raw strings and let the government API decide. |
+| `nrs_submissions` RLS misconfigured → edge function 500s | Grant `ALL` to `service_role`; edge function uses service key. |
 
-### 3. Tiny read-only addition in `InvoiceDetails.tsx`
-Add an "NRS details" row in the existing detail panel showing `Invoice type`, `Transaction type`, `Supply date`, `Payment terms`, `Payment means`. No layout redesign — same card, two extra rows. This makes it obvious what the preview is about to consume.
+## Cache / manual actions
 
-### 4. No other changes
-- No DB migration.
-- No new pages, no homepage edits, no UI redesign.
-- No NRS API call.
-- No edit to `src/integrations/supabase/types.ts` (regenerated automatically; we keep the `as any` casts that are already there until it does).
+- None for browsers. After migration approval, Supabase types regenerate automatically. No user-side refresh required beyond a normal reload.
 
-### 5. TypeScript check
-The harness runs typecheck after the edits. I'll fix anything that surfaces.
+## Testing checklist (post-build)
 
-## What to test manually after the change
-
-1. **Settings → Company tab**: fill `Registered legal name`, `RC number`, `Address line 1`, `City`, `State`, `Country code`. Save → reload page → all fields persist.
-2. **Customers → New**: set `Buyer type = Business`, fill TIN, RC number, address line 1, state, country code. Save → reopen → fields persist.
-3. **Products → New**: set `Unit code = EA`, `Tax category = S`, `Item classification = 1006.30`. Save → reopen → fields persist.
-4. **Create Invoice**:
-   - Pick the customer + product from steps 2/3.
-   - Header: `Invoice type = Commercial`, `Transaction type = B2B`, `Supply date` = today, `Payment terms = Net 30`, `Payment means = 30 — Bank transfer`, `Exchange rate = 1`.
-   - Confirm the line picks up the product's unit code / tax category internally.
-   - Save the invoice.
-5. **Invoice Details page**: confirm new "NRS details" rows show what you entered.
-6. **Click "Preview NRS Payload"**:
-   - **Validation tab**: 0 errors. Warnings (if any) should be about things you intentionally left blank — not about TIN/address/unit code on the data you just filled.
-   - **JSON tab**, verify these reflect saved values:
-     - `supplier.legalName`, `supplier.rcNumber`, `supplier.address.line1/state/countryCode` → from Settings.
-     - `buyer.buyerType` = `business`, `buyer.rcNumber`, `buyer.address.*` → from the customer.
-     - `lines[0].unitCode` = `EA`, `taxCategory` = `S`, `itemCode` = `1006.30`.
-     - `invoiceTypeCode` = `380`, `transactionType` = `B2B`, `supplyDate` filled, `paymentMeansCode` = `30`, `paymentTerms` = `Net 30`.
-7. **Negative case**: create a second customer with no address / no TIN, issue an invoice to them → preview should show TIN/address as **warnings** (lenient), not errors, and still produce a JSON payload.
-8. **Backward compat**: open an old invoice created before the migration → it should still load, still preview, just with more warnings.
-
-## Risks / notes
-
-- `as any` casts remain in a couple of insert payloads until Supabase regenerates `types.ts`. They'll resolve themselves on next type sync. They don't affect runtime.
-- No data is sent to NRS. Preview remains an internal UBL-style mapping, as agreed.
-- If you do want the invoice line UI to also show editable `Unit code` / `Tax category` selectors per line (today they're only inherited from the picked product), say the word and I'll add them inside the existing line row — but the current request explicitly says "do not redesign UI" so I'm holding off.
+- [ ] Add product with HS classification from dropdown → saves without schema error.
+- [ ] Product picker with government `LOCAL_SALES_TAX` metadata saves raw category.
+- [ ] Create invoice with line items → succeeds, lines carry `hsn_code`, `product_category`, `tax_category`.
+- [ ] Fresh signup → onboarding card appears; submit → dashboard loads with zero-state.
+- [ ] Existing users unaffected; dashboard KPIs render.
+- [ ] `nrs-submit` insert into `nrs_submissions` no longer 404s.
