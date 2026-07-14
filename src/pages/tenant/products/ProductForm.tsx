@@ -281,51 +281,19 @@ export default function ProductForm({ mode }: ProductFormProps) {
 
                                 // Check metadata for default tax rate or code
                                 if (o.metadata) {
-                                  const metadata = o.metadata;
-                                  const values = Object.values(metadata).map(v => String(v).toUpperCase());
-                                  
-                                  let selectedCategory: "S" | "Z" | "E" | "O" | null = null;
-                                  let selectedRate: number | null = null;
-
-                                  const mapCodeToCategory = (code: string) => {
-                                    const c = code.toUpperCase();
-                                    if (c === "STANDARD_VAT" || c === "STANDARD" || c === "S") return "S";
-                                    if (c === "ZERO_VAT" || c === "ZERO" || c === "Z") return "Z";
-                                    if (c === "EXEMPT_VAT" || c === "EXEMPT" || c === "E") return "E";
-                                    if (c === "OUT_OF_SCOPE" || c === "O") return "O";
-                                    return null;
-                                  };
-
-                                  const taxCategoryVal = metadata.tax_category || metadata.tax_code || metadata.default_tax_code || metadata.default_tax_category;
-                                  if (typeof taxCategoryVal === "string") {
-                                    const mapped = mapCodeToCategory(taxCategoryVal);
-                                    if (mapped) selectedCategory = mapped;
+                                  const metadata = o.metadata as Record<string, unknown>;
+                                  const taxCategoryVal =
+                                    metadata.tax_category ??
+                                    metadata.tax_code ??
+                                    metadata.default_tax_code ??
+                                    metadata.default_tax_category;
+                                  if (typeof taxCategoryVal === "string" && taxCategoryVal.trim()) {
+                                    // Preserve raw NRS code (e.g. "LOCAL_SALES_TAX") instead of coercing to S/Z/E/O.
+                                    setTaxCategory(taxCategoryVal);
                                   }
-
                                   const taxRateVal = metadata.tax_rate ?? metadata.default_tax_rate;
                                   if (typeof taxRateVal === "number") {
-                                    selectedRate = taxRateVal;
-                                    if (selectedRate === 7.5) selectedCategory = "S";
-                                    else if (selectedRate === 0 && !selectedCategory) selectedCategory = "Z";
-                                  }
-
-                                  if (!selectedCategory) {
-                                    for (const val of values) {
-                                      const mapped = mapCodeToCategory(val);
-                                      if (mapped) {
-                                        selectedCategory = mapped;
-                                        break;
-                                      }
-                                    }
-                                  }
-
-                                  if (selectedCategory) {
-                                    setTaxCategory(selectedCategory);
-                                    if (selectedCategory === "S") {
-                                      setTaxRate(selectedRate ?? 7.5);
-                                    } else {
-                                      setTaxRate(0);
-                                    }
+                                    setTaxRate(taxRateVal);
                                   }
                                 }
                               }}
