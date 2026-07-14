@@ -367,7 +367,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
                 <FieldHint>UN/ECE Rec 20 unit code for NRS reporting.</FieldHint>
               </Field>
               <Field label="Tax category">
-                <Select value={taxCategory} onValueChange={(v) => setTaxCategory(v as "S" | "Z" | "E" | "O")}>
+                <Select value={taxCategory} onValueChange={setTaxCategory}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
