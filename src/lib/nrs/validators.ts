@@ -127,15 +127,19 @@ export function validateForNrs({ invoice, lines, company, customer }: ValidateIn
     }
 
     const cat = (line.tax_category ?? "S") as string;
+    // tax_category is free-form NRS text (e.g. "S", "LOCAL_SALES_TAX", etc.).
+    // Unknown codes surface as a warning only — never a hard block.
     if (!ALLOWED_TAX_CATEGORIES.has(cat)) {
-      issues.push(err(`${path}.tax_category`, "TAX_CATEGORY", "Tax category must be one of S, Z, E, O."));
+      issues.push(warn(`${path}.tax_category`, "TAX_CATEGORY_UNKNOWN",
+        `Tax category "${cat}" is not a standard UBL code (S/Z/E/O). Verify with NRS.`));
     }
 
+    const zeroRatedCategory = cat === "Z" || cat === "E" || cat === "O";
     const expectedNet = round2(qty * unitPrice - discount);
-    const expectedTax = cat === "S" ? round2(expectedNet * (taxRate / 100)) : 0;
+    const expectedTax = zeroRatedCategory ? 0 : round2(expectedNet * (taxRate / 100));
     const expectedLineTotal = round2(expectedNet + expectedTax);
 
-    if (cat !== "S" && Number(line.tax_amount ?? 0) > 0) {
+    if (zeroRatedCategory && Number(line.tax_amount ?? 0) > 0) {
       issues.push(warn(`${path}.tax_amount`, "TAX_ON_NON_STANDARD",
         "Tax amount should be zero for Z / E / O tax categories."));
     }
@@ -150,7 +154,7 @@ export function validateForNrs({ invoice, lines, company, customer }: ValidateIn
         `Stored tax (${line.tax_amount}) differs from computed (${expectedTax}).`));
     }
 
-    if (cat === "S" && !line.item_classification_code) {
+    if (!zeroRatedCategory && !line.item_classification_code) {
       issues.push(warn(`${path}.item_classification_code`, "ITEM_CODE_RECOMMENDED",
         "Standard-rated lines should have an item classification (HS) code."));
     }

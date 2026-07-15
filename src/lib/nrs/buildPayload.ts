@@ -67,9 +67,10 @@ export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult
     const unitPrice = Number(l.unit_price ?? 0);
     const taxRate = Number(l.tax_rate ?? 0);
     const discount = Number(l.discount_amount ?? 0);
-    const cat = (l.tax_category ?? "S") as NrsLine["taxCategory"];
+    const cat = (l.tax_category ?? "S") as string;
+    const zeroRated = cat === "Z" || cat === "E" || cat === "O";
     const net = round2(qty * unitPrice - discount);
-    const taxAmount = cat === "S" ? round2(net * (taxRate / 100)) : 0;
+    const taxAmount = zeroRated ? 0 : round2(net * (taxRate / 100));
     return {
       lineUuid: l.line_uuid ?? l.id,
       position: l.position ?? idx,
@@ -84,7 +85,7 @@ export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult
       taxCategory: cat,
       taxScheme: l.tax_scheme ?? "VAT",
       taxRate,
-      taxableAmount: cat === "S" ? net : 0,
+      taxableAmount: zeroRated ? 0 : net,
       taxAmount,
       lineTotal: round2(net + taxAmount),
     };

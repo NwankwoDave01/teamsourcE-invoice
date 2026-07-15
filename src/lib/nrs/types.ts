@@ -48,7 +48,7 @@ export interface NrsLine {
   unitPrice: number;
   discountAmount: number;
   netAmount: number;
-  taxCategory: "S" | "Z" | "E" | "O";
+  taxCategory: string;
   taxScheme: string;
   taxRate: number;
   taxableAmount: number;
