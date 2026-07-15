@@ -127,8 +127,11 @@ export function validateForNrs({ invoice, lines, company, customer }: ValidateIn
     }
 
     const cat = (line.tax_category ?? "S") as string;
+    // tax_category is free-form NRS text (e.g. "S", "LOCAL_SALES_TAX", etc.).
+    // Unknown codes surface as a warning only — never a hard block.
     if (!ALLOWED_TAX_CATEGORIES.has(cat)) {
-      issues.push(err(`${path}.tax_category`, "TAX_CATEGORY", "Tax category must be one of S, Z, E, O."));
+      issues.push(warn(`${path}.tax_category`, "TAX_CATEGORY_UNKNOWN",
+        `Tax category "${cat}" is not a standard UBL code (S/Z/E/O). Verify with NRS.`));
     }
 
     const expectedNet = round2(qty * unitPrice - discount);
