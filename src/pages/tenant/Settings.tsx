@@ -82,20 +82,24 @@ export default function Settings() {
         country_code: company.country_code ?? "NG",
         industry_code: company.industry_code ?? "",
       });
-      setNrs({
-        nrs_business_id: company.nrs_business_id ?? "",
-        nrs_service_id: company.nrs_service_id ?? "",
-        nrs_environment: company.nrs_environment ?? "sandbox",
-        nrs_sandbox_base_url: company.nrs_sandbox_base_url ?? "",
-        nrs_production_base_url: company.nrs_production_base_url ?? "",
-        nrs_certificate_id: company.nrs_certificate_id ?? "",
-        nrs_portal_email: company.nrs_portal_email ?? "",
-        nrs_portal_password: company.nrs_portal_password ?? "",
-        nrs_api_key: company.nrs_api_key ?? "",
-        nrs_api_secret: company.nrs_api_secret ?? "",
-      });
+      setNrs(nrsFromCompany());
+      setSecrets({ api_key: "", api_secret: "", taxpayer_password: "" });
     }
   }, [company]);
+
+  function nrsFromCompany() {
+    return {
+      nrs_business_id: nrsCompany?.nrs_business_id ?? "",
+      nrs_entity_id: nrsCompany?.nrs_entity_id ?? "",
+      nrs_service_id: nrsCompany?.nrs_service_id ?? "",
+      nrs_environment: nrsCompany?.nrs_environment ?? "sandbox",
+      nrs_sandbox_base_url: nrsCompany?.nrs_sandbox_base_url ?? "",
+      nrs_production_base_url: nrsCompany?.nrs_production_base_url ?? "",
+      nrs_certificate_id: nrsCompany?.nrs_certificate_id ?? "",
+      nrs_taxpayer_email:
+        nrsCompany?.nrs_taxpayer_email ?? nrsCompany?.nrs_portal_email ?? "",
+    };
+  }
 
   const handleSave = async () => {
     if (!company) return;
@@ -110,7 +114,10 @@ export default function Settings() {
 
   const set = (k: keyof typeof form) => (v: string) => setForm({ ...form, [k]: v });
   const setN = (k: keyof typeof nrs) => (v: string) => setNrs({ ...nrs, [k]: v });
+  const setS = (k: keyof typeof secrets) => (v: string) => setSecrets({ ...secrets, [k]: v });
 
+  // Save non-secret config to `companies`, then push any newly typed secrets to
+  // the Vault-backed Edge Function, then verify against NRS.
   const handleSaveNrs = async () => {
     if (!company) return;
     if (!isCompanyAdmin) {
@@ -118,22 +125,34 @@ export default function Settings() {
       return;
     }
     try {
-      const sandboxUrl = nrs.nrs_sandbox_base_url || "https://einvoice-sandbox.nrs.gov.ng";
-      const productionUrl = nrs.nrs_production_base_url || "https://einvoice.nrs.gov.ng";
-      
       await update.mutateAsync({
         id: company.id,
         ...nrs,
         tin: form.tin,
         legal_name: form.legal_name,
         rc_number: form.rc_number,
-        nrs_sandbox_base_url: sandboxUrl,
-        nrs_production_base_url: productionUrl,
-      });
-      toast.success("NRS integration settings updated");
+        nrs_sandbox_base_url: nrs.nrs_sandbox_base_url || "https://einvoice-sandbox.nrs.gov.ng",
+        nrs_production_base_url: nrs.nrs_production_base_url || "https://einvoice.nrs.gov.ng",
+      } as never);
+
+      const pending: Record<string, string> = {};
+      if (secrets.api_key.trim()) pending.api_key = secrets.api_key.trim();
+      if (secrets.api_secret.trim()) pending.api_secret = secrets.api_secret.trim();
+      if (secrets.taxpayer_password.trim()) pending.taxpayer_password = secrets.taxpayer_password.trim();
+      if (Object.keys(pending).length > 0) {
+        await saveCreds.mutateAsync(pending);
+        setSecrets({ api_key: "", api_secret: "", taxpayer_password: "" });
+      }
+
+      const result = await verifyCreds.mutateAsync();
+      if (result.ok) {
+        toast.success("Connected to NRS", { description: result.message });
+      } else {
+        toast.error("NRS verification failed", { description: result.message });
+      }
     } catch (e: unknown) {
       const err = e as Error;
-      toast.error("Failed to save", { description: err.message });
+      toast.error("Failed to save NRS settings", { description: err.message });
     }
   };
 
@@ -144,47 +163,42 @@ export default function Settings() {
       return;
     }
     try {
+      await disconnectCreds.mutateAsync();
       await update.mutateAsync({
         id: company.id,
         nrs_business_id: null,
+        nrs_entity_id: null,
         nrs_service_id: null,
         nrs_environment: "sandbox",
         nrs_sandbox_base_url: null,
         nrs_production_base_url: null,
         nrs_certificate_id: null,
-        nrs_portal_email: null,
-        nrs_portal_password: null,
-        nrs_api_key: null,
-        nrs_api_secret: null,
-      });
-      
+        nrs_taxpayer_email: null,
+      } as never);
+
       setNrs({
         nrs_business_id: "",
+        nrs_entity_id: "",
         nrs_service_id: "",
         nrs_environment: "sandbox",
         nrs_sandbox_base_url: "",
         nrs_production_base_url: "",
         nrs_certificate_id: "",
-        nrs_portal_email: "",
-        nrs_portal_password: "",
-        nrs_api_key: "",
-        nrs_api_secret: "",
+        nrs_taxpayer_email: "",
       });
-      toast.success("NRS connection disconnected and credentials wiped");
+      setSecrets({ api_key: "", api_secret: "", taxpayer_password: "" });
+      toast.success("NRS connection disconnected and credentials removed");
     } catch (e: unknown) {
       const err = e as Error;
       toast.error("Failed to disconnect", { description: err.message });
     }
   };
 
-  const isConnected = !!(
-    nrs.nrs_portal_email &&
-    nrs.nrs_portal_password &&
-    nrs.nrs_business_id &&
-    nrs.nrs_service_id &&
-    nrs.nrs_api_key &&
-    nrs.nrs_api_secret
-  );
+  // Connection state comes from the backend verification record only.
+  const isConnected = !!credStatus?.verified;
+  const busy = update.isPending || saveCreds.isPending || verifyCreds.isPending || disconnectCreds.isPending;
+  const secretPlaceholder = (configured?: boolean) =>
+    configured ? "Configured — leave blank to keep" : "Not configured";
 
   return (
     <div>
