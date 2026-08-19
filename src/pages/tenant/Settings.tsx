@@ -10,6 +10,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCurrentCompany, useUpdateCompany } from "@/hooks/useCompanyData";
+import {
+  useNrsCredentialStatus,
+  useSaveNrsCredentials,
+  useVerifyNrsConnection,
+  useDisconnectNrsCredentials,
+} from "@/hooks/useNrsCredentials";
+import type { NrsCompanyExtra } from "@/integrations/supabase/nrsTypes";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -18,6 +25,11 @@ export default function Settings() {
   const update = useUpdateCompany();
   const { roles, companyId } = useAuth();
   const isCompanyAdmin = roles.includes("company_admin") || roles.includes("super_admin");
+  const nrsCompany = company as (typeof company & Partial<NrsCompanyExtra>) | null | undefined;
+  const { data: credStatus, isLoading: statusLoading } = useNrsCredentialStatus();
+  const saveCreds = useSaveNrsCredentials();
+  const verifyCreds = useVerifyNrsConnection();
+  const disconnectCreds = useDisconnectNrsCredentials();
   const [form, setForm] = useState({
     name: "", tin: "", industry: "",
     legal_name: "", rc_number: "", vat_number: "", email: "", phone: "",
@@ -25,18 +37,24 @@ export default function Settings() {
     postcode: "", country_code: "NG", industry_code: "",
   });
 
-  // NRS Integration details (encrypted transmission to database)
+  // NRS Integration — non-secret configuration only. Secrets live in Vault
+  // behind the `nrs-credentials` Edge Function and are never read back here.
   const [nrs, setNrs] = useState({
     nrs_business_id: "",
+    nrs_entity_id: "",
     nrs_service_id: "",
     nrs_environment: "sandbox",
     nrs_sandbox_base_url: "",
     nrs_production_base_url: "",
     nrs_certificate_id: "",
-    nrs_portal_email: "",
-    nrs_portal_password: "",
-    nrs_api_key: "",
-    nrs_api_secret: "",
+    nrs_taxpayer_email: "",
+  });
+
+  // Write-only secret inputs. Blank = leave the stored value unchanged.
+  const [secrets, setSecrets] = useState({
+    api_key: "",
+    api_secret: "",
+    taxpayer_password: "",
   });
 
   const [showPortalPassword, setShowPortalPassword] = useState(false);
