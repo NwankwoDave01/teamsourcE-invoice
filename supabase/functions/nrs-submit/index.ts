@@ -340,7 +340,7 @@ function buildPayload(invoice: any, lines: any[], company: any, customer: any, i
     irn,
     issue_date: invoice.issue_date,
     due_date: invoice.due_date,
-    invoice_type_code: INVOICE_TYPE_CODE[invoiceType] ?? "380",
+    invoice_type_code: INVOICE_TYPE_CODE[invoiceType] ?? "396",
     payment_status: invoice.payment_status ?? "PENDING",
     note: invoice.notes ?? null,
     tax_point_date: invoice.supply_date ?? invoice.issue_date,

@@ -100,7 +100,7 @@ export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult
   const payload: NrsInvoicePayload = {
     documentUuid: invoice.document_uuid ?? invoice.id,
     invoiceNumber: invoice.number,
-    invoiceTypeCode: INVOICE_TYPE_CODE[invoiceType] ?? "380",
+    invoiceTypeCode: INVOICE_TYPE_CODE[invoiceType] ?? "396",
     transactionType: (invoice.transaction_type ?? "B2B") as NrsInvoicePayload["transactionType"],
     issueDate: invoice.issue_date,
     dueDate: invoice.due_date,
