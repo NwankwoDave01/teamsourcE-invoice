@@ -451,6 +451,16 @@ export default function Settings() {
                               disabled={!isCompanyAdmin}
                             />
                           </Field>
+
+                          <Field label="NRS Entity ID">
+                            <Input
+                              value={nrs.nrs_entity_id}
+                              onChange={(e) => setN("nrs_entity_id")(e.target.value)}
+                              placeholder="Issued by NRS"
+                              className="font-mono"
+                              disabled={!isCompanyAdmin}
+                            />
+                          </Field>
                         </div>
 
                         <Field label="Certificate ID">
@@ -504,16 +514,16 @@ export default function Settings() {
                     <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
                       <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
                         <span className="h-2 w-1 bg-primary rounded-full"></span>
-                        NRS Portal Credentials
+                        NRS Taxpayer Credentials
                       </h4>
                       
                       <div className="space-y-4">
-                        <Field label="NRS Portal Email">
+                        <Field label="NRS Taxpayer Email">
                           <div className="relative flex items-center">
                             <Input
                               type="email"
-                              value={nrs.nrs_portal_email}
-                              onChange={(e) => setN("nrs_portal_email")(e.target.value)}
+                              value={nrs.nrs_taxpayer_email}
+                              onChange={(e) => setN("nrs_taxpayer_email")(e.target.value)}
                               placeholder="taxpayer@company.com"
                               className="pl-9"
                               disabled={!isCompanyAdmin}
@@ -522,13 +532,13 @@ export default function Settings() {
                           </div>
                         </Field>
 
-                        <Field label="NRS Portal Password">
+                        <Field label="NRS Taxpayer Password">
                           <div className="relative flex items-center">
                             <Input
                               type={showPortalPassword ? "text" : "password"}
-                              value={nrs.nrs_portal_password}
-                              onChange={(e) => setN("nrs_portal_password")(e.target.value)}
-                              placeholder="••••••••"
+                              value={secrets.taxpayer_password}
+                              onChange={(e) => setS("taxpayer_password")(e.target.value)}
+                              placeholder={secretPlaceholder(credStatus?.taxpayer_password_configured)}
                               className="pl-9 pr-10"
                               disabled={!isCompanyAdmin}
                             />
@@ -558,9 +568,9 @@ export default function Settings() {
                           <div className="relative flex items-center">
                             <Input
                               type={showApiKey ? "text" : "password"}
-                              value={nrs.nrs_api_key}
-                              onChange={(e) => setN("nrs_api_key")(e.target.value)}
-                              placeholder="••••••••••••••••"
+                              value={secrets.api_key}
+                              onChange={(e) => setS("api_key")(e.target.value)}
+                              placeholder={secretPlaceholder(credStatus?.api_key_configured)}
                               className="pl-9 pr-10 font-mono"
                               disabled={!isCompanyAdmin}
                             />
@@ -580,9 +590,9 @@ export default function Settings() {
                           <div className="relative flex items-center">
                             <Input
                               type={showApiSecret ? "text" : "password"}
-                              value={nrs.nrs_api_secret}
-                              onChange={(e) => setN("nrs_api_secret")(e.target.value)}
-                              placeholder="••••••••••••••••••••••••"
+                              value={secrets.api_secret}
+                              onChange={(e) => setS("api_secret")(e.target.value)}
+                              placeholder={secretPlaceholder(credStatus?.api_secret_configured)}
                               className="pl-9 pr-10 font-mono"
                               disabled={!isCompanyAdmin}
                             />
@@ -619,7 +629,7 @@ export default function Settings() {
                           <Button
                             variant="destructive"
                             onClick={handleDisconnectNrs}
-                            disabled={update.isPending}
+                            disabled={busy}
                             className="shadow-sm border border-destructive/20 hover:bg-destructive/90"
                           >
                             Disconnect NRS Connection
@@ -630,30 +640,20 @@ export default function Settings() {
                           variant="outline"
                           onClick={() => {
                             if (!company) return;
-                            setNrs({
-                              nrs_business_id: company.nrs_business_id ?? "",
-                              nrs_service_id: company.nrs_service_id ?? "",
-                              nrs_environment: company.nrs_environment ?? "sandbox",
-                              nrs_sandbox_base_url: company.nrs_sandbox_base_url ?? "",
-                              nrs_production_base_url: company.nrs_production_base_url ?? "",
-                              nrs_certificate_id: company.nrs_certificate_id ?? "",
-                              nrs_portal_email: company.nrs_portal_email ?? "",
-                              nrs_portal_password: company.nrs_portal_password ?? "",
-                              nrs_api_key: company.nrs_api_key ?? "",
-                              nrs_api_secret: company.nrs_api_secret ?? "",
-                            });
+                            setNrs(nrsFromCompany());
+                            setSecrets({ api_key: "", api_secret: "", taxpayer_password: "" });
                           }}
-                          disabled={update.isPending}
+                          disabled={busy}
                         >
                           Reset
                         </Button>
                         
                         <Button 
                           onClick={handleSaveNrs} 
-                          disabled={update.isPending}
+                          disabled={busy}
                           className="bg-primary hover:bg-primary/95 text-primary-foreground font-medium shadow-sm transition-all"
                         >
-                          {update.isPending ? (
+                          {busy ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           ) : (
                             <CheckCircle2 className="mr-2 h-4 w-4" />
