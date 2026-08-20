@@ -92,9 +92,9 @@ export interface NrsBuildResult {
   hasWarnings: boolean;
 }
 
-// Map internal invoice_type enum -> NRS UBL type code (placeholder mapping).
+// Map internal invoice_type enum -> NRS invoice type code.
 export const INVOICE_TYPE_CODE: Record<string, string> = {
-  commercial: "380",
+  commercial: "396",
   credit_note: "381",
   debit_note: "383",
   corrected: "384",

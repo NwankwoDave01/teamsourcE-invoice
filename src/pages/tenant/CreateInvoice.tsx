@@ -76,7 +76,7 @@ const DEFAULT_CURRENCIES = [
 ];
 
 const DEFAULT_INVOICE_TYPES = [
-  { code: "380", label: "Commercial Invoice" },
+  { code: "396", label: "Commercial Invoice" },
   { code: "381", label: "Credit Note" },
   { code: "383", label: "Debit Note" },
 ];
