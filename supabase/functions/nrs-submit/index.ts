@@ -471,13 +471,13 @@ Deno.serve(async (req: Request) => {
       }
     } else {
       const baseUrl = getNrsBaseUrl(company, environment);
-      const credentials = getNrsApiCredentials();
+      const credentials = await loadNrsCredentials(supabase, invoice.company_id, company);
 
       // Step 0: Session Authentication
       await authenticateNrsTaxpayer(baseUrl, credentials);
 
       // Step 1: Validate
-      const validateResult = await validateNrsInvoice(baseUrl, payload);
+      const validateResult = await validateNrsInvoice(baseUrl, credentials, payload);
       response = validateResult.response;
       httpStatus = validateResult.httpStatus;
 
