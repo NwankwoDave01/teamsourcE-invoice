@@ -1,6 +1,6 @@
 // NRS submission edge function — supports mock / sandbox / production environments.
-// Secrets (NEVER committed, NEVER logged):
-//   NRS_API_KEY, NRS_API_SECRET, NRS_TAXPAYER_EMAIL, NRS_TAXPAYER_PASSWORD
+// Credentials are per-company and Vault-backed: they are read server-side via the
+// `nrs_read_secrets` database helper and are NEVER logged or returned to clients.
 // All NRS HTTP calls happen here, never in the browser.
 
 // @ts-ignore deno remote import
@@ -20,7 +20,7 @@ const NRS_VALIDATE_PATH = "/api/v1/invoice/validate";
 const NRS_SIGN_PATH = "/api/v1/invoice/sign";
 const NRS_TRANSMIT_PATH = "/api/v1/invoice/transmit";
 const INVOICE_TYPE_CODE: Record<string, string> = {
-  commercial: "380",
+  commercial: "396",
   credit_note: "381",
   debit_note: "383",
   corrected: "384",
@@ -39,10 +39,32 @@ function joinUrl(baseUrl: string, path: string): string {
   return `${base}${suffix}`;
 }
 
-function requireEnv(name: string): string {
-  const value = Deno.env.get(name)?.trim();
-  if (!value) throw new Error(`${name} is required`);
-  return value;
+interface NrsCredentials {
+  apiKey: string;
+  apiSecret: string;
+  taxpayerEmail: string;
+  taxpayerPassword: string;
+}
+
+async function loadNrsCredentials(admin: any, companyId: string, company: any): Promise<NrsCredentials> {
+  const { data, error } = await admin.rpc("nrs_read_secrets", { _company_id: companyId });
+  if (error) throw new Error("Unable to read NRS credentials for this company");
+  const s = Array.isArray(data) ? data[0] : data;
+  const creds: NrsCredentials = {
+    apiKey: String(s?.api_key ?? "").trim(),
+    apiSecret: String(s?.api_secret ?? "").trim(),
+    taxpayerPassword: String(s?.taxpayer_password ?? "").trim(),
+    taxpayerEmail: String(company?.nrs_taxpayer_email ?? company?.nrs_portal_email ?? "").trim(),
+  };
+  const missing: string[] = [];
+  if (!creds.apiKey) missing.push("API key");
+  if (!creds.apiSecret) missing.push("API secret");
+  if (!creds.taxpayerPassword) missing.push("taxpayer password");
+  if (!creds.taxpayerEmail) missing.push("taxpayer email");
+  if (missing.length) {
+    throw new Error(`NRS credentials are not configured: missing ${missing.join(", ")}`);
+  }
+  return creds;
 }
 
 function omitEmpty(value: any): any {
@@ -71,13 +93,6 @@ function getNrsBaseUrl(company: any, environment: string): string {
   return baseUrl;
 }
 
-function getNrsApiCredentials() {
-  return {
-    apiKey: requireEnv("NRS_API_KEY"),
-    apiSecret: requireEnv("NRS_API_SECRET"),
-  };
-}
-
 async function readResponseBody(res: Response): Promise<any> {
   const text = await res.text();
   if (!text) return null;
@@ -89,7 +104,7 @@ async function readResponseBody(res: Response): Promise<any> {
   }
 }
 
-async function authenticateNrsTaxpayer(baseUrl: string, credentials: { apiKey: string; apiSecret: string }) {
+async function authenticateNrsTaxpayer(baseUrl: string, credentials: NrsCredentials) {
   const authEndpoint = joinUrl(baseUrl, NRS_AUTHENTICATE_PATH);
 
   const authRes = await fetch(authEndpoint, {
@@ -101,8 +116,8 @@ async function authenticateNrsTaxpayer(baseUrl: string, credentials: { apiKey: s
       "x-api-secret": credentials.apiSecret,
     },
     body: JSON.stringify({
-      email: requireEnv("NRS_TAXPAYER_EMAIL"),
-      password: requireEnv("NRS_TAXPAYER_PASSWORD"),
+      email: credentials.taxpayerEmail,
+      password: credentials.taxpayerPassword,
     }),
   });
   const authBody = await readResponseBody(authRes);
@@ -114,9 +129,7 @@ async function authenticateNrsTaxpayer(baseUrl: string, credentials: { apiKey: s
   return authBody;
 }
 
-async function validateNrsInvoice(baseUrl: string, payload: any) {
-  const credentials = getNrsApiCredentials();
-  await authenticateNrsTaxpayer(baseUrl, credentials);
+async function validateNrsInvoice(baseUrl: string, credentials: NrsCredentials, payload: any) {
   const validateEndpoint = joinUrl(baseUrl, NRS_VALIDATE_PATH);
 
   const validateRes = await fetch(validateEndpoint, {
@@ -150,7 +163,7 @@ async function validateNrsInvoice(baseUrl: string, payload: any) {
   };
 }
 
-async function signNrsInvoice(baseUrl: string, credentials: { apiKey: string; apiSecret: string }, payload: any) {
+async function signNrsInvoice(baseUrl: string, credentials: NrsCredentials, payload: any) {
   const signEndpoint = joinUrl(baseUrl, NRS_SIGN_PATH);
 
   const signRes = await fetch(signEndpoint, {
@@ -187,7 +200,7 @@ async function signNrsInvoice(baseUrl: string, credentials: { apiKey: string; ap
   };
 }
 
-async function transmitNrsInvoice(baseUrl: string, credentials: { apiKey: string; apiSecret: string }, irn: string, payload: any) {
+async function transmitNrsInvoice(baseUrl: string, credentials: NrsCredentials, irn: string, payload: any) {
   const transmitEndpoint = joinUrl(baseUrl, `${NRS_TRANSMIT_PATH}/${encodeURIComponent(irn)}`);
 
   const transmitRes = await fetch(transmitEndpoint, {
