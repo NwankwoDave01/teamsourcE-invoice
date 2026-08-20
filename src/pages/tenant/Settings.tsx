@@ -207,12 +207,10 @@ export default function Settings() {
         <Tabs defaultValue="company" className="space-y-4">
           <TabsList>
             <TabsTrigger value="company">Company</TabsTrigger>
-            <TabsTrigger value="branding">Branding</TabsTrigger>
             <TabsTrigger value="tax">Tax & Compliance</TabsTrigger>
-            <TabsTrigger value="numbering">Invoice numbering</TabsTrigger>
-            <TabsTrigger value="notifications">Notifications</TabsTrigger>
-            <TabsTrigger value="integrations">Integrations</TabsTrigger>
+            <TabsTrigger value="invoice">Invoice</TabsTrigger>
             <TabsTrigger value="nrs">NRS Integration</TabsTrigger>
+            <TabsTrigger value="notifications">Notifications</TabsTrigger>
           </TabsList>
 
           <TabsContent value="company">
@@ -319,10 +317,13 @@ export default function Settings() {
             </Card>
           </TabsContent>
 
-          {["branding","numbering","notifications","integrations"].map((v) => (
-            <TabsContent key={v} value={v}>
+          {[
+            { value: "invoice", title: "Invoice" },
+            { value: "notifications", title: "Notifications" },
+          ].map((t) => (
+            <TabsContent key={t.value} value={t.value}>
               <Card className="p-6 shadow-elegant-sm">
-                <h3 className="text-base font-semibold capitalize">{v.replace(/^./, (s) => s.toUpperCase())}</h3>
+                <h3 className="text-base font-semibold">{t.title}</h3>
                 <p className="mt-2 text-sm text-muted-foreground">Configuration for this section.</p>
               </Card>
             </TabsContent>
