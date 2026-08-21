@@ -453,44 +453,13 @@ export default function Settings() {
                             />
                           </Field>
 
-                          <Field label="NRS Entity ID">
-                            <Input
-                              value={nrs.nrs_entity_id}
-                              onChange={(e) => setN("nrs_entity_id")(e.target.value)}
-                              placeholder="Issued by NRS"
-                              className="font-mono"
-                              disabled={!isCompanyAdmin}
-                            />
-                          </Field>
                         </div>
-
-                        <Field label="Certificate ID">
-                          <div className="relative flex items-center">
-                            <Input
-                              type={showCertificateId ? "text" : "password"}
-                              value={nrs.nrs_certificate_id}
-                              onChange={(e) => setN("nrs_certificate_id")(e.target.value)}
-                              placeholder="Public certificate identifier"
-                              className="pl-9 pr-10 font-mono"
-                              disabled={!isCompanyAdmin}
-                            />
-                            <Lock className="absolute left-3 h-4 w-4 text-muted-foreground" />
-                            <button
-                              type="button"
-                              onClick={() => setShowCertificateId(!showCertificateId)}
-                              className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
-                              disabled={!isCompanyAdmin}
-                            >
-                              {showCertificateId ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
-                        </Field>
 
                         <Field label="Sandbox Base URL">
                           <Input
                             value={nrs.nrs_sandbox_base_url}
                             onChange={(e) => setN("nrs_sandbox_base_url")(e.target.value)}
-                            placeholder="https://einvoice-sandbox.nrs.gov.ng"
+                            placeholder="https://eivc-k6z6d.ondigitalocean.app"
                             disabled={!isCompanyAdmin}
                           />
                         </Field>
