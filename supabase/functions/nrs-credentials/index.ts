@@ -136,7 +136,7 @@ Deno.serve(async (req) => {
       const env = company?.nrs_environment ?? "sandbox";
       const base = (env === "production"
         ? company?.nrs_production_base_url || "https://einvoice.nrs.gov.ng"
-        : company?.nrs_sandbox_base_url || "https://einvoice-sandbox.nrs.gov.ng"
+        : company?.nrs_sandbox_base_url || "https://eivc-k6z6d.ondigitalocean.app"
       ).replace(/\/+$/, "");
 
       let ok = false;
