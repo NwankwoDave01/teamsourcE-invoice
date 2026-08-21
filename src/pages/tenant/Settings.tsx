@@ -60,7 +60,7 @@ export default function Settings() {
   const [showPortalPassword, setShowPortalPassword] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [showApiSecret, setShowApiSecret] = useState(false);
-  const [showCertificateId, setShowCertificateId] = useState(false);
+  
 
   useEffect(() => {
     if (company) {
