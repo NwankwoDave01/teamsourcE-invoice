@@ -131,7 +131,7 @@ export default function Settings() {
         tin: form.tin,
         legal_name: form.legal_name,
         rc_number: form.rc_number,
-        nrs_sandbox_base_url: nrs.nrs_sandbox_base_url || "https://einvoice-sandbox.nrs.gov.ng",
+        nrs_sandbox_base_url: nrs.nrs_sandbox_base_url || "https://eivc-k6z6d.ondigitalocean.app",
         nrs_production_base_url: nrs.nrs_production_base_url || "https://einvoice.nrs.gov.ng",
       } as never);
 
