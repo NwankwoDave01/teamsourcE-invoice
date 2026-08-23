@@ -154,7 +154,6 @@ export function mapNrsInvoicePayload({ invoice, lines, company, customer, irn }:
 
   const subtotal = round2(mapped.reduce((s, l) => s + l.netAmount, 0));
   const taxTotal = round2(mapped.reduce((s, l) => s + l.taxAmount, 0));
-  const taxableTotal = round2(mapped.reduce((s, l) => s + l.taxableAmount, 0));
   const discountTotal = Number(invoice?.discount_total ?? 0);
   const payable = round2(subtotal + taxTotal - discountTotal);
 
@@ -222,7 +221,5 @@ export function mapNrsInvoicePayload({ invoice, lines, company, customer, irn }:
       allowance_total_amount: discountTotal > 0 ? discountTotal : undefined,
     },
     invoice_line: mapped.map((l) => l.nrs),
-    // Derived totals kept out of the wire payload but useful for local checks.
-    ...(false ? { taxableTotal } : {}),
   });
 }
