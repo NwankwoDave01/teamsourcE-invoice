@@ -3,6 +3,7 @@
 // the .env file. The publishable/anon key is safe to ship in client code.
 import { createClient } from '@supabase/supabase-js';
 import type { Database } from './types';
+import { brokeredPreviewStorage } from './previewAuthStorage';
 
 const SUPABASE_URL = "https://nsfkeojunstyzueguzxx.supabase.co";
 const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_gHKdMJgMbPb7WCT3D-Ksig_VmqSCpE-";
@@ -12,7 +13,7 @@ const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_gHKdMJgMbPb7WCT3D-Ksig_VmqSCpE-
 
 export const supabase = createClient<Database>(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
   auth: {
-    storage: localStorage,
+    storage: brokeredPreviewStorage(),
     persistSession: true,
     autoRefreshToken: true,
   }
