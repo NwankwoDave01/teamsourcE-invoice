@@ -105,7 +105,7 @@ export default function InvoiceDetails() {
         } else {
           setNrsResult(data as Record<string, unknown>);
           await refetchInvoice();
-          toast.success("Invoice validated and signed by NRS");
+          toast.success("NRS invoice processing completed");
         }
       } catch (e: unknown) {
         toast.error("NRS submission failed", { description: (e as Error).message });
@@ -135,6 +135,16 @@ export default function InvoiceDetails() {
   };
 
   const lines = invoice.lines ?? [];
+  const persistedInvoice = invoice as typeof invoice & {
+    qr_code?: string | null;
+    qr_code_data?: string | null;
+  };
+  const persistedQr = persistedInvoice.qr_code_data ?? persistedInvoice.qr_code ?? null;
+  const qrImageSource = persistedQr
+    ? persistedQr.startsWith("data:")
+      ? persistedQr
+      : `data:image/png;base64,${persistedQr}`
+    : null;
 
   return (
     <div>
@@ -214,17 +224,22 @@ export default function InvoiceDetails() {
               </div>
             </div>
 
-            {(nrsResult || invoice.status === "Signed" || invoice.status === "Validated") && (
+            {(nrsResult || persistedQr || invoice.status === "Signed" || invoice.status === "Validated") && (
               <div className="mt-6 rounded-md border border-border bg-muted/20 p-4">
                 <h3 className="text-sm font-semibold">NRS result</h3>
                 <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
                   <Row label="IRN" value={invoice.irn ?? String(nrsResult?.irn ?? "Not available")} />
-                  <Row label="NRS validation" value={invoice.status === "Validated" || invoice.status === "Signed" ? "Validated" : "Pending"} />
-                  <Row label="NRS signing" value={invoice.status === "Signed" ? "Signed" : "Pending"} />
+                  <Row label="NRS status" value={invoice.status === "Validated" ? "Validated by NRS" : invoice.status === "Signed" ? "Signed by NRS" : "Pending"} />
                   <Row label="CSID" value={String(nrsResult?.csid ?? "Not available")} />
                 </div>
-                <p className="mt-3 text-xs text-muted-foreground">Signed by NRS — awaiting APP transmission/clearance.</p>
-                {!!nrsResult?.qrCode && <p className="mt-2 text-xs text-muted-foreground">QR code generated</p>}
+                {invoice.status === "Validated" && <p className="mt-3 text-xs text-muted-foreground">Validated by NRS.</p>}
+                {invoice.status === "Signed" && <p className="mt-3 text-xs text-muted-foreground">Signed by NRS — awaiting APP transmission/clearance.</p>}
+                {qrImageSource && (
+                  <div className="mt-4 flex flex-col items-start gap-2">
+                    <p className="text-xs font-medium text-muted-foreground">QR code</p>
+                    <img src={qrImageSource} alt="NRS invoice QR code" className="h-40 w-40 rounded-md border border-border bg-white p-2" />
+                  </div>
+                )}
               </div>
             )}
 
@@ -342,7 +357,7 @@ export default function InvoiceDetails() {
                     ["Validating with NRS", invoice.status === "Validated" || invoice.status === "Signed" || !!nrsResult],
                     ["Validated", invoice.status === "Validated" || invoice.status === "Signed"],
                     ["Signed", invoice.status === "Signed"],
-                    ["QR Generated", !!nrsResult?.qrCode],
+                    ["QR Generated", !!persistedQr],
                   ].map(([label, done]) => (
                     <li key={label as string} className="flex items-center gap-2">
                       {done ? <CheckCircle2 className="h-4 w-4 text-success" /> : <Circle className="h-4 w-4 text-muted-foreground/40" />}
