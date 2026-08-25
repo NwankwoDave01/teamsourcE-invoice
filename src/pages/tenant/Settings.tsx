@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, Eye, EyeOff, Lock, Key, Mail, HelpCircle, CheckCircle2, ShieldCheck } from "lucide-react";
+import { Loader2, Eye, EyeOff, Lock, Key, HelpCircle, CheckCircle2, ShieldCheck, Upload } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,7 +13,7 @@ import { useCurrentCompany, useUpdateCompany } from "@/hooks/useCompanyData";
 import {
   useNrsCredentialStatus,
   useSaveNrsCredentials,
-  useVerifyNrsConnection,
+  useSaveNrsCrypto,
   useDisconnectNrsCredentials,
 } from "@/hooks/useNrsCredentials";
 import type { NrsCompanyExtra } from "@/integrations/supabase/nrsTypes";
@@ -28,7 +28,7 @@ export default function Settings() {
   const nrsCompany = company as (typeof company & Partial<NrsCompanyExtra>) | null | undefined;
   const { data: credStatus, isLoading: statusLoading } = useNrsCredentialStatus();
   const saveCreds = useSaveNrsCredentials();
-  const verifyCreds = useVerifyNrsConnection();
+  const saveCrypto = useSaveNrsCrypto();
   const disconnectCreds = useDisconnectNrsCredentials();
   const [form, setForm] = useState({
     name: "", tin: "", industry: "",
@@ -41,23 +41,19 @@ export default function Settings() {
   // behind the `nrs-credentials` Edge Function and are never read back here.
   const [nrs, setNrs] = useState({
     nrs_business_id: "",
-    nrs_entity_id: "",
     nrs_service_id: "",
     nrs_environment: "sandbox",
     nrs_sandbox_base_url: "",
     nrs_production_base_url: "",
-    nrs_certificate_id: "",
-    nrs_taxpayer_email: "",
   });
 
   // Write-only secret inputs. Blank = leave the stored value unchanged.
   const [secrets, setSecrets] = useState({
     api_key: "",
     api_secret: "",
-    taxpayer_password: "",
   });
 
-  const [showPortalPassword, setShowPortalPassword] = useState(false);
+  const [cryptoText, setCryptoText] = useState("");
   const [showApiKey, setShowApiKey] = useState(false);
   const [showApiSecret, setShowApiSecret] = useState(false);
   
@@ -83,21 +79,17 @@ export default function Settings() {
         industry_code: company.industry_code ?? "",
       });
       setNrs(nrsFromCompany());
-      setSecrets({ api_key: "", api_secret: "", taxpayer_password: "" });
+      setSecrets({ api_key: "", api_secret: "" });
     }
   }, [company]);
 
   function nrsFromCompany() {
     return {
       nrs_business_id: nrsCompany?.nrs_business_id ?? "",
-      nrs_entity_id: nrsCompany?.nrs_entity_id ?? "",
       nrs_service_id: nrsCompany?.nrs_service_id ?? "",
       nrs_environment: nrsCompany?.nrs_environment ?? "sandbox",
       nrs_sandbox_base_url: nrsCompany?.nrs_sandbox_base_url ?? "",
       nrs_production_base_url: nrsCompany?.nrs_production_base_url ?? "",
-      nrs_certificate_id: nrsCompany?.nrs_certificate_id ?? "",
-      nrs_taxpayer_email:
-        nrsCompany?.nrs_taxpayer_email ?? nrsCompany?.nrs_portal_email ?? "",
     };
   }
 
@@ -116,8 +108,7 @@ export default function Settings() {
   const setN = (k: keyof typeof nrs) => (v: string) => setNrs({ ...nrs, [k]: v });
   const setS = (k: keyof typeof secrets) => (v: string) => setSecrets({ ...secrets, [k]: v });
 
-  // Save non-secret config to `companies`, then push any newly typed secrets to
-  // the Vault-backed Edge Function, then verify against NRS.
+  // Save company identity and write-only credentials independently of taxpayer login.
   const handleSaveNrs = async () => {
     if (!company) return;
     if (!isCompanyAdmin) {
@@ -133,23 +124,16 @@ export default function Settings() {
         rc_number: form.rc_number,
         nrs_sandbox_base_url: nrs.nrs_sandbox_base_url || "https://eivc-k6z6d.ondigitalocean.app",
         nrs_production_base_url: nrs.nrs_production_base_url || "https://einvoice.nrs.gov.ng",
-      } as never);
+      });
 
       const pending: Record<string, string> = {};
       if (secrets.api_key.trim()) pending.api_key = secrets.api_key.trim();
       if (secrets.api_secret.trim()) pending.api_secret = secrets.api_secret.trim();
-      if (secrets.taxpayer_password.trim()) pending.taxpayer_password = secrets.taxpayer_password.trim();
       if (Object.keys(pending).length > 0) {
         await saveCreds.mutateAsync(pending);
-        setSecrets({ api_key: "", api_secret: "", taxpayer_password: "" });
+        setSecrets({ api_key: "", api_secret: "" });
       }
-
-      const result = await verifyCreds.mutateAsync();
-      if (result.ok) {
-        toast.success("Connected to NRS", { description: result.message });
-      } else {
-        toast.error("NRS verification failed", { description: result.message });
-      }
+      toast.success("NRS settings saved");
     } catch (e: unknown) {
       const err = e as Error;
       toast.error("Failed to save NRS settings", { description: err.message });
@@ -167,36 +151,30 @@ export default function Settings() {
       await update.mutateAsync({
         id: company.id,
         nrs_business_id: null,
-        nrs_entity_id: null,
         nrs_service_id: null,
         nrs_environment: "sandbox",
         nrs_sandbox_base_url: null,
         nrs_production_base_url: null,
-        nrs_certificate_id: null,
-        nrs_taxpayer_email: null,
-      } as never);
+      });
 
       setNrs({
         nrs_business_id: "",
-        nrs_entity_id: "",
         nrs_service_id: "",
         nrs_environment: "sandbox",
         nrs_sandbox_base_url: "",
         nrs_production_base_url: "",
-        nrs_certificate_id: "",
-        nrs_taxpayer_email: "",
       });
-      setSecrets({ api_key: "", api_secret: "", taxpayer_password: "" });
-      toast.success("NRS connection disconnected and credentials removed");
+      setSecrets({ api_key: "", api_secret: "" });
+      setCryptoText("");
+      toast.success("NRS credentials removed");
     } catch (e: unknown) {
       const err = e as Error;
       toast.error("Failed to disconnect", { description: err.message });
     }
   };
 
-  // Connection state comes from the backend verification record only.
-  const isConnected = !!credStatus?.verified;
-  const busy = update.isPending || saveCreds.isPending || verifyCreds.isPending || disconnectCreds.isPending;
+  const readiness = !isCompanyAdmin ? "Read-only" : statusLoading ? "Incomplete" : credStatus?.ready ? "Ready" : "Incomplete";
+  const busy = update.isPending || saveCreds.isPending || saveCrypto.isPending || disconnectCreds.isPending;
   const secretPlaceholder = (configured?: boolean) =>
     configured ? "Configured — leave blank to keep" : "Not configured";
 
@@ -344,20 +322,10 @@ export default function Settings() {
                       Read-only (Admin Required)
                     </span>
                   )}
-                  {isConnected ? (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/40 px-3 py-1 text-xs font-semibold shadow-sm">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-                      </span>
-                      Active Connection
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700/50 px-3 py-1 text-xs font-semibold">
-                      <span className="h-2.5 w-2.5 rounded-full bg-slate-400"></span>
-                      Disconnected
-                    </span>
-                  )}
+                  <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground">
+                    <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                    {readiness}
+                  </span>
                 </div>
               </div>
 
@@ -480,52 +448,6 @@ export default function Settings() {
                   </div>
 
                   <div className="grid gap-6 md:grid-cols-2">
-                    {/* Portal Credentials Card */}
-                    <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
-                      <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
-                        <span className="h-2 w-1 bg-primary rounded-full"></span>
-                        NRS Taxpayer Credentials
-                      </h4>
-                      
-                      <div className="space-y-4">
-                        <Field label="NRS Taxpayer Email">
-                          <div className="relative flex items-center">
-                            <Input
-                              type="email"
-                              value={nrs.nrs_taxpayer_email}
-                              onChange={(e) => setN("nrs_taxpayer_email")(e.target.value)}
-                              placeholder="taxpayer@company.com"
-                              className="pl-9"
-                              disabled={!isCompanyAdmin}
-                            />
-                            <Mail className="absolute left-3 h-4 w-4 text-muted-foreground" />
-                          </div>
-                        </Field>
-
-                        <Field label="NRS Taxpayer Password">
-                          <div className="relative flex items-center">
-                            <Input
-                              type={showPortalPassword ? "text" : "password"}
-                              value={secrets.taxpayer_password}
-                              onChange={(e) => setS("taxpayer_password")(e.target.value)}
-                              placeholder={secretPlaceholder(credStatus?.taxpayer_password_configured)}
-                              className="pl-9 pr-10"
-                              disabled={!isCompanyAdmin}
-                            />
-                            <Lock className="absolute left-3 h-4 w-4 text-muted-foreground" />
-                            <button
-                              type="button"
-                              onClick={() => setShowPortalPassword(!showPortalPassword)}
-                              className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
-                              disabled={!isCompanyAdmin}
-                            >
-                              {showPortalPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
-                        </Field>
-                      </div>
-                    </Card>
-
                     {/* API Credentials Card */}
                     <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
                       <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
@@ -581,6 +503,54 @@ export default function Settings() {
                     </Card>
                   </div>
 
+                  <Card className="p-5 border-border bg-card/40 backdrop-blur-xs space-y-4 shadow-elegant-xs">
+                    <div>
+                      <h4 className="text-sm font-semibold tracking-wide uppercase">Taxpayer Cryptographic Configuration</h4>
+                      <p className="mt-1 text-xs text-muted-foreground">Upload crypto_keys.txt or paste its JSON contents. The contents are sent securely and never displayed after saving.</p>
+                    </div>
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <Field label="crypto_keys.txt">
+                        <Input
+                          type="file"
+                          accept=".txt,.json,application/json,text/plain"
+                          disabled={!isCompanyAdmin || saveCrypto.isPending}
+                          onChange={async (event) => {
+                            const file = event.target.files?.[0];
+                            if (file) setCryptoText(await file.text());
+                            event.currentTarget.value = "";
+                          }}
+                        />
+                      </Field>
+                      <Field label="JSON contents">
+                        <Textarea value={cryptoText} onChange={(event) => setCryptoText(event.target.value)} disabled={!isCompanyAdmin} placeholder="Paste JSON contents" rows={4} />
+                      </Field>
+                    </div>
+                    <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+                      <span>{credStatus?.crypto_configured ? "Configured" : "Not configured"}</span>
+                      <span>{credStatus?.crypto_configured ? "Public key configured" : "Public key not configured"}</span>
+                      <span>{credStatus?.crypto_configured ? "Certificate configured" : "Certificate not configured"}</span>
+                      {credStatus?.crypto_verified_at && <span>Updated {new Date(credStatus.crypto_verified_at).toLocaleString()}</span>}
+                    </div>
+                    {isCompanyAdmin && (
+                      <Button
+                        variant="outline"
+                        disabled={!cryptoText.trim() || saveCrypto.isPending}
+                        onClick={async () => {
+                          try {
+                            await saveCrypto.mutateAsync(cryptoText);
+                            setCryptoText("");
+                            toast.success("Taxpayer cryptographic configuration saved");
+                          } catch (e: unknown) {
+                            toast.error("Failed to save cryptographic configuration", { description: (e as Error).message });
+                          }
+                        }}
+                      >
+                        {saveCrypto.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                        Save crypto configuration
+                      </Button>
+                    )}
+                  </Card>
+
                   <Card className="p-4 border-border bg-muted/30 flex items-center gap-2">
                     <HelpCircle className="h-4 w-4 text-primary" />
                     <span className="text-xs text-muted-foreground">Generate this in your NRS Developer Portal under 'API Credentials'</span>
@@ -595,14 +565,14 @@ export default function Settings() {
 
                     {isCompanyAdmin && (
                       <div className="flex flex-wrap items-center justify-end gap-2.5">
-                        {isConnected && (
+                        {credStatus && (
                           <Button
                             variant="destructive"
                             onClick={handleDisconnectNrs}
                             disabled={busy}
                             className="shadow-sm border border-destructive/20 hover:bg-destructive/90"
                           >
-                            Disconnect NRS Connection
+                            Remove NRS credentials
                           </Button>
                         )}
                         
@@ -611,7 +581,8 @@ export default function Settings() {
                           onClick={() => {
                             if (!company) return;
                             setNrs(nrsFromCompany());
-                            setSecrets({ api_key: "", api_secret: "", taxpayer_password: "" });
+                            setSecrets({ api_key: "", api_secret: "" });
+                            setCryptoText("");
                           }}
                           disabled={busy}
                         >
@@ -628,7 +599,7 @@ export default function Settings() {
                           ) : (
                             <CheckCircle2 className="mr-2 h-4 w-4" />
                           )}
-                          Verify & Connect
+                          Save NRS settings
                         </Button>
                       </div>
                     )}
