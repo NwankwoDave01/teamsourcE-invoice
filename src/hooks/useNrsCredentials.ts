@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import type { NrsCredentialStatus, NrsVerifyResult } from "@/integrations/supabase/nrsTypes";
+import type { NrsCredentialStatus } from "@/integrations/supabase/nrsTypes";
 
 const FN = "nrs-credentials";
 
@@ -27,16 +27,17 @@ export function useNrsCredentialStatus() {
 export function useSaveNrsCredentials() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (input: { api_key?: string; api_secret?: string; taxpayer_password?: string }) =>
+    mutationFn: (input: { api_key?: string; api_secret?: string }) =>
       callFn<NrsCredentialStatus>({ action: "save", ...input }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["nrs-credential-status"] }),
   });
 }
 
-export function useVerifyNrsConnection() {
+export function useSaveNrsCrypto() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => callFn<NrsVerifyResult>({ action: "verify" }),
+    mutationFn: (cryptoKeys: string) =>
+      callFn<NrsCredentialStatus>({ action: "save_crypto", crypto_keys: cryptoKeys }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["nrs-credential-status"] }),
   });
 }

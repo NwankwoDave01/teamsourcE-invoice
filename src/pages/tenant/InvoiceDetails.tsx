@@ -43,10 +43,6 @@ const NEXT_STATUS: Partial<Record<DBInvoiceStatus, DBInvoiceStatus>> = {
   Draft: "In Review",
   "In Review": "Approved",
   Approved: "Ready",
-  Ready: "Submitted",
-  Submitted: "Validated",
-  Validated: "Signed",
-  Signed: "Confirmed",
 };
 
 const NEXT_LABEL: Partial<Record<DBInvoiceStatus, string>> = {
@@ -54,19 +50,17 @@ const NEXT_LABEL: Partial<Record<DBInvoiceStatus, string>> = {
   "In Review": "Approve",
   Approved: "Mark as ready",
   Ready: "Submit to NRS",
-  Submitted: "Mark validated",
-  Validated: "Mark signed",
-  Signed: "Confirm",
 };
 
 export default function InvoiceDetails() {
   const { id } = useParams();
-  const { data: invoice, isLoading } = useInvoice(id);
+  const { data: invoice, isLoading, refetch: refetchInvoice } = useInvoice(id);
   const { data: customer } = useCustomer(invoice?.customer_id ?? undefined);
   const { data: company } = useCurrentCompany();
   const updateStatus = useUpdateInvoiceStatus();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [nrsResult, setNrsResult] = useState<Record<string, unknown> | null>(null);
   const [confirmReject, setConfirmReject] = useState(false);
 
   if (isLoading) {
@@ -92,14 +86,13 @@ export default function InvoiceDetails() {
     );
   }
 
-  const workflow = INVOICE_STATUSES.filter((s) => s !== "Rejected");
+  const workflow = INVOICE_STATUSES.filter((s) => ["Draft", "In Review", "Approved", "Ready"].includes(s));
   const currentIdx = workflow.indexOf(invoice.status as (typeof workflow)[number]);
   const nextStatus = NEXT_STATUS[invoice.status];
   const nextLabel = NEXT_LABEL[invoice.status];
 
   const advance = async () => {
-    if (!nextStatus) return;
-    // When advancing from Ready, route through the NRS submit edge function (mock for now).
+    // NRS owns validation, signing, and QR generation after the invoice is Ready.
     if (invoice.status === "Ready") {
       try {
         setSubmitting(true);
@@ -110,20 +103,23 @@ export default function InvoiceDetails() {
         if (data?.ok === false) {
           toast.error(data?.response?.message ?? "NRS submission rejected");
         } else {
-          toast.success(`Submitted to NRS (mock). IRN: ${data?.irn ?? "—"}`);
+          setNrsResult(data as Record<string, unknown>);
+          await refetchInvoice();
+          toast.success("NRS invoice processing completed");
         }
-      } catch (e: any) {
-        toast.error(e.message ?? "NRS submission failed");
+      } catch (e: unknown) {
+        toast.error("NRS submission failed", { description: (e as Error).message });
       } finally {
         setSubmitting(false);
       }
       return;
     }
+    if (!nextStatus) return;
     try {
       await updateStatus.mutateAsync({ id: invoice.id, status: nextStatus });
       toast.success(`Invoice marked as ${nextStatus}`);
-    } catch (e: any) {
-      toast.error(e.message ?? "Failed to update status");
+    } catch (e: unknown) {
+      toast.error("Failed to update status", { description: (e as Error).message });
     }
   };
 
@@ -131,14 +127,24 @@ export default function InvoiceDetails() {
     try {
       await updateStatus.mutateAsync({ id: invoice.id, status: "Rejected" });
       toast.success("Invoice rejected");
-    } catch (e: any) {
-      toast.error(e.message ?? "Failed to update status");
+    } catch (e: unknown) {
+      toast.error("Failed to update status", { description: (e as Error).message });
     } finally {
       setConfirmReject(false);
     }
   };
 
-  const lines = (invoice as any).lines ?? [];
+  const lines = invoice.lines ?? [];
+  const persistedInvoice = invoice as typeof invoice & {
+    qr_code?: string | null;
+    qr_code_data?: string | null;
+  };
+  const persistedQr = persistedInvoice.qr_code_data ?? persistedInvoice.qr_code ?? null;
+  const qrImageSource = persistedQr
+    ? persistedQr.startsWith("data:")
+      ? persistedQr
+      : `data:image/png;base64,${persistedQr}`
+    : null;
 
   return (
     <div>
@@ -171,7 +177,7 @@ export default function InvoiceDetails() {
               <FileJson className="h-4 w-4" />
               Preview NRS Payload
             </Button>
-            {invoice.status !== "Confirmed" && invoice.status !== "Rejected" && nextStatus && (
+            {invoice.status !== "Confirmed" && invoice.status !== "Rejected" && (nextStatus || invoice.status === "Ready") && (
               <Button size="sm" onClick={advance} disabled={updateStatus.isPending || submitting} className="gap-1.5">
                 <Send className="h-4 w-4" />
                 {nextLabel}
@@ -218,8 +224,27 @@ export default function InvoiceDetails() {
               </div>
             </div>
 
+            {(nrsResult || persistedQr || invoice.status === "Signed" || invoice.status === "Validated") && (
+              <div className="mt-6 rounded-md border border-border bg-muted/20 p-4">
+                <h3 className="text-sm font-semibold">NRS result</h3>
+                <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
+                  <Row label="IRN" value={invoice.irn ?? String(nrsResult?.irn ?? "Not available")} />
+                  <Row label="NRS status" value={invoice.status === "Validated" ? "Validated by NRS" : invoice.status === "Signed" ? "Signed by NRS" : "Pending"} />
+                  <Row label="CSID" value={String(nrsResult?.csid ?? "Not available")} />
+                </div>
+                {invoice.status === "Validated" && <p className="mt-3 text-xs text-muted-foreground">Validated by NRS.</p>}
+                {invoice.status === "Signed" && <p className="mt-3 text-xs text-muted-foreground">Signed by NRS — awaiting APP transmission/clearance.</p>}
+                {qrImageSource && (
+                  <div className="mt-4 flex flex-col items-start gap-2">
+                    <p className="text-xs font-medium text-muted-foreground">QR code</p>
+                    <img src={qrImageSource} alt="NRS invoice QR code" className="h-40 w-40 rounded-md border border-border bg-white p-2" />
+                  </div>
+                )}
+              </div>
+            )}
+
             {(() => {
-              const inv = invoice as any;
+              const inv = invoice;
               const hasNrs =
                 inv.invoice_type ||
                 inv.transaction_type ||
@@ -270,7 +295,7 @@ export default function InvoiceDetails() {
                   </tr>
                 </thead>
                 <tbody>
-                  {lines.map((line: any, i: number) => (
+                  {lines.map((line, i) => (
                     <tr key={i} className="border-t border-border">
                       <td className="px-4 py-3">{line.description}</td>
                       <td className="px-4 py-3 text-right tabular-nums">{line.qty}</td>
@@ -303,7 +328,7 @@ export default function InvoiceDetails() {
         <div className="space-y-6">
           <Card className="p-5 shadow-elegant-sm">
             <h3 className="text-base font-semibold">Compliance workflow</h3>
-            <p className="mb-4 text-xs text-muted-foreground">Draft → Confirmed</p>
+            <p className="mb-4 text-xs text-muted-foreground">Draft → Ready → NRS signed</p>
             <ol className="space-y-3">
               {workflow.map((s, i) => {
                 const done = i <= currentIdx;
@@ -323,6 +348,25 @@ export default function InvoiceDetails() {
                 );
               })}
             </ol>
+            {(invoice.status === "Ready" || invoice.status === "Validated" || invoice.status === "Signed" || nrsResult) && (
+              <div className="mt-6 border-t border-border pt-4">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">NRS operation</p>
+                <ol className="space-y-2 text-sm">
+                  {[
+                    ["Ready", true],
+                    ["Validating with NRS", invoice.status === "Validated" || invoice.status === "Signed" || !!nrsResult],
+                    ["Validated", invoice.status === "Validated" || invoice.status === "Signed"],
+                    ["Signed", invoice.status === "Signed"],
+                    ["QR Generated", !!persistedQr],
+                  ].map(([label, done]) => (
+                    <li key={label as string} className="flex items-center gap-2">
+                      {done ? <CheckCircle2 className="h-4 w-4 text-success" /> : <Circle className="h-4 w-4 text-muted-foreground/40" />}
+                      <span className={done ? "font-medium" : "text-muted-foreground"}>{label as string}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            )}
             {invoice.status !== "Confirmed" && invoice.status !== "Rejected" && (
               <Button
                 variant="outline"
