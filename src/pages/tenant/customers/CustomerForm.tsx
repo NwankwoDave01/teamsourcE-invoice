@@ -37,7 +37,6 @@ import {
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { useVerifyTaxpayer } from "@/hooks/useVerifyTaxpayer";
 
 interface CustomerFormProps {
   mode: "create" | "edit";
@@ -69,9 +68,7 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
   const create = useCreateCustomer();
   const update = useUpdateCustomer();
   
-  const { verifyTaxpayer, isValidating } = useVerifyTaxpayer();
   const [regMode, setRegMode] = useState<"tin" | "cac">("tin");
-  const [isVerified, setIsVerified] = useState(false);
 
   const [form, setForm] = useState<FormState>({
     name: "", tin: "", status: "Active", city: "", email: "", phone: "",
@@ -101,10 +98,8 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
       
       if (ex.rc_number && ex.rc_number.startsWith("RN-")) {
         setRegMode("cac");
-        setIsVerified(false);
       } else if (existing.tin) {
         setRegMode("tin");
-        setIsVerified(true);
       }
     }
   }, [existing]);
@@ -115,38 +110,6 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
   const description = isEdit
     ? "Update billing and contact details for this customer."
     : "Create a new customer to start issuing invoices.";
-
-  const handleVerifyTin = async (tinVal: string) => {
-    if (!tinVal.trim()) return;
-    try {
-      const res = await verifyTaxpayer(tinVal);
-      if (res.ok && res.data) {
-        toast.success("Taxpayer TIN verified successfully!");
-        setForm((prev) => ({
-          ...prev,
-          name: res.data.name,
-          address_line1: res.data.address_line1,
-          address_line2: res.data.address_line2 ?? "",
-          city: res.data.city,
-          state: res.data.state,
-          email: res.data.email,
-          phone: res.data.phone ?? prev.phone,
-          lga: res.data.lga ?? prev.lga,
-          postcode: res.data.postcode ?? prev.postcode,
-          country_code: res.data.country_code ?? prev.country_code,
-          rc_number: res.data.rc_number ?? prev.rc_number,
-        }));
-        setIsVerified(true);
-      } else {
-        toast.error(res.message || "TIN verification failed.");
-        setIsVerified(false);
-      }
-    } catch (e: unknown) {
-      const err = e as Error;
-      toast.error("Verification failed", { description: err.message });
-      setIsVerified(false);
-    }
-  };
 
   const handleSave = async () => {
     if (!form.name.trim()) {
@@ -239,7 +202,6 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                 type="button"
                 onClick={() => {
                   setRegMode("tin");
-                  // Clear CAC flag if switching to TIN
                   if (form.rc_number.startsWith("RN-")) {
                     setForm(prev => ({ ...prev, rc_number: prev.rc_number.slice(3) }));
                   }
@@ -251,14 +213,12 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                     : "text-muted-foreground hover:text-foreground hover:bg-muted-foreground/5"
                 )}
               >
-                Verify via Corporate TIN
+                Use Corporate TIN
               </button>
               <button
                 type="button"
                 onClick={() => {
                   setRegMode("cac");
-                  setIsVerified(false);
-                  // Clear TIN in CAC mode
                   setForm(prev => ({ ...prev, tin: "" }));
                 }}
                 className={cn(
@@ -278,60 +238,26 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                   value={form.name}
                   onChange={(e) => set("name")(e.target.value)}
                   placeholder="e.g. Adeola Ventures Ltd"
-                  disabled={regMode === "tin" && isVerified}
                 />
               </Field>
 
               <Field label="Tax Identification Number (TIN)" required={regMode === "tin"}>
-                <div className="flex gap-2">
-                  <div className="relative flex-1">
+                <div className="relative">
                     <Hash className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       value={form.tin}
                       onChange={(e) => {
                         set("tin")(e.target.value);
-                        if (isVerified) setIsVerified(false);
                       }}
-                      onBlur={() => handleVerifyTin(form.tin)}
                       placeholder="NG-XXXXXXXX"
                       className="pl-9 font-mono"
                       disabled={regMode === "cac"}
                     />
-                  </div>
-                  {regMode === "tin" && (
-                    <Button
-                      type="button"
-                      variant={isVerified ? "outline" : "default"}
-                      onClick={() => {
-                        if (isVerified) {
-                          setIsVerified(false);
-                        } else {
-                          handleVerifyTin(form.tin);
-                        }
-                      }}
-                      disabled={isValidating || !form.tin.trim()}
-                      className="shrink-0 gap-1.5"
-                    >
-                      {isValidating ? (
-                        <>
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                          Verifying...
-                        </>
-                      ) : isVerified ? (
-                        <>
-                          <ShieldCheck className="h-4 w-4 text-success" />
-                          Reset
-                        </>
-                      ) : (
-                        "Verify"
-                      )}
-                    </Button>
-                  )}
                 </div>
                 <FieldHint>
                   {regMode === "cac"
                     ? "TIN is disabled in CAC registration mode."
-                    : "Used for NRS validation. Press Verify or click away to auto-fill details."}
+                    : "Used in the NRS invoice payload and validated during NRS invoice processing."}
                 </FieldHint>
               </Field>
 
@@ -355,7 +281,6 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                     onChange={(e) => set("city")(e.target.value)}
                     placeholder="e.g. Lagos"
                     className="pl-9"
-                    disabled={regMode === "tin" && isVerified}
                   />
                 </div>
               </Field>
@@ -383,7 +308,6 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                     onChange={(e) => set("rc_number")(e.target.value)}
                     placeholder={regMode === "cac" ? "RN-XXXXXXX" : "RC-XXXXXXX"}
                     className="pl-9 font-mono"
-                    disabled={regMode === "tin" && isVerified}
                   />
                 </div>
                 {regMode === "cac" && (
@@ -405,7 +329,6 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                   value={form.address_line1}
                   onChange={(e) => set("address_line1")(e.target.value)}
                   placeholder="Street address"
-                  disabled={regMode === "tin" && isVerified}
                 />
               </Field>
               <Field label="Address line 2">
@@ -413,7 +336,6 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                   value={form.address_line2}
                   onChange={(e) => set("address_line2")(e.target.value)}
                   placeholder="Suite, building, floor (optional)"
-                  disabled={regMode === "tin" && isVerified}
                 />
               </Field>
               <Field label="State">
@@ -421,7 +343,6 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                   value={form.state}
                   onChange={(e) => set("state")(e.target.value)}
                   placeholder="e.g. Lagos"
-                  disabled={regMode === "tin" && isVerified}
                 />
               </Field>
               <Field label="LGA">
@@ -429,7 +350,6 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                   value={form.lga}
                   onChange={(e) => set("lga")(e.target.value)}
                   placeholder="Local Government Area"
-                  disabled={regMode === "tin" && isVerified}
                 />
               </Field>
               <Field label="Postcode">
@@ -437,7 +357,6 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                   value={form.postcode}
                   onChange={(e) => set("postcode")(e.target.value)}
                   placeholder="e.g. 100001"
-                  disabled={regMode === "tin" && isVerified}
                 />
               </Field>
               <Field label="Country code">
@@ -447,7 +366,6 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                   placeholder="NG"
                   maxLength={2}
                   className="font-mono uppercase"
-                  disabled={regMode === "tin" && isVerified}
                 />
                 <FieldHint>ISO 3166-1 alpha-2 (e.g. NG).</FieldHint>
               </Field>
@@ -470,7 +388,6 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                     onChange={(e) => set("email")(e.target.value)}
                     placeholder="billing@company.com"
                     className="pl-9"
-                    disabled={regMode === "tin" && isVerified}
                   />
                 </div>
               </Field>
@@ -554,7 +471,7 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
                 <h2 className="text-sm font-semibold">Best practices</h2>
               </div>
               <ul className="space-y-2.5 text-sm">
-                <CheckRow label="Verify TIN before first invoice" />
+                <CheckRow label="Capture TIN before first invoice" />
                 <CheckRow label="Confirm billing email is monitored" />
                 <CheckRow label="Keep contact phone up to date" />
               </ul>
