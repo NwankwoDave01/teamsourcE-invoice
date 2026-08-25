@@ -81,14 +81,6 @@ const DEFAULT_INVOICE_TYPES = [
   { code: "383", label: "Debit Note" },
 ];
 
-const DEFAULT_PAYMENT_MEANS = [
-  { code: "30", label: "Bank Transfer" },
-  { code: "10", label: "Cash" },
-  { code: "42", label: "Cheque" },
-  { code: "48", label: "Credit Card" },
-  { code: "97", label: "Other" },
-];
-
 export default function CreateInvoice() {
   const navigate = useNavigate();
   const { data: customers = [] } = useCustomers();
@@ -107,7 +99,7 @@ export default function CreateInvoice() {
   const [transactionType, setTransactionType] = useState<string>("B2B");
   const [supplyDate, setSupplyDate] = useState<string>("");
   const [paymentTerms, setPaymentTerms] = useState<string>("");
-  const [paymentMeansCode, setPaymentMeansCode] = useState<string>("30");
+  const [paymentMeansCode, setPaymentMeansCode] = useState<string>("");
   const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [currency, setCurrency] = useState<string>("NGN");
 
@@ -122,6 +114,13 @@ export default function CreateInvoice() {
   const currencies = currenciesRaw ?? [];
   const paymentMeans = paymentMeansRaw ?? [];
   const invoiceTypes = invoiceTypesRaw ?? [];
+
+  useEffect(() => {
+    const availablePaymentMeans = paymentMeansRaw ?? [];
+    if (!paymentMeansCode && availablePaymentMeans.length > 0) {
+      setPaymentMeansCode(availablePaymentMeans[0].code);
+    }
+  }, [paymentMeansRaw, paymentMeansCode]);
 
   // Auto-generate next invoice number
   useEffect(() => {
