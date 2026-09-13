@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Loader2, Eye, EyeOff, Lock, Key, HelpCircle, CheckCircle2, ShieldCheck, Upload } from "lucide-react";
+import { CheckCircle2, CircleAlert, Loader2, ShieldCheck } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -7,29 +7,41 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useCurrentCompany, useUpdateCompany } from "@/hooks/useCompanyData";
-import {
-  useNrsCredentialStatus,
-  useSaveNrsCredentials,
-  useSaveNrsCrypto,
-  useDisconnectNrsCredentials,
-} from "@/hooks/useNrsCredentials";
 import type { NrsCompanyExtra } from "@/integrations/supabase/nrsTypes";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
+import { useSearchParams } from "react-router-dom";
+
+interface AppConnectionDraft {
+  businessAddress: string;
+  businessAddressLg: string;
+  businessAddressStreetName: string;
+  businessCity: string;
+  businessCountry: string;
+  businessPostalCode: string;
+  businessState: string;
+  contactEmail: string;
+  entityFirsId: string;
+  businessFirsId: string;
+  businessWebhookUrl: string;
+  contractId: string;
+}
+
+const emptyAppDraft: AppConnectionDraft = {
+  businessAddress: "", businessAddressLg: "", businessAddressStreetName: "",
+  businessCity: "", businessCountry: "NG", businessPostalCode: "", businessState: "",
+  contactEmail: "", entityFirsId: "", businessFirsId: "", businessWebhookUrl: "", contractId: "",
+};
 
 export default function Settings() {
   const { data: company, isLoading } = useCurrentCompany();
   const update = useUpdateCompany();
-  const { roles, companyId } = useAuth();
+  const { roles } = useAuth();
+  const [searchParams] = useSearchParams();
   const isCompanyAdmin = roles.includes("company_admin") || roles.includes("super_admin");
   const nrsCompany = company as (typeof company & Partial<NrsCompanyExtra>) | null | undefined;
-  const { data: credStatus, isLoading: statusLoading } = useNrsCredentialStatus();
-  const saveCreds = useSaveNrsCredentials();
-  const saveCrypto = useSaveNrsCrypto();
-  const disconnectCreds = useDisconnectNrsCredentials();
   const [form, setForm] = useState({
     name: "", tin: "", industry: "",
     legal_name: "", rc_number: "", vat_number: "", email: "", phone: "",
@@ -37,8 +49,6 @@ export default function Settings() {
     postcode: "", country_code: "NG", industry_code: "",
   });
 
-  // NRS Integration — non-secret configuration only. Secrets live in Vault
-  // behind the `nrs-credentials` Edge Function and are never read back here.
   const [nrs, setNrs] = useState({
     nrs_business_id: "",
     nrs_service_id: "",
@@ -47,16 +57,7 @@ export default function Settings() {
     nrs_production_base_url: "",
   });
 
-  // Write-only secret inputs. Blank = leave the stored value unchanged.
-  const [secrets, setSecrets] = useState({
-    api_key: "",
-    api_secret: "",
-  });
-
-  const [cryptoText, setCryptoText] = useState("");
-  const [showApiKey, setShowApiKey] = useState(false);
-  const [showApiSecret, setShowApiSecret] = useState(false);
-  
+  const [appDraft, setAppDraft] = useState<AppConnectionDraft>(emptyAppDraft);
 
   useEffect(() => {
     if (company) {
@@ -79,7 +80,22 @@ export default function Settings() {
         industry_code: company.industry_code ?? "",
       });
       setNrs(nrsFromCompany());
-      setSecrets({ api_key: "", api_secret: "" });
+      try {
+        const saved = localStorage.getItem(`teamsource-app-connection:${company.id}`);
+        setAppDraft(saved ? { ...emptyAppDraft, ...JSON.parse(saved) } : {
+          ...emptyAppDraft,
+          businessAddress: company.address_line1 ?? "",
+          businessAddressLg: company.lga ?? "",
+          businessAddressStreetName: company.address_line2 ?? "",
+          businessCity: company.city ?? "",
+          businessCountry: company.country_code ?? "NG",
+          businessPostalCode: company.postcode ?? "",
+          businessState: company.state ?? "",
+          contactEmail: company.email ?? "",
+        });
+      } catch {
+        setAppDraft(emptyAppDraft);
+      }
     }
   }, [company]);
 
@@ -106,9 +122,8 @@ export default function Settings() {
 
   const set = (k: keyof typeof form) => (v: string) => setForm({ ...form, [k]: v });
   const setN = (k: keyof typeof nrs) => (v: string) => setNrs({ ...nrs, [k]: v });
-  const setS = (k: keyof typeof secrets) => (v: string) => setSecrets({ ...secrets, [k]: v });
+  const setApp = (k: keyof AppConnectionDraft) => (v: string) => setAppDraft({ ...appDraft, [k]: v });
 
-  // Save company identity and write-only credentials independently of taxpayer login.
   const handleSaveNrs = async () => {
     if (!company) return;
     if (!isCompanyAdmin) {
@@ -126,68 +141,27 @@ export default function Settings() {
         nrs_production_base_url: nrs.nrs_production_base_url || "https://einvoice.nrs.gov.ng",
       });
 
-      const pending: Record<string, string> = {};
-      if (secrets.api_key.trim()) pending.api_key = secrets.api_key.trim();
-      if (secrets.api_secret.trim()) pending.api_secret = secrets.api_secret.trim();
-      if (Object.keys(pending).length > 0) {
-        await saveCreds.mutateAsync(pending);
-        setSecrets({ api_key: "", api_secret: "" });
-      }
-      toast.success("NRS settings saved");
+      localStorage.setItem(`teamsource-app-connection:${company.id}`, JSON.stringify(appDraft));
+      toast.success("NRS identifiers saved; APP onboarding draft kept on this device");
     } catch (e: unknown) {
       const err = e as Error;
       toast.error("Failed to save NRS settings", { description: err.message });
     }
   };
 
-  const handleDisconnectNrs = async () => {
-    if (!company) return;
-    if (!isCompanyAdmin) {
-      toast.error("Only Company Admins can disconnect NRS integration");
-      return;
-    }
-    try {
-      await disconnectCreds.mutateAsync();
-      await update.mutateAsync({
-        id: company.id,
-        nrs_business_id: null,
-        nrs_service_id: null,
-        nrs_environment: "sandbox",
-        nrs_sandbox_base_url: null,
-        nrs_production_base_url: null,
-      });
-
-      setNrs({
-        nrs_business_id: "",
-        nrs_service_id: "",
-        nrs_environment: "sandbox",
-        nrs_sandbox_base_url: "",
-        nrs_production_base_url: "",
-      });
-      setSecrets({ api_key: "", api_secret: "" });
-      setCryptoText("");
-      toast.success("NRS credentials removed");
-    } catch (e: unknown) {
-      const err = e as Error;
-      toast.error("Failed to disconnect", { description: err.message });
-    }
-  };
-
-  const readiness = !isCompanyAdmin ? "Read-only" : statusLoading ? "Incomplete" : credStatus?.ready ? "Ready" : "Incomplete";
-  const busy = update.isPending || saveCreds.isPending || saveCrypto.isPending || disconnectCreds.isPending;
-  const secretPlaceholder = (configured?: boolean) =>
-    configured ? "Configured — leave blank to keep" : "Not configured";
+  const appDraftComplete = Object.values(appDraft).every((value) => value.trim().length > 0);
+  const connectionState = appDraftComplete ? "Configured locally — connection pending" : "Awaiting APP details";
 
   return (
     <div>
       <PageHeader title="Settings" description="Configure your company workspace." />
       <div className="p-6">
-        <Tabs defaultValue="company" className="space-y-4">
+        <Tabs defaultValue={searchParams.get("tab") === "nrs" ? "nrs" : "company"} className="space-y-4">
           <TabsList>
             <TabsTrigger value="company">Company</TabsTrigger>
             <TabsTrigger value="tax">Tax & Compliance</TabsTrigger>
             <TabsTrigger value="invoice">Invoice</TabsTrigger>
-            <TabsTrigger value="nrs">NRS Integration</TabsTrigger>
+            <TabsTrigger value="nrs">NRS / APP Connection</TabsTrigger>
             <TabsTrigger value="notifications">Notifications</TabsTrigger>
           </TabsList>
 
@@ -288,7 +262,7 @@ export default function Settings() {
               <h3 className="mb-4 text-base font-semibold">Tax & compliance</h3>
               <div className="space-y-4">
                 <ToggleRow label="Charge VAT on all invoices" desc="Apply 7.5% VAT by default to taxable line items." defaultChecked />
-                <ToggleRow label="Auto-submit to NRS after approval" desc="Send approved invoices to NRS without manual click." />
+                <ToggleRow label="Auto-submit to APP after approval" desc="Reserved for the confirmed APP contract; currently inactive." />
                 <ToggleRow label="Require dual approval over ₦5,000,000" desc="Invoices above the threshold need two approvers." defaultChecked />
                 <ToggleRow label="Block invoices with unverified TIN" desc="Prevent submission until customer TIN is verified." defaultChecked />
               </div>
@@ -308,12 +282,12 @@ export default function Settings() {
           ))}
 
           <TabsContent value="nrs">
-            <Card className="p-6 shadow-elegant-sm bg-gradient-to-br from-card to-background border-border/80">
+            <Card className="border-border/80 bg-gradient-to-br from-card to-background p-6 shadow-elegant-sm">
               <div className="mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-6">
                 <div>
-                  <h3 className="text-lg font-semibold tracking-tight">NRS Integration</h3>
+                   <h3 className="text-lg font-semibold tracking-tight">NRS / APP Connection</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    Secure electronic invoice submission credentials for the Nigerian Revenue Service (NRS).
+                     Configure how approved TeamSource invoices will connect to the appointed Access Point Provider (APP).
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -323,8 +297,8 @@ export default function Settings() {
                     </span>
                   )}
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground">
-                    <span className="h-2.5 w-2.5 rounded-full bg-primary" />
-                    {readiness}
+                     <span className="h-2.5 w-2.5 rounded-full bg-warning" />
+                     {connectionState}
                   </span>
                 </div>
               </div>
@@ -335,13 +309,17 @@ export default function Settings() {
                 </div>
               ) : (
                 <div className="space-y-6">
+                  <div className="rounded-md border border-info/30 bg-info/10 p-4 text-sm">
+                    <p className="font-medium">Confirmed architecture</p>
+                    <p className="mt-1 text-muted-foreground">TeamSource standardizes invoices using the NRS schema and sends approved invoices to the configured APP. The APP handles downstream NRS processing under its confirmed contract.</p>
+                  </div>
                   <div className="grid gap-6 md:grid-cols-2">
                     
                     {/* Corporate Tax Identity Card */}
                     <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
                       <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
                         <span className="h-2 w-1 bg-primary rounded-full"></span>
-                        Corporate Tax Identity
+                         Company identity
                       </h4>
                       
                       <div className="space-y-4">
@@ -380,11 +358,11 @@ export default function Settings() {
                     <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
                       <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
                         <span className="h-2 w-1 bg-primary rounded-full"></span>
-                        API Gateway Settings
+                         NRS identifiers
                       </h4>
                       
                       <div className="space-y-4">
-                        <Field label="NRS Environment Mode">
+                         <Field label="Connection environment">
                           <Select
                             value={nrs.nrs_environment}
                             onValueChange={(v) => setN("nrs_environment")(v)}
@@ -423,183 +401,73 @@ export default function Settings() {
 
                         </div>
 
-                        <Field label="Sandbox Base URL">
-                          <Input
-                            value={nrs.nrs_sandbox_base_url}
-                            onChange={(e) => setN("nrs_sandbox_base_url")(e.target.value)}
-                            placeholder="https://eivc-k6z6d.ondigitalocean.app"
-                            disabled={!isCompanyAdmin}
-                          />
-                        </Field>
-
-                        {nrs.nrs_environment === "production" && (
-                          <Field label="Production Base URL">
-                            <Input
-                              value={nrs.nrs_production_base_url}
-                              onChange={(e) => setN("nrs_production_base_url")(e.target.value)}
-                              placeholder="https://einvoice.nrs.gov.ng"
-                              disabled={!isCompanyAdmin}
-                            />
-                          </Field>
-                        )}
+                        <p className="text-xs text-muted-foreground">Business ID identifies the company. Service ID is used when TeamSource forms the IRN.</p>
                       </div>
                     </Card>
 
                   </div>
 
-                  <div className="grid gap-6 md:grid-cols-2">
-                    {/* API Credentials Card */}
-                    <Card className="p-5 border-border bg-card/40 backdrop-blur-xs flex flex-col gap-4 shadow-elegant-xs">
-                      <h4 className="text-sm font-semibold tracking-wide text-foreground uppercase border-b border-border/40 pb-2 flex items-center gap-2">
-                        <span className="h-2 w-1 bg-primary rounded-full"></span>
-                        API Access Credentials
-                      </h4>
-                      
-                      <div className="space-y-4">
-                        <Field label="NRS API Key">
-                          <div className="relative flex items-center">
-                            <Input
-                              type={showApiKey ? "text" : "password"}
-                              value={secrets.api_key}
-                              onChange={(e) => setS("api_key")(e.target.value)}
-                              placeholder={secretPlaceholder(credStatus?.api_key_configured)}
-                              className="pl-9 pr-10 font-mono"
-                              disabled={!isCompanyAdmin}
-                            />
-                            <Key className="absolute left-3 h-4 w-4 text-muted-foreground" />
-                            <button
-                              type="button"
-                              onClick={() => setShowApiKey(!showApiKey)}
-                              className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
-                              disabled={!isCompanyAdmin}
-                            >
-                              {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
-                        </Field>
-
-                        <Field label="NRS API Secret">
-                          <div className="relative flex items-center">
-                            <Input
-                              type={showApiSecret ? "text" : "password"}
-                              value={secrets.api_secret}
-                              onChange={(e) => setS("api_secret")(e.target.value)}
-                              placeholder={secretPlaceholder(credStatus?.api_secret_configured)}
-                              className="pl-9 pr-10 font-mono"
-                              disabled={!isCompanyAdmin}
-                            />
-                            <Lock className="absolute left-3 h-4 w-4 text-muted-foreground" />
-                            <button
-                              type="button"
-                              onClick={() => setShowApiSecret(!showApiSecret)}
-                              className="absolute right-3 text-muted-foreground hover:text-foreground focus:outline-none"
-                              disabled={!isCompanyAdmin}
-                            >
-                              {showApiSecret ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </button>
-                          </div>
-                        </Field>
-                      </div>
-                    </Card>
-                  </div>
-
-                  <Card className="p-5 border-border bg-card/40 backdrop-blur-xs space-y-4 shadow-elegant-xs">
+                   <Card className="space-y-4 border-border bg-card/40 p-5 shadow-elegant-xs">
                     <div>
-                      <h4 className="text-sm font-semibold tracking-wide uppercase">Taxpayer Cryptographic Configuration</h4>
-                      <p className="mt-1 text-xs text-muted-foreground">Upload crypto_keys.txt or paste its JSON contents. The contents are sent securely and never displayed after saving.</p>
+                       <h4 className="text-sm font-semibold tracking-wide uppercase">APP onboarding details</h4>
+                       <p className="mt-1 text-xs text-muted-foreground">These confirmed onboarding fields are kept as a local draft on this device until the APP endpoint and storage contract are confirmed.</p>
                     </div>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <Field label="crypto_keys.txt">
-                        <Input
-                          type="file"
-                          accept=".txt,.json,application/json,text/plain"
-                          disabled={!isCompanyAdmin || saveCrypto.isPending}
-                          onChange={async (event) => {
-                            const file = event.target.files?.[0];
-                            if (file) setCryptoText(await file.text());
-                            event.currentTarget.value = "";
-                          }}
-                        />
-                      </Field>
-                      <Field label="JSON contents">
-                        <Textarea value={cryptoText} onChange={(event) => setCryptoText(event.target.value)} disabled={!isCompanyAdmin} placeholder="Paste JSON contents" rows={4} />
-                      </Field>
-                    </div>
-                    <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-                      <span>{credStatus?.crypto_configured ? "Configured" : "Not configured"}</span>
-                      <span>{credStatus?.crypto_configured ? "Public key configured" : "Public key not configured"}</span>
-                      <span>{credStatus?.crypto_configured ? "Certificate configured" : "Certificate not configured"}</span>
-                      {credStatus?.crypto_verified_at && <span>Updated {new Date(credStatus.crypto_verified_at).toLocaleString()}</span>}
-                    </div>
-                    {isCompanyAdmin && (
-                      <Button
-                        variant="outline"
-                        disabled={!cryptoText.trim() || saveCrypto.isPending}
-                        onClick={async () => {
-                          try {
-                            await saveCrypto.mutateAsync(cryptoText);
-                            setCryptoText("");
-                            toast.success("Taxpayer cryptographic configuration saved");
-                          } catch (e: unknown) {
-                            toast.error("Failed to save cryptographic configuration", { description: (e as Error).message });
-                          }
-                        }}
-                      >
-                        {saveCrypto.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
-                        Save crypto configuration
-                      </Button>
-                    )}
+                     <div className="grid gap-4 md:grid-cols-2">
+                       <AppField label="Business address" description="Full registered business address." value={appDraft.businessAddress} onChange={setApp("businessAddress")} disabled={!isCompanyAdmin} />
+                       <AppField label="Local government area" description="APP field: businessAddressLg." value={appDraft.businessAddressLg} onChange={setApp("businessAddressLg")} disabled={!isCompanyAdmin} />
+                       <AppField label="Street name" description="APP field: businessAddressStreetName." value={appDraft.businessAddressStreetName} onChange={setApp("businessAddressStreetName")} disabled={!isCompanyAdmin} />
+                       <AppField label="City" description="Registered business city." value={appDraft.businessCity} onChange={setApp("businessCity")} disabled={!isCompanyAdmin} />
+                       <AppField label="Country code" description="Two-letter country code; defaults to NG." value={appDraft.businessCountry} onChange={(v) => setApp("businessCountry")(v.toUpperCase())} disabled={!isCompanyAdmin} maxLength={2} />
+                       <AppField label="Postal code" description="Registered business postal code." value={appDraft.businessPostalCode} onChange={setApp("businessPostalCode")} disabled={!isCompanyAdmin} />
+                       <AppField label="State" description="Registered business state." value={appDraft.businessState} onChange={setApp("businessState")} disabled={!isCompanyAdmin} />
+                       <AppField label="Contact email" description="Operational contact for APP onboarding." value={appDraft.contactEmail} onChange={setApp("contactEmail")} disabled={!isCompanyAdmin} type="email" />
+                       <AppField label="Entity FIRS ID" description="APP onboarding field: entityFirsId." value={appDraft.entityFirsId} onChange={setApp("entityFirsId")} disabled={!isCompanyAdmin} />
+                       <AppField label="Business FIRS ID" description="APP onboarding field: businessFirsId." value={appDraft.businessFirsId} onChange={setApp("businessFirsId")} disabled={!isCompanyAdmin} />
+                       <AppField label="Business webhook URL" description="Callback URL to register after the webhook contract is confirmed." value={appDraft.businessWebhookUrl} onChange={setApp("businessWebhookUrl")} disabled={!isCompanyAdmin} type="url" />
+                       <AppField label="Contract ID" description="TeamSource ↔ APP integration identifier; this is not a password or API key." value={appDraft.contractId} onChange={setApp("contractId")} disabled={!isCompanyAdmin} />
+                     </div>
                   </Card>
 
-                  <Card className="p-4 border-border bg-muted/30 flex items-center gap-2">
-                    <HelpCircle className="h-4 w-4 text-primary" />
-                    <span className="text-xs text-muted-foreground">Generate this in your NRS Developer Portal under 'API Credentials'</span>
+                   <Card className="flex items-start gap-3 border-warning/30 bg-warning/10 p-4">
+                     <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                     <div className="text-xs text-muted-foreground"><p className="font-medium text-foreground">Connection is not live yet</p><p className="mt-1">APP endpoint, request method, contract ID transport, response fields, and callback lifecycle remain pending. If the APP later requires a secret, it will be stored and used only by the backend.</p></div>
                   </Card>
 
                   {/* Trust & Security / Actions Footer */}
                   <div className="mt-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-t border-border/80 pt-6">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium bg-muted/30 px-3 py-2 rounded-lg border border-border/50 w-fit">
                       <ShieldCheck className="h-4 w-4 text-emerald-500 animate-pulse" />
-                      <span>Credentials are encrypted end-to-end and stored securely.</span>
+                       <span>TeamSource customer access uses native workspace authentication. No taxpayer login or API secret is required here.</span>
                     </div>
 
                     {isCompanyAdmin && (
                       <div className="flex flex-wrap items-center justify-end gap-2.5">
-                        {credStatus && (
-                          <Button
-                            variant="destructive"
-                            onClick={handleDisconnectNrs}
-                            disabled={busy}
-                            className="shadow-sm border border-destructive/20 hover:bg-destructive/90"
-                          >
-                            Remove NRS credentials
-                          </Button>
-                        )}
-                        
                         <Button
                           variant="outline"
                           onClick={() => {
                             if (!company) return;
                             setNrs(nrsFromCompany());
-                            setSecrets({ api_key: "", api_secret: "" });
-                            setCryptoText("");
+                            try {
+                              const saved = localStorage.getItem(`teamsource-app-connection:${company.id}`);
+                              setAppDraft(saved ? { ...emptyAppDraft, ...JSON.parse(saved) } : emptyAppDraft);
+                            } catch { setAppDraft(emptyAppDraft); }
                           }}
-                          disabled={busy}
+                           disabled={update.isPending}
                         >
                           Reset
                         </Button>
                         
                         <Button 
                           onClick={handleSaveNrs} 
-                          disabled={busy}
+                           disabled={update.isPending}
                           className="bg-primary hover:bg-primary/95 text-primary-foreground font-medium shadow-sm transition-all"
                         >
-                          {busy ? (
+                           {update.isPending ? (
                             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           ) : (
                             <CheckCircle2 className="mr-2 h-4 w-4" />
                           )}
-                          Save NRS settings
+                           Save identifiers & local draft
                         </Button>
                       </div>
                     )}
@@ -621,6 +489,16 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
       {children}
     </div>
   );
+}
+
+function AppField({ label, description, value, onChange, disabled, type = "text", maxLength }: {
+  label: string; description: string; value: string; onChange: (value: string) => void;
+  disabled: boolean; type?: string; maxLength?: number;
+}) {
+  return <Field label={label}>
+    <Input type={type} value={value} onChange={(event) => onChange(event.target.value)} disabled={disabled} maxLength={maxLength} />
+    <p className="text-[11px] text-muted-foreground">{description}</p>
+  </Field>;
 }
 
 function ToggleRow({ label, desc, defaultChecked }: { label: string; desc: string; defaultChecked?: boolean }) {

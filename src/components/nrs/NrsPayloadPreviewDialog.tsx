@@ -53,8 +53,7 @@ export function NrsPayloadPreviewDialog({ invoiceId, open, onOpenChange }: Props
         <DialogHeader>
           <DialogTitle>NRS Payload Preview</DialogTitle>
           <DialogDescription>
-            Internal UBL-style mapping. This is a preview only — no data is sent to NRS / FIRS.
-            We will reconcile with the official NRS schema before live integration.
+            Standard NRS invoice-schema mapping. This preview sends nothing to the APP or NRS.
           </DialogDescription>
         </DialogHeader>
 
@@ -86,7 +85,7 @@ export function NrsPayloadPreviewDialog({ invoiceId, open, onOpenChange }: Props
               {errors.length === 0 && warnings.length === 0 ? (
                 <div className="flex items-center gap-2 rounded-md border border-success/30 bg-success/10 p-3 text-sm text-success">
                   <CheckCircle2 className="h-4 w-4" />
-                  All required NRS checks passed.
+                   All required schema checks passed.
                 </div>
               ) : (
                 <ScrollArea className="h-72 rounded-md border">
@@ -124,7 +123,7 @@ export function NrsPayloadPreviewDialog({ invoiceId, open, onOpenChange }: Props
             <TabsContent value="json" className="mt-4">
               <div className="mb-2 flex items-center justify-between">
                 <p className="text-xs text-muted-foreground">
-                  Internal mapping structure — not the final NRS API payload.
+                   Standard invoice mapping prepared for the APP connection.
                 </p>
                 <Button size="sm" variant="outline" onClick={copy} className="gap-1.5">
                   <Copy className="h-3.5 w-3.5" />
