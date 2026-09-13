@@ -76,7 +76,7 @@ export default function CompanyOnboarding() {
           <BrandMark />
           <h1 className="mt-2 text-2xl font-semibold tracking-tight">Set up your workspace</h1>
           <p className="text-sm text-muted-foreground">
-            Tell us about your business so we can generate compliant invoices under your name.
+            Create your TeamSource workspace first. You can connect your NRS / APP integration from Settings next.
           </p>
         </div>
 
@@ -149,7 +149,7 @@ export default function CompanyOnboarding() {
               </Button>
               <Button type="submit" disabled={saving} className="min-w-[160px] gap-1.5">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {saving ? "Creating…" : "Create workspace"}
+                {saving ? "Creating…" : "Create workspace & continue"}
               </Button>
             </div>
           </form>

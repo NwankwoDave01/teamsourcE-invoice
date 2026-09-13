@@ -424,7 +424,7 @@ export default function CreateInvoice() {
                       {line.product_id && !line.item_classification_code && (
                         <div className="text-[10px] text-amber-600 dark:text-amber-500 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/30 rounded px-2 py-0.5 mt-1 inline-flex items-center gap-1">
                           <Info className="h-3 w-3 shrink-0" />
-                          <span>Compliance classification required for NRS submissions.</span>
+                          <span>NRS schema classification is required before APP submission.</span>
                         </div>
                       )}
                     </div>
@@ -534,7 +534,7 @@ export default function CreateInvoice() {
                 <CheckRow ok={!!selectedCustomer?.tin} label="Customer TIN provided" />
                 <CheckRow ok={lines.every((l) => l.tax_rate > 0)} label="Tax rates set on every line" />
                 <CheckRow info label="Will route to Finance Officer" />
-                <CheckRow info label="Eligible for NRS after approval" />
+                 <CheckRow info label="Eligible for APP submission after approval" />
               </ul>
             </Card>
           </div>
