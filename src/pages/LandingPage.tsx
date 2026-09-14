@@ -49,7 +49,7 @@ export default function LandingPage() {
     ],
     [
       "Submit",
-      "Submit securely to external compliance systems through backend integrations.",
+      "Prepare approved invoices for handoff to a configured Access Point Provider.",
     ],
   ];
 
@@ -246,8 +246,8 @@ export default function LandingPage() {
                       </p>
 
                       <p className="mt-2 text-sm text-slate-300">
-                        Invoice INV-2026-00018 successfully validated and queued
-                        for NRS submission.
+                        Invoice INV-2026-00018 approved and prepared for its
+                        configured APP.
                       </p>
                     </div>
 
@@ -418,12 +418,12 @@ export default function LandingPage() {
             </p>
 
             <h2 className="mt-4 text-4xl font-bold leading-tight">
-              Integrate securely through APIs and enterprise workflows.
+              Prepare for secure enterprise integrations.
             </h2>
 
             <p className="mt-5 text-lg leading-8 text-slate-300">
-              TS-Flow is built to support secure integrations for invoicing,
-              validation, approvals, reporting, and operational workflows.
+              TS-Flow supports invoicing, validation, approvals, reporting, and
+              integration planning. APP connectivity remains pending the provider contract.
             </p>
 
             <div className="mt-8 flex flex-wrap gap-4">
@@ -431,7 +431,7 @@ export default function LandingPage() {
                 href="/api-docs"
                 className="rounded-2xl bg-cyan-400 px-6 py-4 font-semibold text-slate-950"
               >
-                API Documentation
+                Integration brief
               </a>
 
               <a
@@ -443,28 +443,10 @@ export default function LandingPage() {
             </div>
           </div>
 
-          <div className="rounded-[2rem] bg-slate-950 p-6 font-mono text-sm text-cyan-200">
-            <p>{"POST /api/invoices/submit"}</p>
-
-            <p className="mt-4 text-slate-500">{"{"}</p>
-
-            <p className="ml-4">
-              "invoiceNumber": "INV-2026-00016",
-            </p>
-
-            <p className="ml-4">
-              "transactionType": "B2B",
-            </p>
-
-            <p className="ml-4">
-              "complianceStatus": "Validated",
-            </p>
-
-            <p className="ml-4">
-              "submissionStatus": "Queued"
-            </p>
-
-            <p className="text-slate-500">{"}"}</p>
+          <div className="rounded-[2rem] bg-slate-950 p-6 text-sm text-slate-300">
+            <p className="text-xs font-semibold uppercase tracking-wide text-cyan-300">Confirmed architecture</p>
+            <p className="mt-4 font-mono text-cyan-200">TeamSource SI → configured APP → NRS</p>
+            <p className="mt-5 leading-7">No public TeamSource submission endpoint is currently documented. APP endpoint, authentication, callbacks, and status contracts remain pending.</p>
           </div>
         </div>
       </section>

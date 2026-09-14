@@ -80,7 +80,7 @@ export default function Invoices() {
   const [filter, setFilter] = useState<"All" | DBInvoiceStatus>("All");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [submittingNrs, setSubmittingNrs] = useState(false);
+  const [submittingToApp, setSubmittingToApp] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   const counts = useMemo(
@@ -129,32 +129,32 @@ export default function Invoices() {
   };
   const hasActiveFilters = filter !== "All" || search.trim().length > 0;
 
-  const submitInvoiceToNrs = async (id: string): Promise<{ ok: boolean; message?: string }> => {
+  const submitInvoiceToApp = async (id: string): Promise<{ ok: boolean; message?: string }> => {
     const { data, error } = await supabase.functions.invoke("nrs-submit", {
       body: { invoice_id: id },
     });
     if (error) return { ok: false, message: error.message };
     if (data?.ok === false) {
-      return { ok: false, message: data?.response?.message ?? "NRS rejected" };
+      return { ok: false, message: data?.response?.message ?? "Submission rejected" };
     }
     return { ok: true };
   };
 
-  const submitRowToNrs = async (id: string) => {
+  const submitRowToApp = async (id: string) => {
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return;
     if (inv.status !== "Ready") {
       toast.error(`Only invoices at "Ready" can be submitted (current: ${inv.status})`);
       return;
     }
-    setSubmittingNrs(true);
+    setSubmittingToApp(true);
     try {
-      const res = await submitInvoiceToNrs(id);
-      if (res.ok) toast.success(`Submitted ${inv.number} to NRS (mock)`);
-      else toast.error(res.message ?? "NRS submission failed");
+      const res = await submitInvoiceToApp(id);
+      if (res.ok) toast.success(`${inv.number} submitted to the configured APP`);
+      else toast.error(res.message ?? "APP submission failed");
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
     } finally {
-      setSubmittingNrs(false);
+      setSubmittingToApp(false);
     }
   };
 
@@ -166,18 +166,18 @@ export default function Invoices() {
       toast.error('No selected invoices are at "Ready" status');
       return;
     }
-    setSubmittingNrs(true);
+    setSubmittingToApp(true);
     try {
-      const results = await Promise.all(eligible.map((id) => submitInvoiceToNrs(id)));
+      const results = await Promise.all(eligible.map((id) => submitInvoiceToApp(id)));
       const success = results.filter((r) => r.ok).length;
       const failed = results.length - success;
-      if (success > 0) toast.success(`Submitted ${success} invoice${success === 1 ? "" : "s"} to NRS`);
+      if (success > 0) toast.success(`Submitted ${success} invoice${success === 1 ? "" : "s"} to the configured APP`);
       if (failed > 0) toast.error(`${failed} submission${failed === 1 ? "" : "s"} failed`);
       if (skipped > 0) toast.message(`Skipped ${skipped} not at "Ready"`);
       setSelected(new Set());
       await queryClient.invalidateQueries({ queryKey: ["invoices"] });
     } finally {
-      setSubmittingNrs(false);
+      setSubmittingToApp(false);
     }
   };
 
@@ -303,10 +303,10 @@ export default function Invoices() {
                   size="sm"
                   className="gap-1.5"
                   onClick={bulkSubmit}
-                  disabled={submittingNrs}
+                  disabled={submittingToApp}
                 >
                   <Send className="h-3.5 w-3.5" />
-                  Submit to NRS
+                  Submit to APP
                 </Button>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Download className="h-3.5 w-3.5" />
@@ -368,7 +368,7 @@ export default function Invoices() {
                     <th className="px-3 py-3 text-left font-medium">Issue date</th>
                     <th className="px-3 py-3 text-left font-medium">Due</th>
                     <th className="px-3 py-3 text-right font-medium">Amount</th>
-                    <th className="px-3 py-3 text-left font-medium">NRS Ref</th>
+                    <th className="px-3 py-3 text-left font-medium">IRN</th>
                     <th className="px-3 py-3 text-left font-medium">Status</th>
                     <th className="w-12 px-5 py-3" />
                   </tr>
@@ -415,8 +415,8 @@ export default function Invoices() {
                           <RowActions
                             invoiceId={inv.id}
                             canSubmit={inv.status === "Ready"}
-                            submitting={submittingNrs}
-                            onSubmitNrs={() => submitRowToNrs(inv.id)}
+                            submitting={submittingToApp}
+                            onSubmitApp={() => submitRowToApp(inv.id)}
                           />
                         </td>
                       </tr>
@@ -522,12 +522,12 @@ function RowActions({
   invoiceId,
   canSubmit,
   submitting,
-  onSubmitNrs,
+  onSubmitApp,
 }: {
   invoiceId: string;
   canSubmit: boolean;
   submitting: boolean;
-  onSubmitNrs: () => void;
+  onSubmitApp: () => void;
 }) {
   return (
     <DropdownMenu>
@@ -563,11 +563,11 @@ function RowActions({
           disabled={!canSubmit || submitting}
           onSelect={(e) => {
             e.preventDefault();
-            onSubmitNrs();
+            onSubmitApp();
           }}
         >
           <Send className="mr-2 h-4 w-4" />
-          Submit to NRS
+          Submit to APP
         </DropdownMenuItem>
         <DropdownMenuItem>
           <Download className="mr-2 h-4 w-4" />
