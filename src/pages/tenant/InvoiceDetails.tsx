@@ -49,7 +49,7 @@ const NEXT_LABEL: Partial<Record<DBInvoiceStatus, string>> = {
   Draft: "Submit for review",
   "In Review": "Approve",
   Approved: "Mark as ready",
-  Ready: "Submit to NRS",
+  Ready: "Submit to APP",
 };
 
 export default function InvoiceDetails() {
@@ -92,7 +92,6 @@ export default function InvoiceDetails() {
   const nextLabel = NEXT_LABEL[invoice.status];
 
   const advance = async () => {
-    // NRS owns validation, signing, and QR generation after the invoice is Ready.
     if (invoice.status === "Ready") {
       try {
         setSubmitting(true);
@@ -101,14 +100,14 @@ export default function InvoiceDetails() {
         });
         if (error) throw error;
         if (data?.ok === false) {
-          toast.error(data?.response?.message ?? "NRS submission rejected");
+          toast.error(data?.response?.message ?? "APP submission rejected");
         } else {
           setNrsResult(data as Record<string, unknown>);
           await refetchInvoice();
-          toast.success("NRS invoice processing completed");
+          toast.success("Invoice submitted to the configured APP");
         }
       } catch (e: unknown) {
-        toast.error("NRS submission failed", { description: (e as Error).message });
+        toast.error("APP submission failed", { description: (e as Error).message });
       } finally {
         setSubmitting(false);
       }
@@ -197,8 +196,8 @@ export default function InvoiceDetails() {
                 <div className="mt-2"><StatusBadge status={invoice.status} /></div>
               </div>
               <div className="text-right text-sm">
-                <p className="text-muted-foreground">NRS Reference</p>
-                <p className="font-mono text-xs">{invoice.irn ?? "Not yet submitted"}</p>
+                <p className="text-muted-foreground">IRN</p>
+                <p className="font-mono text-xs">{invoice.irn ?? "Not yet assigned"}</p>
               </div>
             </div>
 
@@ -226,14 +225,12 @@ export default function InvoiceDetails() {
 
             {(nrsResult || persistedQr || invoice.status === "Signed" || invoice.status === "Validated") && (
               <div className="mt-6 rounded-md border border-border bg-muted/20 p-4">
-                <h3 className="text-sm font-semibold">NRS result</h3>
+                <h3 className="text-sm font-semibold">Submission status</h3>
                 <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
                   <Row label="IRN" value={invoice.irn ?? String(nrsResult?.irn ?? "Not available")} />
-                  <Row label="NRS status" value={invoice.status === "Validated" ? "Validated by NRS" : invoice.status === "Signed" ? "Signed by NRS" : "Pending"} />
-                  <Row label="CSID" value={String(nrsResult?.csid ?? "Not available")} />
+                  <Row label="Status" value={invoice.status === "Validated" || invoice.status === "Signed" ? "Processing — awaiting status" : invoice.status === "Confirmed" ? "Accepted" : "Pending"} />
                 </div>
-                {invoice.status === "Validated" && <p className="mt-3 text-xs text-muted-foreground">Validated by NRS.</p>}
-                {invoice.status === "Signed" && <p className="mt-3 text-xs text-muted-foreground">Signed by NRS — awaiting APP transmission/clearance.</p>}
+                {(invoice.status === "Validated" || invoice.status === "Signed") && <p className="mt-3 text-xs text-muted-foreground">Submitted to the configured APP; awaiting a downstream status update.</p>}
                 {qrImageSource && (
                   <div className="mt-4 flex flex-col items-start gap-2">
                     <p className="text-xs font-medium text-muted-foreground">QR code</p>
@@ -328,7 +325,7 @@ export default function InvoiceDetails() {
         <div className="space-y-6">
           <Card className="p-5 shadow-elegant-sm">
             <h3 className="text-base font-semibold">Compliance workflow</h3>
-            <p className="mb-4 text-xs text-muted-foreground">Draft → Ready → NRS signed</p>
+            <p className="mb-4 text-xs text-muted-foreground">Draft → approval → APP submission</p>
             <ol className="space-y-3">
               {workflow.map((s, i) => {
                 const done = i <= currentIdx;
@@ -350,14 +347,13 @@ export default function InvoiceDetails() {
             </ol>
             {(invoice.status === "Ready" || invoice.status === "Validated" || invoice.status === "Signed" || nrsResult) && (
               <div className="mt-6 border-t border-border pt-4">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">NRS operation</p>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">APP handoff</p>
                 <ol className="space-y-2 text-sm">
                   {[
                     ["Ready", true],
-                    ["Validating with NRS", invoice.status === "Validated" || invoice.status === "Signed" || !!nrsResult],
-                    ["Validated", invoice.status === "Validated" || invoice.status === "Signed"],
-                    ["Signed", invoice.status === "Signed"],
-                    ["QR Generated", !!persistedQr],
+                    ["Submitted to APP", invoice.status === "Submitted" || invoice.status === "Validated" || invoice.status === "Signed" || invoice.status === "Confirmed" || !!nrsResult],
+                    ["Processing / awaiting status", invoice.status === "Validated" || invoice.status === "Signed"],
+                    ["Accepted", invoice.status === "Confirmed"],
                   ].map(([label, done]) => (
                     <li key={label as string} className="flex items-center gap-2">
                       {done ? <CheckCircle2 className="h-4 w-4 text-success" /> : <Circle className="h-4 w-4 text-muted-foreground/40" />}
