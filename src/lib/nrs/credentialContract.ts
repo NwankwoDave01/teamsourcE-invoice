@@ -16,7 +16,23 @@ const statusSchema = z.object({
 export function parseCredentialStatus(value: unknown): NrsCredentialStatus {
   const result = statusSchema.safeParse(value);
   if (!result.success) throw new Error("Credential status is incompatible with the available contract. Confirm the deployed function version.");
-  return result.data;
+  const data = result.data;
+  // Explicit narrowing also supports this project's non-strictNullChecks config,
+  // under which Zod's inferred object properties are optional.
+  if (typeof data.environment !== "string" || typeof data.api_key_configured !== "boolean" ||
+      typeof data.api_secret_configured !== "boolean" || typeof data.taxpayer_password_configured !== "boolean" ||
+      typeof data.verified !== "boolean" || data.verified_at === undefined || data.last_error === undefined) {
+    throw new Error("Incomplete credential metadata.");
+  }
+  return {
+    environment: data.environment,
+    api_key_configured: data.api_key_configured,
+    api_secret_configured: data.api_secret_configured,
+    taxpayer_password_configured: data.taxpayer_password_configured,
+    verified: data.verified,
+    verified_at: data.verified_at,
+    last_error: data.last_error,
+  };
 }
 
 export function canAdministerCredentials(roles: readonly string[], companyId: string | null): boolean {
