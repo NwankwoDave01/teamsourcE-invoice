@@ -69,4 +69,37 @@ describe("write-only taxpayer settings flow", () => {
     expect(screen.getByRole("button", { name: "Save API credentials" })).toBeDisabled();
     expect(screen.queryByText(/test-private-provider-detail/)).not.toBeInTheDocument();
   });
+  it("clears secret entries after a failed save without reporting success", async () => {
+    mocks.invoke.mockImplementation(async (_name, options) => options.body.action === "save"
+      ? { data: null, error: { message: "test-private-error" } }
+      : { data: status, error: null });
+    openSettings();
+    const key = await screen.findByLabelText("Taxpayer API key");
+    await waitFor(() => expect(key).toBeEnabled());
+    fireEvent.change(key, { target: { value: "test-key" } });
+    fireEvent.change(screen.getByLabelText("Taxpayer API secret"), { target: { value: "test-secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save API credentials" }));
+    await screen.findByRole("alert");
+    expect(key).toHaveValue("");
+    expect(screen.getByLabelText("Taxpayer API secret")).toHaveValue("");
+    expect(screen.queryByText(/API credentials saved\./)).not.toBeInTheDocument();
+    await waitFor(() => expect(client.getMutationCache().getAll()).toHaveLength(0));
+  });
+  it("requires confirmation to disconnect using only authenticated server scope", async () => {
+    let connected = true;
+    mocks.invoke.mockImplementation(async (_name, options) => {
+      if (options.body.action === "disconnect") connected = false;
+      return { data: { ...status, api_key_configured: connected, api_secret_configured: connected }, error: null };
+    });
+    openSettings();
+    const button = await screen.findByRole("button", { name: "Disconnect taxpayer credentials" });
+    await waitFor(() => expect(button).toBeEnabled());
+    fireEvent.click(button);
+    await screen.findByRole("alertdialog");
+    expect(mocks.invoke.mock.calls.some(([, options]) => options.body.action === "disconnect")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Disconnect", exact: true }));
+    await screen.findByText("Taxpayer credentials disconnected. Company identifiers and APP onboarding are unchanged.");
+    expect(mocks.invoke).toHaveBeenCalledWith("nrs-credentials", { body: { action: "disconnect" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Disconnect taxpayer credentials" })).toBeDisabled());
+  });
 });
