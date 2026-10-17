@@ -97,7 +97,7 @@ describe("write-only taxpayer settings flow", () => {
     fireEvent.click(button);
     await screen.findByRole("alertdialog");
     expect(mocks.invoke.mock.calls.some(([, options]) => options.body.action === "disconnect")).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "Disconnect", exact: true }));
+    fireEvent.click(screen.getByRole("button", { name: /^Disconnect$/ }));
     await screen.findByText("Taxpayer credentials disconnected. Company identifiers and APP onboarding are unchanged.");
     expect(mocks.invoke).toHaveBeenCalledWith("nrs-credentials", { body: { action: "disconnect" } });
     await waitFor(() => expect(screen.getByRole("button", { name: "Disconnect taxpayer credentials" })).toBeDisabled());
