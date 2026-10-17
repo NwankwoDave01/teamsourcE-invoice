@@ -1,51 +1,52 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import type { NrsCredentialStatus } from "@/integrations/supabase/nrsTypes";
+import { canAdministerCredentials, credentialSaveBody, parseCredentialStatus } from "@/lib/nrs/credentialContract";
 
 const FN = "nrs-credentials";
 
-async function callFn<T>(body: Record<string, unknown>): Promise<T> {
+async function callFn(body: Record<string, unknown>) {
   const { data, error } = await supabase.functions.invoke(FN, { body });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error("Credential service unavailable or access denied. Check your active company membership and try again.");
   if (data && typeof data === "object" && "error" in data) {
-    throw new Error(String((data as { error: unknown }).error));
+    throw new Error("The credential service could not complete this request. No success has been confirmed.");
   }
-  return data as T;
+  return parseCredentialStatus(data);
 }
 
 /** Metadata only — never contains secret values. */
-export function useNrsCredentialStatus() {
-  const { companyId } = useAuth();
+export function useNrsCredentialStatus(environment: string) {
+  const { user, companyId } = useAuth();
   return useQuery({
-    queryKey: ["nrs-credential-status", companyId],
-    enabled: !!companyId,
-    queryFn: () => callFn<NrsCredentialStatus>({ action: "status" }),
+    queryKey: ["nrs-credential-status", user?.id, companyId, environment],
+    enabled: Boolean(user && companyId),
+    queryFn: () => callFn({ action: "status" }),
+    retry: false,
   });
 }
 
 export function useSaveNrsCredentials() {
   const qc = useQueryClient();
+  const { user, companyId, roles } = useAuth();
   return useMutation({
-    mutationFn: (input: { api_key?: string; api_secret?: string }) =>
-      callFn<NrsCredentialStatus>({ action: "save", ...input }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["nrs-credential-status"] }),
-  });
-}
-
-export function useSaveNrsCrypto() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (cryptoKeys: string) =>
-      callFn<NrsCredentialStatus>({ action: "save_crypto", crypto_keys: cryptoKeys }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["nrs-credential-status"] }),
+    mutationFn: async (input: { api_key: string; api_secret: string }) => {
+      if (!user || !canAdministerCredentials(roles, companyId)) throw new Error("An active company administrator is required.");
+      return callFn(credentialSaveBody(input));
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["nrs-credential-status", user?.id, companyId] }),
+    // React Query otherwise retains mutation variables containing raw credentials.
+    gcTime: 0,
   });
 }
 
 export function useDisconnectNrsCredentials() {
   const qc = useQueryClient();
+  const { user, companyId, roles } = useAuth();
   return useMutation({
-    mutationFn: () => callFn<NrsCredentialStatus>({ action: "disconnect" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["nrs-credential-status"] }),
+    mutationFn: async () => {
+      if (!user || !canAdministerCredentials(roles, companyId)) throw new Error("An active company administrator is required.");
+      return callFn({ action: "disconnect" });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["nrs-credential-status", user?.id, companyId] }),
   });
 }
