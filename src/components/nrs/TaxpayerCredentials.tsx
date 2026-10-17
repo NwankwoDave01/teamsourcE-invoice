@@ -1,0 +1,110 @@
+import { useState } from "react";
+import { Loader2, RefreshCw, ShieldCheck, Unplug } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
+import { useAuth } from "@/contexts/AuthContext";
+import { useDisconnectNrsCredentials, useNrsCredentialStatus, useSaveNrsCredentials } from "@/hooks/useNrsCredentials";
+import { canAdministerCredentials } from "@/lib/nrs/credentialContract";
+
+export function TaxpayerCredentials({ companyName, environment, environmentUnsaved }: {
+  companyName: string; environment: string; environmentUnsaved: boolean;
+}) {
+  const { companyId, roles } = useAuth();
+  const status = useNrsCredentialStatus(environment);
+  const save = useSaveNrsCredentials();
+  const disconnect = useDisconnectNrsCredentials();
+  const [apiKey, setApiKey] = useState("");
+  const [apiSecret, setApiSecret] = useState("");
+  const [notice, setNotice] = useState("");
+  const [failure, setFailure] = useState("");
+  const [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  const admin = canAdministerCredentials(roles, companyId);
+  const metadata = status.data;
+  const busy = save.isPending || disconnect.isPending;
+  const scopeMatches = metadata?.environment === environment;
+  const blocked = !admin || busy || status.isFetching || status.isError || !metadata || !scopeMatches || environmentUnsaved;
+
+  async function saveCredentials(event: React.FormEvent) {
+    event.preventDefault();
+    if (blocked) return;
+    setNotice(""); setFailure("");
+    try {
+      await save.mutateAsync({ api_key: apiKey, api_secret: apiSecret });
+      setNotice("API credentials saved. Saving does not verify SI readiness or connect the APP.");
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : "Could not save credentials.");
+    } finally {
+      setApiKey(""); setApiSecret(""); save.reset();
+    }
+  }
+
+  async function removeCredentials() {
+    if (blocked) return;
+    setNotice(""); setFailure("");
+    try {
+      await disconnect.mutateAsync();
+      setApiKey(""); setApiSecret("");
+      setConfirmDisconnect(false);
+      setNotice("Taxpayer credentials disconnected. Company identifiers and APP onboarding are unchanged.");
+    } catch (error) {
+      setFailure(error instanceof Error ? error.message : "Could not disconnect credentials.");
+    }
+  }
+
+  return <section className="space-y-4 border-t border-border pt-6" aria-labelledby="taxpayer-heading">
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h4 id="taxpayer-heading" className="text-sm font-semibold">SI taxpayer credentials</h4>
+        <p className="mt-1 text-sm text-muted-foreground">{companyName} · Saved environment: {environment}</p>
+      </div>
+      <Button variant="outline" size="sm" onClick={() => void status.refetch()} disabled={busy || status.isFetching}>
+        <RefreshCw className="mr-2 h-4 w-4" /> Refresh status
+      </Button>
+    </div>
+    <p className="text-sm text-muted-foreground">Separate from APP onboarding and TeamSource sign-in. Requests use your authenticated active company; no company ID or global credentials are supplied by this form.</p>
+    <p className="text-xs text-muted-foreground">The available credential contract stores one set per company, not separate sets per environment. Changing environment does not select another credential set. The external deployment version has not been independently verified.</p>
+    {environmentUnsaved && <p role="alert" className="text-sm text-warning">Save the company environment before managing credentials.</p>}
+    {status.isFetching && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading credential metadata…</p>}
+    {status.isError && <p role="alert" className="text-sm text-destructive">{status.error.message}</p>}
+    {metadata && !status.isError && <>
+      {!scopeMatches && <p role="alert" className="text-sm text-destructive">The server environment differs from the saved company environment. Refresh company settings before making changes.</p>}
+      <dl className="grid gap-3 text-sm sm:grid-cols-2">
+        <Metadata label="API key" value={metadata.api_key_configured ? "Saved" : "Not saved"} />
+        <Metadata label="API secret" value={metadata.api_secret_configured ? "Saved" : "Not saved"} />
+        <Metadata label="Legacy verification record" value={metadata.verified ? `Recorded${metadata.verified_at ? ` · ${metadata.verified_at}` : ""} — not SI readiness` : "Not verified"} />
+        <Metadata label="SI submission readiness" value="Not established by this contract" />
+      </dl>
+      {metadata.taxpayer_password_configured && <p className="text-xs text-muted-foreground">A legacy taxpayer password is stored. It is not exposed or used by this screen. Disconnect removes all credentials supported by this contract.</p>}
+      {metadata.last_error && <p className="text-xs text-muted-foreground">A previous verification error was recorded. Legacy login verification is not offered for SI use.</p>}
+    </>}
+    {admin ? <form onSubmit={saveCredentials} className="space-y-4">
+      <div className="grid gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5"><Label htmlFor="taxpayer-api-key">Taxpayer API key</Label><Input id="taxpayer-api-key" type="password" autoComplete="off" value={apiKey} onChange={(e) => setApiKey(e.target.value)} disabled={blocked} maxLength={4096} /></div>
+        <div className="space-y-1.5"><Label htmlFor="taxpayer-api-secret">Taxpayer API secret</Label><Input id="taxpayer-api-secret" type="password" autoComplete="new-password" value={apiSecret} onChange={(e) => setApiSecret(e.target.value)} disabled={blocked} maxLength={4096} /></div>
+      </div>
+      <p className="flex items-start gap-2 text-xs text-muted-foreground"><ShieldCheck className="h-4 w-4 shrink-0" /> Saved values are never returned or prefilled. Entries are sent only to the credential service and cleared after each save attempt; never saved on this device.</p>
+      <div className="flex flex-wrap gap-2">
+        <Button type="submit" disabled={blocked || !apiKey.trim() || !apiSecret.trim()}>{save.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save API credentials</Button>
+        <Button type="button" variant="outline" disabled={blocked || !(metadata?.api_key_configured || metadata?.api_secret_configured || metadata?.taxpayer_password_configured)} onClick={() => setConfirmDisconnect(true)}><Unplug className="mr-2 h-4 w-4" />Disconnect taxpayer credentials</Button>
+      </div>
+    </form> : <p className="text-sm text-muted-foreground">Only an active company administrator can save or disconnect taxpayer credentials.</p>}
+    <div className="border-l-2 border-warning pl-4 text-sm">
+      <p className="font-medium">Public key / certificate configuration unavailable</p>
+      <p className="mt-1 text-muted-foreground">The available backend contract does not support crypto save/replace or crypto status. No crypto material is collected until secure company/environment-scoped support is confirmed.</p>
+    </div>
+    {notice && <p role="status" className="text-sm text-foreground">{notice}</p>}
+    {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}
+    <AlertDialog open={confirmDisconnect} onOpenChange={(open) => { if (!busy) setConfirmDisconnect(open); }}>
+      <AlertDialogContent>
+        <AlertDialogHeader><AlertDialogTitle>Disconnect taxpayer credentials?</AlertDialogTitle><AlertDialogDescription>Remove all stored API credentials and any legacy taxpayer password for {companyName}. This affects the company's single credential set across environments. Company identifiers and the APP onboarding draft remain unchanged.</AlertDialogDescription></AlertDialogHeader>
+        <AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel><Button variant="destructive" disabled={blocked} onClick={() => void removeCredentials()}>{disconnect.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Disconnect</Button></AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  </section>;
+}
+
+function Metadata({ label, value }: { label: string; value: string }) {
+  return <div><dt className="text-muted-foreground">{label}</dt><dd className="mt-1 font-medium break-words">{value}</dd></div>;
+}

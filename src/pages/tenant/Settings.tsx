@@ -13,6 +13,7 @@ import type { NrsCompanyExtra } from "@/integrations/supabase/nrsTypes";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useSearchParams } from "react-router-dom";
+import { TaxpayerCredentials } from "@/components/nrs/TaxpayerCredentials";
 
 interface AppConnectionDraft {
   businessAddress: string;
@@ -38,7 +39,7 @@ const emptyAppDraft: AppConnectionDraft = {
 export default function Settings() {
   const { data: company, isLoading } = useCurrentCompany();
   const update = useUpdateCompany();
-  const { roles } = useAuth();
+  const { roles, user, companyId } = useAuth();
   const [searchParams] = useSearchParams();
   const isCompanyAdmin = roles.includes("company_admin") || roles.includes("super_admin");
   const nrsCompany = company as (typeof company & Partial<NrsCompanyExtra>) | null | undefined;
@@ -141,11 +142,20 @@ export default function Settings() {
         nrs_production_base_url: nrs.nrs_production_base_url || "https://einvoice.nrs.gov.ng",
       });
 
-      localStorage.setItem(`teamsource-app-connection:${company.id}`, JSON.stringify(appDraft));
-      toast.success("NRS identifiers saved; APP onboarding draft kept on this device");
+      toast.success("Company NRS identifiers saved. Taxpayer credentials and APP draft are unchanged.");
     } catch (e: unknown) {
       const err = e as Error;
       toast.error("Failed to save NRS settings", { description: err.message });
+    }
+  };
+
+  const handleSaveAppDraft = () => {
+    if (!company || !isCompanyAdmin) return;
+    try {
+      localStorage.setItem(`teamsource-app-connection:${company.id}`, JSON.stringify(appDraft));
+      toast.success("Non-secret APP onboarding draft saved on this device; connection is still pending.");
+    } catch {
+      toast.error("Could not save the APP draft on this device.");
     }
   };
 
@@ -362,11 +372,11 @@ export default function Settings() {
                       </h4>
                       
                       <div className="space-y-4">
-                         <Field label="Connection environment">
+                         <Field label="Company NRS environment">
                           <Select
                             value={nrs.nrs_environment}
                             onValueChange={(v) => setN("nrs_environment")(v)}
-                            disabled={!isCompanyAdmin}
+                            disabled={!isCompanyAdmin || update.isPending}
                           >
                             <SelectTrigger className="w-full">
                               <SelectValue placeholder="Select Environment" />
@@ -407,6 +417,13 @@ export default function Settings() {
 
                   </div>
 
+                  {company && company.id === companyId && <TaxpayerCredentials
+                    key={`${user?.id}:${companyId}:${nrsCompany?.nrs_environment ?? "sandbox"}`}
+                    companyName={company.name}
+                    environment={nrsCompany?.nrs_environment ?? "sandbox"}
+                    environmentUnsaved={update.isPending || nrs.nrs_environment !== (nrsCompany?.nrs_environment ?? "sandbox")}
+                  />}
+
                    <Card className="space-y-4 border-border bg-card/40 p-5 shadow-elegant-xs">
                     <div>
                        <h4 className="text-sm font-semibold tracking-wide uppercase">APP onboarding details</h4>
@@ -426,6 +443,7 @@ export default function Settings() {
                        <AppField label="Business webhook URL" description="Callback URL to register after the webhook contract is confirmed." value={appDraft.businessWebhookUrl} onChange={setApp("businessWebhookUrl")} disabled={!isCompanyAdmin} type="url" />
                        <AppField label="Contract ID" description="TeamSource ↔ APP integration identifier; this is not a password or API key." value={appDraft.contractId} onChange={setApp("contractId")} disabled={!isCompanyAdmin} />
                      </div>
+                    {isCompanyAdmin && <div className="flex justify-end"><Button variant="outline" onClick={handleSaveAppDraft}>Save APP draft locally</Button></div>}
                   </Card>
 
                    <Card className="flex items-start gap-3 border-warning/30 bg-warning/10 p-4">
@@ -437,7 +455,7 @@ export default function Settings() {
                   <div className="mt-6 flex flex-col md:flex-row md:items-center justify-between gap-4 border-t border-border/80 pt-6">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground font-medium bg-muted/30 px-3 py-2 rounded-lg border border-border/50 w-fit">
                       <ShieldCheck className="h-4 w-4 text-emerald-500 animate-pulse" />
-                       <span>TeamSource customer access uses native workspace authentication. No taxpayer login or API secret is required here.</span>
+                       <span>Native TeamSource sign-in is separate from taxpayer credentials. APP onboarding stores non-secret details only.</span>
                     </div>
 
                     {isCompanyAdmin && (
@@ -467,7 +485,7 @@ export default function Settings() {
                           ) : (
                             <CheckCircle2 className="mr-2 h-4 w-4" />
                           )}
-                           Save identifiers & local draft
+                           Save company NRS identifiers
                         </Button>
                       </div>
                     )}

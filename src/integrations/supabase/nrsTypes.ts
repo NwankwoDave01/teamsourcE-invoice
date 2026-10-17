@@ -11,15 +11,10 @@ export interface NrsCompanyExtra {
 
 export interface NrsCredentialStatus {
   environment: string;
-  base_url_configured: boolean;
-  business_id_configured: boolean;
-  service_id_configured: boolean;
   api_key_configured: boolean;
   api_secret_configured: boolean;
-  crypto_configured: boolean;
-  crypto_environment: string | null;
-  crypto_verified_at: string | null;
+  taxpayer_password_configured: boolean;
+  verified: boolean;
   verified_at: string | null;
   last_error: string | null;
-  ready: boolean;
 }
