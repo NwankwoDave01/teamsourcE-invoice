@@ -351,22 +351,11 @@ export default function InvoiceDetails() {
                 );
               })}
             </ol>
-            {(invoice.status === "Ready" || invoice.status === "Validated" || invoice.status === "Signed" || nrsResult) && (
+            {invoice.status !== "Draft" && invoice.status !== "In Review" && (
               <div className="mt-6 border-t border-border pt-4">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">APP handoff</p>
-                <ol className="space-y-2 text-sm">
-                  {[
-                    ["Ready", true],
-                    ["Submitted to APP", invoice.status === "Submitted" || invoice.status === "Validated" || invoice.status === "Signed" || invoice.status === "Confirmed" || !!nrsResult],
-                    ["Processing / awaiting status", invoice.status === "Validated" || invoice.status === "Signed"],
-                    ["Accepted", invoice.status === "Confirmed"],
-                  ].map(([label, done]) => (
-                    <li key={label as string} className="flex items-center gap-2">
-                      {done ? <CheckCircle2 className="h-4 w-4 text-success" /> : <Circle className="h-4 w-4 text-muted-foreground/40" />}
-                      <span className={done ? "font-medium" : "text-muted-foreground"}>{label as string}</span>
-                    </li>
-                  ))}
-                </ol>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">NRS sandbox submission</p>
+                <SubmissionBadge status={(invoice as { submission_status?: string | null }).submission_status} showUnknown />
+                <p className="mt-3 text-xs text-muted-foreground">Shown from the recorded submission status only. APP handoff is planned and not live.</p>
               </div>
             )}
             {invoice.status !== "Confirmed" && invoice.status !== "Rejected" && (
