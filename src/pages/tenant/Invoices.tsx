@@ -57,8 +57,7 @@ import {
 import { toast } from "sonner";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
+import { useNrsSubmit } from "@/hooks/useNrsSubmit";
 
 const statusDot: Record<DBInvoiceStatus, string> = {
   Draft: "bg-muted-foreground/60",
@@ -76,7 +75,9 @@ export default function Invoices() {
   const { data: invoices = [], isLoading } = useInvoices();
   const updateStatus = useUpdateInvoiceStatus();
   const deleteMut = useDeleteInvoice();
-  const queryClient = useQueryClient();
+  const submitToNrs = useNrsSubmit();
+  // Invoices whose last attempt was unconfirmed or not retry-safe in this session.
+  const [unconfirmedIds, setUnconfirmedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<"All" | DBInvoiceStatus>("All");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
