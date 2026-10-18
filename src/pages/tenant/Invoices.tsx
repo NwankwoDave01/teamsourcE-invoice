@@ -58,6 +58,10 @@ import { toast } from "sonner";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { useNrsSubmit } from "@/hooks/useNrsSubmit";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNrsSubmissionHistory } from "@/hooks/useNrsSubmissionHistory";
+import { hasDeviceAttempt, submissionBlockReason } from "@/lib/nrs/submissionSafety";
+import { SubmissionBadge } from "@/components/shared/SubmissionBadge";
 
 const statusDot: Record<DBInvoiceStatus, string> = {
   Draft: "bg-muted-foreground/60",
@@ -76,8 +80,9 @@ export default function Invoices() {
   const updateStatus = useUpdateInvoiceStatus();
   const deleteMut = useDeleteInvoice();
   const submitToNrs = useNrsSubmit();
-  // Invoices whose last attempt was unconfirmed or not retry-safe in this session.
-  const [unconfirmedIds, setUnconfirmedIds] = useState<Set<string>>(new Set());
+  const { user, companyId } = useAuth();
+  const history = useNrsSubmissionHistory();
+  const blockReason = (inv: (typeof invoices)[number]) => submissionBlockReason(inv, companyId, history.isSuccess && !history.isFetching ? history.data : undefined, hasDeviceAttempt(user?.id, companyId, inv.id));
   const [filter, setFilter] = useState<"All" | DBInvoiceStatus>("All");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -133,24 +138,18 @@ export default function Invoices() {
   const submitRowToApp = async (id: string) => {
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return;
-    if (inv.status !== "Ready") {
-      toast.error(`Only invoices at "Ready" can be sent for NRS sandbox signing (current: ${inv.status})`);
-      return;
-    }
-    if (unconfirmedIds.has(id)) {
-      toast.error(`${inv.number}: the previous result is unconfirmed. Review the invoice status before resubmitting.`);
-      return;
-    }
+    const blocked = blockReason(inv);
+    if (blocked) { toast.error(blocked); return; }
     setSubmittingToApp(true);
     try {
       const res = await submitToNrs(id);
       if (res.kind === "success") toast.success(`${inv.number}: ${res.message}`);
       else if (res.kind === "rejected") {
         toast.error(`${inv.number}: ${res.message}`, { description: res.details ?? undefined });
-        if (!res.retrySafe) setUnconfirmedIds((s) => new Set(s).add(id));
+
       } else {
         toast.warning(`${inv.number}: ${res.message}`, { description: res.details ?? undefined });
-        setUnconfirmedIds((s) => new Set(s).add(id));
+
       }
     } finally {
       setSubmittingToApp(false);
@@ -159,7 +158,7 @@ export default function Invoices() {
 
   const bulkSubmit = async () => {
     const ids = Array.from(selected);
-    const eligible = ids.filter((id) => invoices.find((i) => i.id === id)?.status === "Ready" && !unconfirmedIds.has(id));
+    const eligible = ids.filter((id) => { const inv = invoices.find((i) => i.id === id); return inv && !blockReason(inv); });
     const skipped = ids.length - eligible.length;
     if (eligible.length === 0) {
       toast.error('No selected invoices are at "Ready" with a confirmed prior state');
@@ -174,7 +173,6 @@ export default function Invoices() {
         if (res.kind === "success") success++;
         else {
           if (res.kind === "rejected") rejected++; else unconfirmed++;
-          if (res.kind === "unconfirmed" || !res.retrySafe) setUnconfirmedIds((s) => new Set(s).add(id));
           if (res.kind === "unconfirmed") break;
         }
       }
@@ -289,6 +287,7 @@ export default function Invoices() {
         </Card>
 
         {/* ============================== TABLE ============================== */}
+        <p className="text-xs text-muted-foreground">Current path: direct NRS sandbox validation and signing. APP handoff is not live. Recorded attempts require review; the backend remains the final retry safeguard.</p>
         <Card className="overflow-hidden shadow-elegant-sm">
           {/* Bulk actions bar */}
           {selected.size > 0 && (
@@ -311,7 +310,7 @@ export default function Invoices() {
                   size="sm"
                   className="gap-1.5"
                   onClick={bulkSubmit}
-                  disabled={submittingToApp}
+                  disabled={submittingToApp || !invoices.some((inv) => selected.has(inv.id) && !blockReason(inv))}
                 >
                   <Send className="h-3.5 w-3.5" />
                   Validate & sign (NRS sandbox)
@@ -417,12 +416,13 @@ export default function Invoices() {
                         </td>
                         <td className="px-3 py-4 font-mono text-xs text-muted-foreground">{inv.irn ?? "—"}</td>
                         <td className="px-3 py-4">
-                          <StatusBadge status={inv.status} />
+                          <div className="flex flex-wrap gap-1.5"><StatusBadge status={inv.status} /><SubmissionBadge status={(inv as { submission_status?: string | null }).submission_status} showUnknown /></div>
+                          {inv.status === "Ready" && blockReason(inv) && <p className="mt-1 max-w-56 text-xs text-muted-foreground">{blockReason(inv)}</p>}
                         </td>
                         <td className="px-5 py-4 text-right">
                           <RowActions
                             invoiceId={inv.id}
-                            canSubmit={inv.status === "Ready"}
+                            canSubmit={!blockReason(inv)}
                             submitting={submittingToApp}
                             onSubmitApp={() => submitRowToApp(inv.id)}
                           />

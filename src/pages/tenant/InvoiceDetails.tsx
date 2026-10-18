@@ -28,6 +28,9 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { NrsPayloadPreviewDialog } from "@/components/nrs/NrsPayloadPreviewDialog";
 import { useNrsSubmit } from "@/hooks/useNrsSubmit";
+import { useAuth } from "@/contexts/AuthContext";
+import { useNrsSubmissionHistory } from "@/hooks/useNrsSubmissionHistory";
+import { hasDeviceAttempt, submissionBlockReason } from "@/lib/nrs/submissionSafety";
 import type { SubmitResult } from "@/lib/nrs/submitContract";
 import { SubmissionBadge, submissionLabel } from "@/components/shared/SubmissionBadge";
 import {
@@ -64,6 +67,8 @@ export default function InvoiceDetails() {
   const [submitting, setSubmitting] = useState(false);
   const [lastResult, setLastResult] = useState<SubmitResult | null>(null);
   const submitToNrs = useNrsSubmit();
+  const { user, companyId } = useAuth();
+  const history = useNrsSubmissionHistory();
   const [confirmReject, setConfirmReject] = useState(false);
 
   if (isLoading) {
@@ -93,10 +98,11 @@ export default function InvoiceDetails() {
   const currentIdx = workflow.indexOf(invoice.status as (typeof workflow)[number]);
   const nextStatus = NEXT_STATUS[invoice.status];
   const nextLabel = NEXT_LABEL[invoice.status];
+  const blocked = submissionBlockReason(invoice, companyId, history.isSuccess && !history.isFetching ? history.data : undefined, hasDeviceAttempt(user?.id, companyId, invoice.id));
 
   const advance = async () => {
     if (invoice.status === "Ready") {
-      if (lastResult && lastResult.kind !== "success" && !lastResult.retrySafe) return;
+      if (blocked) { toast.error(blocked); return; }
       setSubmitting(true);
       try {
         const res = await submitToNrs(invoice.id);
@@ -174,7 +180,7 @@ export default function InvoiceDetails() {
               Preview NRS Payload
             </Button>
             {invoice.status !== "Confirmed" && invoice.status !== "Rejected" && (nextStatus || invoice.status === "Ready") && (
-              <Button size="sm" onClick={advance} disabled={updateStatus.isPending || submitting || (invoice.status === "Ready" && !!lastResult && lastResult.kind !== "success" && !lastResult.retrySafe)} className="gap-1.5">
+              <Button size="sm" onClick={advance} disabled={updateStatus.isPending || submitting || (invoice.status === "Ready" && Boolean(blocked))} className="gap-1.5">
                 <Send className="h-4 w-4" />
                 {nextLabel}
               </Button>
@@ -190,7 +196,7 @@ export default function InvoiceDetails() {
               <div>
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Invoice</p>
                 <h2 className="text-xl font-semibold">{invoice.number}</h2>
-                <div className="mt-2 flex flex-wrap gap-2"><StatusBadge status={invoice.status} /><SubmissionBadge status={(invoice as { submission_status?: string | null }).submission_status} /></div>
+                <div className="mt-2 flex flex-wrap gap-2"><StatusBadge status={invoice.status} /><SubmissionBadge status={(invoice as { submission_status?: string | null }).submission_status} showUnknown /></div>
               </div>
               <div className="text-right text-sm">
                 <p className="text-muted-foreground">IRN</p>
@@ -220,12 +226,13 @@ export default function InvoiceDetails() {
               </div>
             </div>
 
+            {invoice.status === "Ready" && blocked && <p role="alert" className="mt-4 text-sm text-warning">{blocked} Backend safeguards remain authoritative across devices.</p>}
             {lastResult && lastResult.kind !== "success" && (
               <div role="alert" className={cn("mt-6 rounded-md border p-4 text-sm", lastResult.kind === "rejected" ? "border-destructive/30 bg-destructive/5" : "border-warning/30 bg-warning/5")}>
                 <p className="font-medium">{lastResult.kind === "rejected" ? "Rejected" : "Result unconfirmed"}</p>
                 <p className="mt-1 text-muted-foreground">{lastResult.message}</p>
                 {lastResult.details && <p className="mt-1 break-words text-xs text-muted-foreground">{lastResult.details}</p>}
-                <p className="mt-2 text-xs text-muted-foreground">Next step: {lastResult.retrySafe ? "correct the invoice data, then try again." : "the invoice status has been refreshed. Review the submission history or contact support before trying again."}</p>
+                <p className="mt-2 text-xs text-muted-foreground">Next step: {lastResult.retrySafe ? "correct the invoice data, then request review before retrying." : "the invoice status has been refreshed. Contact support to review the recorded attempt before trying again."}</p>
               </div>
             )}
 
@@ -240,7 +247,7 @@ export default function InvoiceDetails() {
                 {qrImageSource && (
                   <div className="mt-4 flex flex-col items-start gap-2">
                     <p className="text-xs font-medium text-muted-foreground">QR code</p>
-                    <img src={qrImageSource} alt="NRS invoice QR code" className="h-40 w-40 rounded-md border border-border bg-white p-2" />
+                    <img src={qrImageSource} alt="NRS invoice QR code" className="h-40 w-40 rounded-md border border-border bg-background p-2" />
                   </div>
                 )}
               </div>
