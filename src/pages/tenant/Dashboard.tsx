@@ -56,7 +56,7 @@ export default function Dashboard() {
     { label: "Draft",          value: countBy("Draft"),     status: "Draft",     icon: FileText,    accent: "text-muted-foreground" },
     { label: "In Review",      value: countBy("In Review"), status: "In Review", icon: PenLine,     accent: "text-warning" },
     { label: "Approved",       value: countBy("Approved"),  status: "Approved",  icon: CheckCircle2,accent: "text-info" },
-    { label: "Submitted to APP", value: countBy("Submitted"), status: "Submitted", icon: Send, accent: "text-info" },
+    { label: "Submitted", value: countBy("Submitted"), status: "Submitted", icon: Send, accent: "text-info" },
     { label: "Processing",     value: countBy("Validated") + countBy("Signed"), status: "Validated", icon: ShieldCheck, accent: "text-success" },
     { label: "Rejected",       value: rejected,             status: "Rejected",  icon: XCircle,     accent: "text-destructive" },
   ];
@@ -113,7 +113,7 @@ export default function Dashboard() {
         <section className="space-y-3">
           <SectionLabel icon={Banknote} title="Financial overview" hint="Money in motion across your customers" />
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Accepted Revenue" value={formatNGN(confirmedRevenue)} icon={Banknote} />
+            <StatCard label="Confirmed Revenue" value={formatNGN(confirmedRevenue)} icon={Banknote} />
             <StatCard label="Outstanding" value={formatNGN(outstanding)} icon={Clock} hint="Submitted & awaiting status" />
             <StatCard label="Invoices this month" value={String(invoicesThisMonth)} icon={Receipt} />
             <StatCard label="Processing Success Rate" value={`${validationRate.toFixed(1)}%`} icon={ShieldCheck} />
@@ -154,7 +154,7 @@ export default function Dashboard() {
             <div className="mb-5 flex items-start justify-between">
               <div>
                 <h2 className="text-base font-semibold">Workflow pipeline</h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">Progression from draft and approval to APP status</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Progression by invoice workflow status</p>
               </div>
               <Button variant="ghost" size="sm" asChild>
                 <Link to="/app/invoices" className="gap-1 text-xs">View all <ArrowUpRight className="h-3.5 w-3.5" /></Link>
@@ -215,7 +215,7 @@ export default function Dashboard() {
               <h2 className="text-base font-semibold">Quick actions</h2>
             </div>
             <div className="flex flex-1 flex-col gap-2">
-              <QuickAction to="/app/invoices/new" icon={FilePlus2} title="Create invoice" description="Draft, review, and prepare for APP" primary />
+              <QuickAction to="/app/invoices/new" icon={FilePlus2} title="Create invoice" description="Draft, review, and prepare for NRS sandbox signing" primary />
               <QuickAction to="/app/customers" icon={UserPlus} title="Add customer" description="Verify TIN & save details" />
               <QuickAction to="/app/products" icon={Plus} title="Add product" description="Catalog with tax rates" />
               <QuickAction to="/app/reports" icon={FileText} title="Generate report" description="Monthly revenue & compliance" />
@@ -248,7 +248,7 @@ export default function Dashboard() {
             </div>
 
             <div className="space-y-2">
-              <ComplianceRow icon={Send}        tone="info"        label="Submitted to APP"       value={String(submittedTotal)} />
+              <ComplianceRow icon={Send}        tone="info"        label="Submitted"       value={String(submittedTotal)} />
               <ComplianceRow icon={CheckCircle2} tone="success"     label="Processing / accepted" value={String(validatedOk)} />
               <ComplianceRow icon={ShieldX}     tone="destructive" label="Rejected" value={String(rejectedExternal)} badge={rejectedExternal > 0 ? "Action needed" : undefined} />
               <ComplianceRow icon={Clock}       tone="muted"       label="Awaiting status" value={String(countBy("Submitted"))} />

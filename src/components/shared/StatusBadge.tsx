@@ -16,8 +16,8 @@ const styles: Record<DBInvoiceStatus, string> = {
 export function StatusBadge({ status, className }: { status: DBInvoiceStatus; className?: string }) {
   const label: Record<DBInvoiceStatus, string> = {
     Draft: "Draft", "In Review": "Pending approval", Approved: "Approved", Ready: "Approved — ready",
-    Submitted: "Submitted to APP", Validated: "Processing", Signed: "Processing",
-    Confirmed: "Accepted", Rejected: "Rejected",
+    Submitted: "Submitted", Validated: "Processing", Signed: "Processing",
+    Confirmed: "Confirmed", Rejected: "Rejected",
   };
   return (
     <span
