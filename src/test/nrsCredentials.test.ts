@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAdministerCredentials, credentialSaveBody, parseCredentialStatus } from "@/lib/nrs/credentialContract";
+import { canAdministerCredentials, isSigningReady, credentialSaveBody, parseCredentialStatus } from "@/lib/nrs/credentialContract";
 
 const metadata = {
   environment: "sandbox", api_key_configured: true, api_secret_configured: true,
@@ -8,7 +8,21 @@ const metadata = {
 
 describe("tenant credential contract", () => {
   it("strips raw stored secrets from returned metadata", () => {
-    expect(parseCredentialStatus({ ...metadata, api_key: "test-key", api_secret: "test-secret", public_key: "test-public", certificate: "test-cert" })).toEqual(metadata);
+    const r = parseCredentialStatus({ ...metadata, api_key: "test-key", api_secret: "test-secret", public_key: "test-public", certificate: "test-cert" });
+    expect(JSON.stringify(r)).not.toMatch(/test-key|test-secret|test-public|test-cert/);
+    expect(r.api_key_configured).toBe(true);
+    expect(r.credentials_verified).toBe(false);
+  });
+  it("reads live v13 fields and treats missing booleans as unknown", () => {
+    const r = parseCredentialStatus({ environment: "sandbox", connection_status: "connected", credentials_verified: true, crypto_configured: false, api_key_configured: true, api_secret_configured: true });
+    expect(r.connection_status).toBe("connected");
+    expect(r.crypto_configured).toBe(false);
+    expect(r.taxpayer_password_configured).toBeNull();
+  });
+  it("verification alone does not mean signing readiness", () => {
+    const r = parseCredentialStatus({ ...metadata, credentials_verified: true });
+    expect(isSigningReady(r)).toBe(false);
+    expect(isSigningReady({ ...r, crypto_configured: true })).toBe(true);
   });
   it("never trusts a client-provided company ID for credential saves", () => {
     const input = { api_key: " test-key ", api_secret: " test-secret ", company_id: "wrong-tenant", environment: "production" };
@@ -21,12 +35,6 @@ describe("tenant credential contract", () => {
   it("requires both taxpayer API values rather than global fallbacks", () => {
     expect(() => credentialSaveBody({ api_key: "", api_secret: "test-secret" })).toThrow();
     expect(() => credentialSaveBody({ api_key: "test-key", api_secret: "" })).toThrow();
-  });
-  it("does not invent readiness or crypto support from legacy verification", () => {
-    const result = parseCredentialStatus({ ...metadata, verified: true, ready: true, crypto_configured: true });
-    expect(result.verified).toBe(true);
-    expect(result).not.toHaveProperty("ready");
-    expect(result).not.toHaveProperty("crypto_configured");
   });
   it("rejects stale metadata shapes rather than assuming successful configuration", () => {
     expect(() => parseCredentialStatus({ ready: true, environment: "sandbox" })).toThrow();
