@@ -331,7 +331,7 @@ export default function InvoiceDetails() {
         <div className="space-y-6">
           <Card className="p-5 shadow-elegant-sm">
             <h3 className="text-base font-semibold">Compliance workflow</h3>
-            <p className="mb-4 text-xs text-muted-foreground">Draft → approval → APP submission</p>
+            <p className="mb-4 text-xs text-muted-foreground">Draft → approval → NRS sandbox signing (APP handoff planned)</p>
             <ol className="space-y-3">
               {workflow.map((s, i) => {
                 const done = i <= currentIdx;

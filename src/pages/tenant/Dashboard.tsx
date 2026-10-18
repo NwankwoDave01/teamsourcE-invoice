@@ -230,7 +230,7 @@ export default function Dashboard() {
             <div className="mb-5 flex items-start justify-between">
               <div>
                 <h2 className="text-base font-semibold">Compliance health</h2>
-                <p className="mt-0.5 text-xs text-muted-foreground">APP submission status across current invoices</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Invoice workflow status (submission results are tracked separately)</p>
               </div>
               <span className="inline-flex items-center gap-1.5 rounded-full bg-success/10 px-2.5 py-1 text-xs font-medium text-success">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-success" />
