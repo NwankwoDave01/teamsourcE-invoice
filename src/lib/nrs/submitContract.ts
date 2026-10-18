@@ -37,6 +37,9 @@ function detailsText(value: unknown): string | null {
 function stageLabel(stage: string | null) {
   if (stage === "validate" || stage === "validation") return "NRS validation";
   if (stage === "sign" || stage === "signing") return "NRS signing";
+  if (stage === "nrs_sign") return "NRS signing";
+  if (stage === "local_validation") return "Local checks";
+  if (stage === "claim_attempt") return "Submission attempt claim";
   return "NRS processing";
 }
 
@@ -57,11 +60,11 @@ export function parseSubmitResult(data: unknown, invokeError: unknown): SubmitRe
   const d = body as Record<string, unknown>;
   const stage = typeof d.stage === "string" ? d.stage.toLowerCase() : null;
   const outcome = typeof d.outcome === "string" ? d.outcome.toLowerCase() : null;
-  const details = detailsText(d.details);
+  const details = detailsText(d.details) ?? detailsText(d.errors);
   const serverMsg = text(d.error) ?? text(d.message) ?? text(d.response);
 
   if (d.ok === true && !(outcome && UNKNOWN_OUTCOMES.has(outcome))) {
-    return { kind: "success", stage, retrySafe: false, message: "Invoice validated and signed in the NRS sandbox.", details: null };
+    return { kind: "success", stage, retrySafe: false, message: "Invoice validated and signed in the NRS sandbox. APP transmission and clearance are not performed by this flow.", details: null };
   }
   if (d.ok !== false || (outcome && UNKNOWN_OUTCOMES.has(outcome))) {
     return unconfirmed(

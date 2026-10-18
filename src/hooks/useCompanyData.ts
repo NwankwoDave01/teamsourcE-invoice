@@ -193,15 +193,16 @@ export function useDeleteInvoice() {
 
 /* ----------------------------- Invoices ----------------------------- */
 export function useInvoices() {
-  const { companyId } = useAuth();
+  const { companyId, user } = useAuth();
   return useQuery({
-    queryKey: ["invoices", companyId],
-    enabled: !!companyId,
+    queryKey: ["invoices", companyId, user?.id],
+    enabled: Boolean(companyId && user),
     queryFn: async () => {
+      if (!companyId || !user) throw new Error("An active company is required.");
       const { data, error } = await supabase
         .from("invoices")
         .select("*")
-        .eq("company_id", companyId!)
+        .eq("company_id", companyId)
         .order("issue_date", { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -210,14 +211,17 @@ export function useInvoices() {
 }
 
 export function useInvoice(id: string | undefined) {
+  const { companyId, user } = useAuth();
   return useQuery({
-    queryKey: ["invoice", id],
-    enabled: !!id,
+    queryKey: ["invoice", id, companyId, user?.id],
+    enabled: Boolean(id && companyId && user),
     queryFn: async () => {
-      const { data: inv, error } = await supabase.from("invoices").select("*").eq("id", id!).maybeSingle();
+      if (!id || !companyId || !user) throw new Error("An active company and invoice are required.");
+      const { data: inv, error } = await supabase.from("invoices").select("*").eq("id", id).eq("company_id", companyId).maybeSingle();
       if (error) throw error;
       if (!inv) return null;
-      const { data: lines } = await supabase.from("invoice_lines").select("*").eq("invoice_id", id!).order("position");
+      const { data: lines, error: lineError } = await supabase.from("invoice_lines").select("*").eq("invoice_id", inv.id).order("position");
+      if (lineError) throw lineError;
       return { ...inv, lines: lines ?? [] };
     },
   });

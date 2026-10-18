@@ -20,3 +20,9 @@ External deployment version and authenticated live save/disconnect remain unveri
 - [x] Preview labelled local-only; Settings/docs separate current NRS sandbox from planned APP
 - [ ] Blocked: live response fixtures for nrs-submit / nrs-credentials v13 (needs external backend access)
 - [ ] Blocked: verify / save_crypto / validate_crypto UI (request/response contract not confirmed)
+
+## Frontend safety continuation
+- [ ] Persisted, tenant-scoped retry eligibility and honest list/detail submission status
+- [ ] Sanitized deployed submit-response fixtures and local preflight regression tests
+- [ ] Review credential allowlist and repair merged architecture rule
+- [ ] Run available frontend checks; inspect final diff without live submissions or writes
