@@ -314,7 +314,7 @@ export default function Invoices() {
                   disabled={submittingToApp}
                 >
                   <Send className="h-3.5 w-3.5" />
-                  Submit to APP
+                  Validate & sign (NRS sandbox)
                 </Button>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Download className="h-3.5 w-3.5" />
@@ -575,7 +575,7 @@ function RowActions({
           }}
         >
           <Send className="mr-2 h-4 w-4" />
-          Submit to APP
+          Validate & sign (NRS sandbox)
         </DropdownMenuItem>
         <DropdownMenuItem>
           <Download className="mr-2 h-4 w-4" />
