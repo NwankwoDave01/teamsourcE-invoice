@@ -12,3 +12,11 @@
 - [x] Test tenant scoping, secret handling, permissions, and unsupported capability behavior; check frontend diagnostics
 
 External deployment version and authenticated live save/disconnect remain unverified: project tools target a different backend from the browser client. Crypto support and per-environment secret storage are absent from the available source contract and require confirmed backend support outside this frontend task.
+
+## Submit/credential/status alignment
+- [x] Fail-closed nrs-submit result adapter; list/detail handling with no unsafe retry
+- [x] Tolerant credential metadata (legacy + live fields); verification ≠ readiness
+- [x] Submission status shown from submission_status only; neutral dashboard labels
+- [x] Preview labelled local-only; Settings/docs separate current NRS sandbox from planned APP
+- [ ] Blocked: live response fixtures for nrs-submit / nrs-credentials v13 (needs external backend access)
+- [ ] Blocked: verify / save_crypto / validate_crypto UI (request/response contract not confirmed)
