@@ -79,7 +79,7 @@ export default function ApiDocs() {
               ["01", "Sign in", "The customer uses native TeamSource authentication."],
               ["02", "Prepare", "TeamSource maps the invoice to the standard NRS invoice schema."],
               ["03", "Approve", "The invoice completes the existing internal workflow."],
-              ["04", "Handoff", "The approved invoice is intended for the configured APP."],
+              ["04", "Sign / handoff", "Current: direct NRS sandbox validation and signing. Planned: handoff to the configured APP — not live."],
             ].map(([number, title, text]) => (
               <div key={number} className="border-l border-white/20 pl-4">
                 <p className="font-mono text-sm text-cyan-300">{number}</p>

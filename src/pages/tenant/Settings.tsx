@@ -297,7 +297,7 @@ export default function Settings() {
                 <div>
                    <h3 className="text-lg font-semibold tracking-tight">NRS / APP Connection</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
-                     Configure how approved TeamSource invoices will connect to the appointed Access Point Provider (APP).
+                     Current: approved invoices are validated and signed directly in the NRS sandbox. Planned: handoff to the appointed Access Point Provider (APP), which is pending its contract and not live.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">

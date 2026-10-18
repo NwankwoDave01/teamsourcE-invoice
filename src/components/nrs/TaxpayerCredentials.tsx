@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDisconnectNrsCredentials, useNrsCredentialStatus, useSaveNrsCredentials } from "@/hooks/useNrsCredentials";
-import { canAdministerCredentials } from "@/lib/nrs/credentialContract";
+import { canAdministerCredentials, isSigningReady } from "@/lib/nrs/credentialContract";
 
 export function TaxpayerCredentials({ companyName, environment, environmentUnsaved }: {
   companyName: string; environment: string; environmentUnsaved: boolean;
@@ -23,7 +23,7 @@ export function TaxpayerCredentials({ companyName, environment, environmentUnsav
   const admin = canAdministerCredentials(roles, companyId);
   const metadata = status.data;
   const busy = save.isPending || disconnect.isPending;
-  const scopeMatches = metadata?.environment === environment;
+  const scopeMatches = !metadata?.environment || metadata.environment === environment;
   const blocked = !admin || busy || status.isFetching || status.isError || !metadata || !scopeMatches || environmentUnsaved;
 
   async function saveCredentials(event: React.FormEvent) {
@@ -71,13 +71,15 @@ export function TaxpayerCredentials({ companyName, environment, environmentUnsav
     {metadata && !status.isError && <>
       {!scopeMatches && <p role="alert" className="text-sm text-destructive">The server environment differs from the saved company environment. Refresh company settings before making changes.</p>}
       <dl className="grid gap-3 text-sm sm:grid-cols-2">
-        <Metadata label="API key" value={metadata.api_key_configured ? "Saved" : "Not saved"} />
-        <Metadata label="API secret" value={metadata.api_secret_configured ? "Saved" : "Not saved"} />
-        <Metadata label="Legacy verification record" value={metadata.verified ? `Recorded${metadata.verified_at ? ` · ${metadata.verified_at}` : ""} — not SI readiness` : "Not verified"} />
-        <Metadata label="SI submission readiness" value="Not established by this contract" />
+        <Metadata label="API key" value={yesNo(metadata.api_key_configured, "Saved", "Not saved")} />
+        <Metadata label="API secret" value={yesNo(metadata.api_secret_configured, "Saved", "Not saved")} />
+        <Metadata label="Credentials verified (server record)" value={metadata.credentials_verified === true ? `Recorded${metadata.verified_at ? ` · ${metadata.verified_at}` : ""}` : yesNo(metadata.credentials_verified, "", "Not verified")} />
+        <Metadata label="Crypto keys" value={yesNo(metadata.crypto_configured, "Configured", "Not configured")} />
+        {metadata.connection_status && <Metadata label="Connection status (server)" value={metadata.connection_status} />}
+        <Metadata label="NRS sandbox signing readiness" value={isSigningReady(metadata) ? "Credentials and crypto reported configured" : "Not established"} />
       </dl>
       {metadata.taxpayer_password_configured && <p className="text-xs text-muted-foreground">A legacy taxpayer password is stored. It is not exposed or used by this screen. Disconnect removes all credentials supported by this contract.</p>}
-      {metadata.last_error && <p className="text-xs text-muted-foreground">A previous verification error was recorded. Legacy login verification is not offered for SI use.</p>}
+      {metadata.last_error && <p className="text-xs text-muted-foreground">A previous verification error was recorded. Verification and crypto upload actions are not offered here until their live contract is confirmed.</p>}
     </>}
     {admin ? <form onSubmit={saveCredentials} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -91,8 +93,8 @@ export function TaxpayerCredentials({ companyName, environment, environmentUnsav
       </div>
     </form> : <p className="text-sm text-muted-foreground">Only an active company administrator can save or disconnect taxpayer credentials.</p>}
     <div className="border-l-2 border-warning pl-4 text-sm">
-      <p className="font-medium">Public key / certificate configuration unavailable</p>
-      <p className="mt-1 text-muted-foreground">The available backend contract does not support crypto save/replace or crypto status. No crypto material is collected until secure company/environment-scoped support is confirmed.</p>
+      <p className="font-medium">Crypto key upload and verification unavailable here</p>
+      <p className="mt-1 text-muted-foreground">Crypto status is shown when the server reports it. Uploading or validating crypto keys and running verification are not offered until their request/response contract is confirmed. No crypto material is collected by this screen.</p>
     </div>
     {notice && <p role="status" className="text-sm text-foreground">{notice}</p>}
     {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}
@@ -103,6 +105,10 @@ export function TaxpayerCredentials({ companyName, environment, environmentUnsav
       </AlertDialogContent>
     </AlertDialog>
   </section>;
+}
+
+function yesNo(v: boolean | null, yes: string, no: string) {
+  return v === null ? "Not reported" : v ? yes : no;
 }
 
 function Metadata({ label, value }: { label: string; value: string }) {

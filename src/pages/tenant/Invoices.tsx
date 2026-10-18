@@ -57,8 +57,7 @@ import {
 import { toast } from "sonner";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
+import { useNrsSubmit } from "@/hooks/useNrsSubmit";
 
 const statusDot: Record<DBInvoiceStatus, string> = {
   Draft: "bg-muted-foreground/60",
@@ -76,7 +75,9 @@ export default function Invoices() {
   const { data: invoices = [], isLoading } = useInvoices();
   const updateStatus = useUpdateInvoiceStatus();
   const deleteMut = useDeleteInvoice();
-  const queryClient = useQueryClient();
+  const submitToNrs = useNrsSubmit();
+  // Invoices whose last attempt was unconfirmed or not retry-safe in this session.
+  const [unconfirmedIds, setUnconfirmedIds] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<"All" | DBInvoiceStatus>("All");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -129,30 +130,28 @@ export default function Invoices() {
   };
   const hasActiveFilters = filter !== "All" || search.trim().length > 0;
 
-  const submitInvoiceToApp = async (id: string): Promise<{ ok: boolean; message?: string }> => {
-    const { data, error } = await supabase.functions.invoke("nrs-submit", {
-      body: { invoice_id: id },
-    });
-    if (error) return { ok: false, message: error.message };
-    if (data?.ok === false) {
-      return { ok: false, message: data?.response?.message ?? "Submission rejected" };
-    }
-    return { ok: true };
-  };
-
   const submitRowToApp = async (id: string) => {
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return;
     if (inv.status !== "Ready") {
-      toast.error(`Only invoices at "Ready" can be submitted (current: ${inv.status})`);
+      toast.error(`Only invoices at "Ready" can be sent for NRS sandbox signing (current: ${inv.status})`);
+      return;
+    }
+    if (unconfirmedIds.has(id)) {
+      toast.error(`${inv.number}: the previous result is unconfirmed. Review the invoice status before resubmitting.`);
       return;
     }
     setSubmittingToApp(true);
     try {
-      const res = await submitInvoiceToApp(id);
-      if (res.ok) toast.success(`${inv.number} submitted to the configured APP`);
-      else toast.error(res.message ?? "APP submission failed");
-      await queryClient.invalidateQueries({ queryKey: ["invoices"] });
+      const res = await submitToNrs(id);
+      if (res.kind === "success") toast.success(`${inv.number}: ${res.message}`);
+      else if (res.kind === "rejected") {
+        toast.error(`${inv.number}: ${res.message}`, { description: res.details ?? undefined });
+        if (!res.retrySafe) setUnconfirmedIds((s) => new Set(s).add(id));
+      } else {
+        toast.warning(`${inv.number}: ${res.message}`, { description: res.details ?? undefined });
+        setUnconfirmedIds((s) => new Set(s).add(id));
+      }
     } finally {
       setSubmittingToApp(false);
     }
@@ -160,22 +159,31 @@ export default function Invoices() {
 
   const bulkSubmit = async () => {
     const ids = Array.from(selected);
-    const eligible = ids.filter((id) => invoices.find((i) => i.id === id)?.status === "Ready");
+    const eligible = ids.filter((id) => invoices.find((i) => i.id === id)?.status === "Ready" && !unconfirmedIds.has(id));
     const skipped = ids.length - eligible.length;
     if (eligible.length === 0) {
-      toast.error('No selected invoices are at "Ready" status');
+      toast.error('No selected invoices are at "Ready" with a confirmed prior state');
       return;
     }
     setSubmittingToApp(true);
+    let success = 0, rejected = 0, unconfirmed = 0;
     try {
-      const results = await Promise.all(eligible.map((id) => submitInvoiceToApp(id)));
-      const success = results.filter((r) => r.ok).length;
-      const failed = results.length - success;
-      if (success > 0) toast.success(`Submitted ${success} invoice${success === 1 ? "" : "s"} to the configured APP`);
-      if (failed > 0) toast.error(`${failed} submission${failed === 1 ? "" : "s"} failed`);
-      if (skipped > 0) toast.message(`Skipped ${skipped} not at "Ready"`);
+      // Sequential on purpose: stop the batch on the first unconfirmed outcome.
+      for (const id of eligible) {
+        const res = await submitToNrs(id);
+        if (res.kind === "success") success++;
+        else {
+          if (res.kind === "rejected") rejected++; else unconfirmed++;
+          if (res.kind === "unconfirmed" || !res.retrySafe) setUnconfirmedIds((s) => new Set(s).add(id));
+          if (res.kind === "unconfirmed") break;
+        }
+      }
+      const notRun = eligible.length - success - rejected - unconfirmed;
+      if (success > 0) toast.success(`${success} invoice${success === 1 ? "" : "s"} validated and signed (NRS sandbox)`);
+      if (rejected > 0) toast.error(`${rejected} rejected — open each invoice for details`);
+      if (unconfirmed > 0) toast.warning(`1 result unconfirmed — batch stopped. ${notRun} not sent. Do not resubmit until status is reviewed.`);
+      if (skipped > 0) toast.message(`Skipped ${skipped} not eligible`);
       setSelected(new Set());
-      await queryClient.invalidateQueries({ queryKey: ["invoices"] });
     } finally {
       setSubmittingToApp(false);
     }
@@ -306,7 +314,7 @@ export default function Invoices() {
                   disabled={submittingToApp}
                 >
                   <Send className="h-3.5 w-3.5" />
-                  Submit to APP
+                  Validate & sign (NRS sandbox)
                 </Button>
                 <Button variant="outline" size="sm" className="gap-1.5">
                   <Download className="h-3.5 w-3.5" />
@@ -567,7 +575,7 @@ function RowActions({
           }}
         >
           <Send className="mr-2 h-4 w-4" />
-          Submit to APP
+          Validate & sign (NRS sandbox)
         </DropdownMenuItem>
         <DropdownMenuItem>
           <Download className="mr-2 h-4 w-4" />

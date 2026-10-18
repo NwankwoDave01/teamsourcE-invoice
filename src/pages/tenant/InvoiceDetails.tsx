@@ -27,7 +27,9 @@ import { formatNGN, formatDate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { NrsPayloadPreviewDialog } from "@/components/nrs/NrsPayloadPreviewDialog";
-import { supabase } from "@/integrations/supabase/client";
+import { useNrsSubmit } from "@/hooks/useNrsSubmit";
+import type { SubmitResult } from "@/lib/nrs/submitContract";
+import { SubmissionBadge, submissionLabel } from "@/components/shared/SubmissionBadge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -49,7 +51,7 @@ const NEXT_LABEL: Partial<Record<DBInvoiceStatus, string>> = {
   Draft: "Submit for review",
   "In Review": "Approve",
   Approved: "Mark as ready",
-  Ready: "Submit to APP",
+  Ready: "Validate & sign (NRS sandbox)",
 };
 
 export default function InvoiceDetails() {
@@ -60,7 +62,8 @@ export default function InvoiceDetails() {
   const updateStatus = useUpdateInvoiceStatus();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [nrsResult, setNrsResult] = useState<Record<string, unknown> | null>(null);
+  const [lastResult, setLastResult] = useState<SubmitResult | null>(null);
+  const submitToNrs = useNrsSubmit();
   const [confirmReject, setConfirmReject] = useState(false);
 
   if (isLoading) {
@@ -93,21 +96,15 @@ export default function InvoiceDetails() {
 
   const advance = async () => {
     if (invoice.status === "Ready") {
+      if (lastResult && lastResult.kind !== "success" && !lastResult.retrySafe) return;
+      setSubmitting(true);
       try {
-        setSubmitting(true);
-        const { data, error } = await supabase.functions.invoke("nrs-submit", {
-          body: { invoice_id: invoice.id },
-        });
-        if (error) throw error;
-        if (data?.ok === false) {
-          toast.error(data?.response?.message ?? "APP submission rejected");
-        } else {
-          setNrsResult(data as Record<string, unknown>);
-          await refetchInvoice();
-          toast.success("Invoice submitted to the configured APP");
-        }
-      } catch (e: unknown) {
-        toast.error("APP submission failed", { description: (e as Error).message });
+        const res = await submitToNrs(invoice.id);
+        setLastResult(res);
+        await refetchInvoice();
+        if (res.kind === "success") toast.success(res.message);
+        else if (res.kind === "rejected") toast.error(res.message, { description: res.details ?? undefined });
+        else toast.warning(res.message, { description: res.details ?? undefined });
       } finally {
         setSubmitting(false);
       }
@@ -177,7 +174,7 @@ export default function InvoiceDetails() {
               Preview NRS Payload
             </Button>
             {invoice.status !== "Confirmed" && invoice.status !== "Rejected" && (nextStatus || invoice.status === "Ready") && (
-              <Button size="sm" onClick={advance} disabled={updateStatus.isPending || submitting} className="gap-1.5">
+              <Button size="sm" onClick={advance} disabled={updateStatus.isPending || submitting || (invoice.status === "Ready" && !!lastResult && lastResult.kind !== "success" && !lastResult.retrySafe)} className="gap-1.5">
                 <Send className="h-4 w-4" />
                 {nextLabel}
               </Button>
@@ -193,7 +190,7 @@ export default function InvoiceDetails() {
               <div>
                 <p className="text-xs uppercase tracking-wide text-muted-foreground">Invoice</p>
                 <h2 className="text-xl font-semibold">{invoice.number}</h2>
-                <div className="mt-2"><StatusBadge status={invoice.status} /></div>
+                <div className="mt-2 flex flex-wrap gap-2"><StatusBadge status={invoice.status} /><SubmissionBadge status={(invoice as { submission_status?: string | null }).submission_status} /></div>
               </div>
               <div className="text-right text-sm">
                 <p className="text-muted-foreground">IRN</p>
@@ -223,14 +220,23 @@ export default function InvoiceDetails() {
               </div>
             </div>
 
-            {(nrsResult || persistedQr || invoice.status === "Signed" || invoice.status === "Validated") && (
+            {lastResult && lastResult.kind !== "success" && (
+              <div role="alert" className={cn("mt-6 rounded-md border p-4 text-sm", lastResult.kind === "rejected" ? "border-destructive/30 bg-destructive/5" : "border-warning/30 bg-warning/5")}>
+                <p className="font-medium">{lastResult.kind === "rejected" ? "Rejected" : "Result unconfirmed"}</p>
+                <p className="mt-1 text-muted-foreground">{lastResult.message}</p>
+                {lastResult.details && <p className="mt-1 break-words text-xs text-muted-foreground">{lastResult.details}</p>}
+                <p className="mt-2 text-xs text-muted-foreground">Next step: {lastResult.retrySafe ? "correct the invoice data, then try again." : "the invoice status has been refreshed. Review the submission history or contact support before trying again."}</p>
+              </div>
+            )}
+
+            {(persistedQr || invoice.status === "Signed" || invoice.status === "Validated") && (
               <div className="mt-6 rounded-md border border-border bg-muted/20 p-4">
                 <h3 className="text-sm font-semibold">Submission status</h3>
                 <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
-                  <Row label="IRN" value={invoice.irn ?? String(nrsResult?.irn ?? "Not available")} />
-                  <Row label="Status" value={invoice.status === "Validated" || invoice.status === "Signed" ? "Processing — awaiting status" : invoice.status === "Confirmed" ? "Accepted" : "Pending"} />
+                  <Row label="IRN" value={invoice.irn ?? "Not available"} />
+                  <Row label="NRS sandbox submission" value={submissionLabel((invoice as { submission_status?: string | null }).submission_status)} />
                 </div>
-                {(invoice.status === "Validated" || invoice.status === "Signed") && <p className="mt-3 text-xs text-muted-foreground">Submitted to the configured APP; awaiting a downstream status update.</p>}
+                {(invoice.status === "Validated" || invoice.status === "Signed") && <p className="mt-3 text-xs text-muted-foreground">Current path: direct NRS sandbox validation and signing. APP handoff is planned and not live.</p>}
                 {qrImageSource && (
                   <div className="mt-4 flex flex-col items-start gap-2">
                     <p className="text-xs font-medium text-muted-foreground">QR code</p>
@@ -325,7 +331,7 @@ export default function InvoiceDetails() {
         <div className="space-y-6">
           <Card className="p-5 shadow-elegant-sm">
             <h3 className="text-base font-semibold">Compliance workflow</h3>
-            <p className="mb-4 text-xs text-muted-foreground">Draft → approval → APP submission</p>
+            <p className="mb-4 text-xs text-muted-foreground">Draft → approval → NRS sandbox signing (APP handoff planned)</p>
             <ol className="space-y-3">
               {workflow.map((s, i) => {
                 const done = i <= currentIdx;
@@ -345,22 +351,11 @@ export default function InvoiceDetails() {
                 );
               })}
             </ol>
-            {(invoice.status === "Ready" || invoice.status === "Validated" || invoice.status === "Signed" || nrsResult) && (
+            {invoice.status !== "Draft" && invoice.status !== "In Review" && (
               <div className="mt-6 border-t border-border pt-4">
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">APP handoff</p>
-                <ol className="space-y-2 text-sm">
-                  {[
-                    ["Ready", true],
-                    ["Submitted to APP", invoice.status === "Submitted" || invoice.status === "Validated" || invoice.status === "Signed" || invoice.status === "Confirmed" || !!nrsResult],
-                    ["Processing / awaiting status", invoice.status === "Validated" || invoice.status === "Signed"],
-                    ["Accepted", invoice.status === "Confirmed"],
-                  ].map(([label, done]) => (
-                    <li key={label as string} className="flex items-center gap-2">
-                      {done ? <CheckCircle2 className="h-4 w-4 text-success" /> : <Circle className="h-4 w-4 text-muted-foreground/40" />}
-                      <span className={done ? "font-medium" : "text-muted-foreground"}>{label as string}</span>
-                    </li>
-                  ))}
-                </ol>
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">NRS sandbox submission</p>
+                <SubmissionBadge status={(invoice as { submission_status?: string | null }).submission_status} showUnknown />
+                <p className="mt-3 text-xs text-muted-foreground">Shown from the recorded submission status only. APP handoff is planned and not live.</p>
               </div>
             )}
             {invoice.status !== "Confirmed" && invoice.status !== "Rejected" && (

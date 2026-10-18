@@ -43,7 +43,7 @@ describe("write-only taxpayer settings flow", () => {
   });
   it("blocks saving against an unsaved environment selection", async () => {
     openSettings(true);
-    await screen.findByText("Not established by this contract");
+    await screen.findByText("Not established");
     expect(screen.getByRole("button", { name: "Save API credentials" })).toBeDisabled();
     expect(screen.getByLabelText("Taxpayer API key")).toBeDisabled();
     expect(mocks.invoke).toHaveBeenCalledTimes(1);
@@ -51,13 +51,13 @@ describe("write-only taxpayer settings flow", () => {
   it("does not expose secret inputs or disconnect to staff", async () => {
     mocks.roles = ["staff_user"];
     openSettings();
-    await screen.findByText("Not established by this contract");
+    await screen.findByText("Not established");
     expect(screen.queryByLabelText("Taxpayer API key")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Disconnect taxpayer credentials" })).not.toBeInTheDocument();
   });
   it("keeps unsupported crypto unavailable without calling save_crypto or verify", async () => {
     openSettings();
-    await screen.findByText("Public key / certificate configuration unavailable");
+    await screen.findByText("Crypto key upload and verification unavailable here");
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     expect(mocks.invoke).toHaveBeenCalledWith("nrs-credentials", { body: { action: "status" } });
     expect(screen.queryByRole("textbox", { name: /certificate/i })).not.toBeInTheDocument();

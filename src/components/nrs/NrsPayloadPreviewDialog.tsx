@@ -53,7 +53,7 @@ export function NrsPayloadPreviewDialog({ invoiceId, open, onOpenChange }: Props
         <DialogHeader>
           <DialogTitle>NRS Payload Preview</DialogTitle>
           <DialogDescription>
-            Standard NRS invoice-schema mapping. This preview sends nothing to the APP or NRS.
+            Standard NRS invoice-schema mapping. Local preview only — this is not NRS validation and sends nothing to the APP or NRS.
           </DialogDescription>
         </DialogHeader>
 
