@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { canAdministerCredentials, credentialSaveBody, parseCredentialStatus } from "@/lib/nrs/credentialContract";
+import { canAdministerCredentials, credentialSaveBody, cryptoSaveBody, parseCredentialStatus } from "@/lib/nrs/credentialContract";
 
 const FN = "nrs-credentials";
 
@@ -48,5 +48,41 @@ export function useDisconnectNrsCredentials() {
       return callFn({ action: "disconnect" });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["nrs-credential-status", user?.id, companyId] }),
+  });
+}
+
+/** Raw crypto is read inside the mutation, never supplied as cached variables. */
+export function useSaveNrsCrypto(environment: string) {
+  const qc = useQueryClient();
+  const { user, companyId, roles } = useAuth();
+  return useMutation({
+    mutationFn: async (readInput: () => { public_key: string; certificate: string }) => {
+      if (!user || !canAdministerCredentials(roles, companyId)) throw new Error("An active company administrator is required.");
+      const { data, error } = await supabase.functions.invoke(FN, { body: cryptoSaveBody(readInput()) });
+      if (error || !data || typeof data !== "object" || data.ok === false || data.error) {
+        throw new Error("Crypto save was not confirmed. Refresh status before trying again.");
+      }
+      // Action responses may differ from status. Never return/cache their raw body.
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["nrs-credential-status", user?.id, companyId, environment] }),
+    gcTime: 0,
+    retry: false,
+  });
+}
+
+export function useValidateNrsCrypto(environment: string) {
+  const qc = useQueryClient();
+  const { user, companyId, roles } = useAuth();
+  return useMutation({
+    mutationFn: async () => {
+      if (!user || !canAdministerCredentials(roles, companyId)) throw new Error("An active company administrator is required.");
+      const { data, error } = await supabase.functions.invoke(FN, { body: { action: "validate_crypto" } });
+      if (error || !data || typeof data !== "object" || data.ok === false || data.error) {
+        throw new Error("Local format check did not confirm validity. Refresh crypto status.");
+      }
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["nrs-credential-status", user?.id, companyId, environment] }),
+    gcTime: 0,
+    retry: false,
   });
 }

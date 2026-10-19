@@ -26,3 +26,9 @@ External deployment version and authenticated live save/disconnect remain unveri
 - [ ] Sanitized deployed submit-response fixtures and local preflight regression tests
 - [ ] Review credential allowlist and repair merged architecture rule
 - [ ] Run available frontend checks; inspect final diff without live submissions or writes
+
+## NRS crypto settings (preview only)
+- [x] Add confirmed save_crypto and explicit validate_crypto controls with write-only inputs
+- [x] Map crypto metadata and distinguish local format checks from NRS acceptance
+- [ ] Run credential tests and changed-file lint; inspect preview diagnostics
+- [ ] External authenticated save/check flow requires manual verification (no live writes in this task)

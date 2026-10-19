@@ -5,8 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/AuthContext";
-import { useDisconnectNrsCredentials, useNrsCredentialStatus, useSaveNrsCredentials } from "@/hooks/useNrsCredentials";
-import { canAdministerCredentials, isSigningReady } from "@/lib/nrs/credentialContract";
+import { useDisconnectNrsCredentials, useNrsCredentialStatus, useSaveNrsCredentials, useSaveNrsCrypto, useValidateNrsCrypto } from "@/hooks/useNrsCredentials";
+import { canAdministerCredentials, isSigningReady, cryptoStatusLabel } from "@/lib/nrs/credentialContract";
 
 export function TaxpayerCredentials({ companyName, environment, environmentUnsaved }: {
   companyName: string; environment: string; environmentUnsaved: boolean;
@@ -15,6 +15,10 @@ export function TaxpayerCredentials({ companyName, environment, environmentUnsav
   const status = useNrsCredentialStatus(environment);
   const save = useSaveNrsCredentials();
   const disconnect = useDisconnectNrsCredentials();
+  const saveCrypto = useSaveNrsCrypto(environment);
+  const validateCrypto = useValidateNrsCrypto(environment);
+  const [publicKey, setPublicKey] = useState("");
+  const [certificate, setCertificate] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [notice, setNotice] = useState("");
@@ -22,8 +26,8 @@ export function TaxpayerCredentials({ companyName, environment, environmentUnsav
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
   const admin = canAdministerCredentials(roles, companyId);
   const metadata = status.data;
-  const busy = save.isPending || disconnect.isPending;
-  const scopeMatches = !metadata?.environment || metadata.environment === environment;
+  const busy = save.isPending || disconnect.isPending || saveCrypto.isPending || validateCrypto.isPending;
+  const scopeMatches = metadata?.environment === environment;
   const blocked = !admin || busy || status.isFetching || status.isError || !metadata || !scopeMatches || environmentUnsaved;
 
   async function saveCredentials(event: React.FormEvent) {
@@ -53,6 +57,31 @@ export function TaxpayerCredentials({ companyName, environment, environmentUnsav
     }
   }
 
+  async function saveCryptoValues(event: React.FormEvent) {
+    event.preventDefault();
+    if (blocked) return;
+    setNotice(""); setFailure("");
+    try {
+      await saveCrypto.mutateAsync(() => ({ public_key: publicKey, certificate }));
+      setNotice("Crypto save request completed. Review refreshed metadata; saving is not NRS verification.");
+    } catch {
+      setFailure("Crypto save was not confirmed. Refresh status before trying again.");
+    } finally {
+      setPublicKey(""); setCertificate(""); saveCrypto.reset();
+    }
+  }
+
+  async function checkCryptoFormat() {
+    if (blocked) return;
+    setNotice(""); setFailure("");
+    try {
+      await validateCrypto.mutateAsync();
+      setNotice("Local format check completed. Review refreshed metadata; this does not verify NRS certificate or signature acceptance.");
+    } catch {
+      setFailure("Local format check did not confirm validity. Review refreshed crypto status.");
+    } finally { validateCrypto.reset(); }
+  }
+
   return <section className="space-y-4 border-t border-border pt-6" aria-labelledby="taxpayer-heading">
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
@@ -64,7 +93,7 @@ export function TaxpayerCredentials({ companyName, environment, environmentUnsav
       </Button>
     </div>
     <p className="text-sm text-muted-foreground">Separate from APP onboarding and TeamSource sign-in. Requests use your authenticated active company; no company ID or global credentials are supplied by this form.</p>
-    <p className="text-xs text-muted-foreground">The available credential contract stores one set per company, not separate sets per environment. Changing environment does not select another credential set. The external deployment version has not been independently verified.</p>
+    <p className="text-xs text-muted-foreground">API credentials and crypto belong to your active company and saved environment. The credential service resolves this scope; save environment changes before making updates.</p>
     {environmentUnsaved && <p role="alert" className="text-sm text-warning">Save the company environment before managing credentials.</p>}
     {status.isFetching && <p role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Loading credential metadata…</p>}
     {status.isError && <p role="alert" className="text-sm text-destructive">{status.error.message}</p>}
@@ -75,11 +104,14 @@ export function TaxpayerCredentials({ companyName, environment, environmentUnsav
         <Metadata label="API secret" value={yesNo(metadata.api_secret_configured, "Saved", "Not saved")} />
         <Metadata label="Credentials verified (server record)" value={metadata.credentials_verified === true ? `Recorded${metadata.verified_at ? ` · ${metadata.verified_at}` : ""}` : yesNo(metadata.credentials_verified, "", "Not verified")} />
         <Metadata label="Crypto keys" value={yesNo(metadata.crypto_configured, "Configured", "Not configured")} />
+        <Metadata label="Crypto format status" value={cryptoStatusLabel(metadata.crypto_status)} />
+        <Metadata label="Crypto verification record" value={metadata.crypto_verified_at ? `Server record · ${metadata.crypto_verified_at} (not proof of NRS acceptance)` : "No NRS verification established"} />
         {metadata.connection_status && <Metadata label="Connection status (server)" value={metadata.connection_status} />}
         <Metadata label="NRS sandbox signing readiness" value={isSigningReady(metadata) ? "Credentials and crypto reported configured" : "Not established"} />
       </dl>
       {metadata.taxpayer_password_configured && <p className="text-xs text-muted-foreground">A legacy taxpayer password is stored. It is not exposed or used by this screen. Disconnect removes all credentials supported by this contract.</p>}
-      {metadata.last_error && <p className="text-xs text-muted-foreground">A previous verification error was recorded. Verification and crypto upload actions are not offered here until their live contract is confirmed.</p>}
+      {metadata.last_error && <p className="text-xs text-muted-foreground">A previous API verification error was recorded.</p>}
+      {metadata.crypto_validation_error && <p role="alert" className="text-sm text-destructive">{metadata.crypto_validation_error}</p>}
     </>}
     {admin ? <form onSubmit={saveCredentials} className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -92,15 +124,26 @@ export function TaxpayerCredentials({ companyName, environment, environmentUnsav
         <Button type="button" variant="outline" disabled={blocked || !(metadata?.api_key_configured || metadata?.api_secret_configured || metadata?.taxpayer_password_configured)} onClick={() => setConfirmDisconnect(true)}><Unplug className="mr-2 h-4 w-4" />Disconnect taxpayer credentials</Button>
       </div>
     </form> : <p className="text-sm text-muted-foreground">Only an active company administrator can save or disconnect taxpayer credentials.</p>}
-    <div className="border-l-2 border-warning pl-4 text-sm">
-      <p className="font-medium">Crypto key upload and verification unavailable here</p>
-      <p className="mt-1 text-muted-foreground">Crypto status is shown when the server reports it. Uploading or validating crypto keys and running verification are not offered until their request/response contract is confirmed. No crypto material is collected by this screen.</p>
+    <div className="space-y-4 border-t border-border pt-4">
+      <h5 className="text-sm font-semibold">Taxpayer crypto setup</h5>
+      <p className="text-sm text-muted-foreground">Use the public_key and certificate values from your taxpayer NRS crypto_keys.txt. Local format validation is not NRS-verified certificate or signature acceptance.</p>
+      {admin && <form onSubmit={saveCryptoValues} className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5"><Label htmlFor="taxpayer-public-key">Public key (PEM / Base64 PEM)</Label><Input id="taxpayer-public-key" type="password" autoComplete="off" value={publicKey} onChange={(e) => setPublicKey(e.target.value)} disabled={blocked} /></div>
+          <div className="space-y-1.5"><Label htmlFor="taxpayer-certificate">NRS certificate value</Label><Input id="taxpayer-certificate" type="password" autoComplete="off" value={certificate} onChange={(e) => setCertificate(e.target.value)} disabled={blocked} /></div>
+        </div>
+        <p className="text-xs text-muted-foreground">Stored values are never shown or prefilled. Both entries are cleared after every save attempt.</p>
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" disabled={blocked || !publicKey.trim() || !certificate.trim()}>{saveCrypto.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Save crypto values</Button>
+          <Button type="button" variant="outline" disabled={blocked || metadata?.crypto_configured !== true} onClick={() => void checkCryptoFormat()}>{validateCrypto.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Check saved crypto format</Button>
+        </div>
+      </form>}
     </div>
     {notice && <p role="status" className="text-sm text-foreground">{notice}</p>}
     {failure && <p role="alert" className="text-sm text-destructive">{failure}</p>}
     <AlertDialog open={confirmDisconnect} onOpenChange={(open) => { if (!busy) setConfirmDisconnect(open); }}>
       <AlertDialogContent>
-        <AlertDialogHeader><AlertDialogTitle>Disconnect taxpayer credentials?</AlertDialogTitle><AlertDialogDescription>Remove all stored API credentials and any legacy taxpayer password for {companyName}. This affects the company's single credential set across environments. Company identifiers and the APP onboarding draft remain unchanged.</AlertDialogDescription></AlertDialogHeader>
+        <AlertDialogHeader><AlertDialogTitle>Disconnect taxpayer credentials?</AlertDialogTitle><AlertDialogDescription>Remove all stored API credentials and any legacy taxpayer password for {companyName}. This applies to the saved {environment} environment; other environments are not selected by this form. Company identifiers and the APP onboarding draft remain unchanged.</AlertDialogDescription></AlertDialogHeader>
         <AlertDialogFooter><AlertDialogCancel disabled={busy}>Cancel</AlertDialogCancel><Button variant="destructive" disabled={blocked} onClick={() => void removeCredentials()}>{disconnect.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Disconnect</Button></AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
