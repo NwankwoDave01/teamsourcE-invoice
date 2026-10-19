@@ -234,19 +234,24 @@ export default function InvoiceDetails() {
               </div>
             )}
 
-            {(persistedQr || invoice.status === "Signed" || invoice.status === "Validated") && (
+            {(hasPersistedQrField || invoice.status === "Signed" || invoice.status === "Validated") && (
               <div className="mt-6 rounded-md border border-border bg-muted/20 p-4">
                 <h3 className="text-sm font-semibold">Submission status</h3>
                 <div className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
                   <Row label="IRN" value={invoice.irn ?? "Not available"} />
                   <Row label="NRS sandbox submission" value={submissionLabel((invoice as { submission_status?: string | null }).submission_status)} />
+                  {invoice.status === "Signed" && <Row label="CSID" value={csid ?? "CSID not returned by NRS"} />}
                 </div>
                 {(invoice.status === "Validated" || invoice.status === "Signed") && <p className="mt-3 text-xs text-muted-foreground">Current path: direct NRS sandbox validation and signing. APP handoff is planned and not live.</p>}
-                {qrImageSource && (
+                {qrImageSource ? (
                   <div className="mt-4 flex flex-col items-start gap-2">
                     <p className="text-xs font-medium text-muted-foreground">QR code</p>
                     <img src={qrImageSource} alt="NRS invoice QR code" className="h-40 w-40 rounded-md border border-border bg-background p-2" />
                   </div>
+                ) : (
+                  hasPersistedQrField && (
+                    <p className="mt-4 text-xs text-muted-foreground">QR code unavailable — the saved value is not a displayable image.</p>
+                  )
                 )}
               </div>
             )}
