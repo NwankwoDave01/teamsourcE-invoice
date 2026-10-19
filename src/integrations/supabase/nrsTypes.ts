@@ -23,5 +23,8 @@ export interface NrsCredentialStatus {
   credentials_verified: boolean | null;
   verified_at: string | null;
   crypto_configured: boolean | null;
+  crypto_status: string | null;
+  crypto_validation_error: string | null;
+  crypto_verified_at: string | null;
   last_error: string | null;
 }

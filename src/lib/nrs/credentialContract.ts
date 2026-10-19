@@ -22,6 +22,9 @@ export function parseCredentialStatus(value: unknown): NrsCredentialStatus {
     credentials_verified: bool(d.credentials_verified) ?? bool(d.verified),
     verified_at: str(d.verified_at, 60),
     crypto_configured: bool(d.crypto_configured),
+    crypto_status: str(d.crypto_status ?? d.crypto_validation_status ?? d.validation_status, 60),
+    crypto_validation_error: typeof (d.crypto_validation_error ?? d.validation_error) === "string" && (d.crypto_validation_error ?? d.validation_error) ? "A crypto validation error was recorded. Check the supplied key and certificate format." : null,
+    crypto_verified_at: str(d.crypto_verified_at, 60),
     last_error: str(d.last_error),
   };
   if (result.api_key_configured === null && result.api_secret_configured === null && result.connection_status === null) {
@@ -47,4 +50,18 @@ export function credentialSaveBody(input: { api_key: string; api_secret: string 
   }
   // Never spread caller input: company/user/environment IDs cannot cross this boundary.
   return { action: "save" as const, api_key, api_secret };
+}
+
+/** Never spread identity or saved environment into the server-owned scope. */
+export function cryptoSaveBody(input: { public_key: string; certificate: string }) {
+  const public_key = input.public_key.trim();
+  const certificate = input.certificate.trim();
+  if (!public_key || !certificate) throw new Error("Enter both the public key and NRS certificate value.");
+  return { action: "save_crypto" as const, public_key, certificate };
+}
+
+export function cryptoStatusLabel(status: string | null): string {
+  if (status === "format_valid") return "Local format valid — not NRS-verified";
+  if (status === "format_invalid" || status === "invalid") return "Local format invalid";
+  return status ? `Server crypto status: ${status} (not proof of NRS acceptance)` : "Not reported";
 }
