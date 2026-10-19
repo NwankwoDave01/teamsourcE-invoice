@@ -6,6 +6,7 @@ const MAP: Record<string, { label: string; cls: string }> = {
   not_submitted: { label: "Not submitted", cls: "bg-muted text-muted-foreground border-border" },
   pending: { label: "Submission pending", cls: "bg-warning/10 text-warning border-warning/30" },
   validated: { label: "NRS validated", cls: "bg-success/10 text-success border-success/30" },
+  signed: { label: "NRS signed", cls: "bg-success/15 text-success border-success/40" },
   rejected: { label: "NRS rejected", cls: "bg-destructive/10 text-destructive border-destructive/30" },
   timeout: { label: "Unconfirmed (timeout)", cls: "bg-warning/10 text-warning border-warning/30" },
   failed: { label: "Submission failed", cls: "bg-destructive/10 text-destructive border-destructive/30" },
