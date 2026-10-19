@@ -140,13 +140,11 @@ export default function InvoiceDetails() {
   const persistedInvoice = invoice as typeof invoice & {
     qr_code?: string | null;
     qr_code_data?: string | null;
+    csid?: string | null;
   };
-  const persistedQr = persistedInvoice.qr_code_data ?? persistedInvoice.qr_code ?? null;
-  const qrImageSource = persistedQr
-    ? persistedQr.startsWith("data:")
-      ? persistedQr
-      : `data:image/png;base64,${persistedQr}`
-    : null;
+  const qrImageSource = resolveQrImageSource(persistedInvoice.qr_code, persistedInvoice.qr_code_data);
+  const hasPersistedQrField = Boolean(persistedInvoice.qr_code ?? persistedInvoice.qr_code_data);
+  const csid = typeof persistedInvoice.csid === "string" && persistedInvoice.csid.trim() ? persistedInvoice.csid.trim() : null;
 
   return (
     <div>
