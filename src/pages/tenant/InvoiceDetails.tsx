@@ -31,6 +31,7 @@ import { useNrsSubmit } from "@/hooks/useNrsSubmit";
 import { useAuth } from "@/contexts/AuthContext";
 import { useNrsSubmissionHistory } from "@/hooks/useNrsSubmissionHistory";
 import { hasDeviceAttempt, submissionBlockReason } from "@/lib/nrs/submissionSafety";
+import { resolveQrImageSource } from "@/lib/nrs/qrDisplay";
 import type { SubmitResult } from "@/lib/nrs/submitContract";
 import { SubmissionBadge, submissionLabel } from "@/components/shared/SubmissionBadge";
 import {
