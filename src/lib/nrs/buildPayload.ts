@@ -4,7 +4,7 @@ import type {
   NrsInvoicePayload,
   NrsLine,
 } from "./types";
-import { INVOICE_TYPE_CODE } from "./types";
+import { normalizeInvoiceTypeCode } from "./invoiceTypeCode";
 import { validateForNrs } from "./validators";
 import { round2 } from "./codes";
 
@@ -60,7 +60,7 @@ export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult
   }
 
   const currency = (invoice.currency ?? "NGN").toUpperCase();
-  const invoiceType = (invoice.invoice_type ?? "commercial") as keyof typeof INVOICE_TYPE_CODE;
+  const invoiceTypeCode = normalizeInvoiceTypeCode(invoice.invoice_type);
 
   const builtLines: NrsLine[] = (lines ?? []).map((l: any, idx: number) => {
     const qty = Number(l.qty ?? 0);
@@ -100,7 +100,7 @@ export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult
   const payload: NrsInvoicePayload = {
     documentUuid: invoice.document_uuid ?? invoice.id,
     invoiceNumber: invoice.number,
-    invoiceTypeCode: INVOICE_TYPE_CODE[invoiceType] ?? "396",
+    invoiceTypeCode,
     transactionType: (invoice.transaction_type ?? "B2B") as NrsInvoicePayload["transactionType"],
     issueDate: invoice.issue_date,
     dueDate: invoice.due_date,
