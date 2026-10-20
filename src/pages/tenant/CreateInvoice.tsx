@@ -98,9 +98,7 @@ export default function CreateInvoice() {
   const [invoiceType, setInvoiceType] = useState<string>("380");
   const [transactionType, setTransactionType] = useState<string>("B2B");
   const [supplyDate, setSupplyDate] = useState<string>("");
-  const [paymentTerms, setPaymentTerms] = useState<string>("");
   const [paymentMeansCode, setPaymentMeansCode] = useState<string>("");
-  const [exchangeRate, setExchangeRate] = useState<number>(1);
   const [currency, setCurrency] = useState<string>("NGN");
 
   const { data: currenciesRaw } = useNrsMasterData("currencies");
@@ -184,9 +182,7 @@ export default function CreateInvoice() {
         invoice_type: invoiceType,
         transaction_type: transactionType,
         supply_date: supplyDate || null,
-        payment_terms: paymentTerms || null,
         payment_means_code: paymentMeansCode,
-        exchange_rate: exchangeRate,
         currency,
         lines: lines.map((l) => ({
           product_id: l.product_id,
@@ -335,9 +331,6 @@ export default function CreateInvoice() {
                 </div>
                 <FieldHint>Date goods/services were supplied. Defaults to issue date if blank.</FieldHint>
               </Field>
-              <Field label="Payment terms">
-                <Input value={paymentTerms} onChange={(e) => setPaymentTerms(e.target.value)} placeholder="e.g. Net 30" />
-              </Field>
               <Field label="Payment means">
                 <Select value={paymentMeansCode} onValueChange={setPaymentMeansCode}>
                   <SelectTrigger>
@@ -349,16 +342,6 @@ export default function CreateInvoice() {
                     ))}
                   </SelectContent>
                 </Select>
-              </Field>
-              <Field label="Exchange rate">
-                <Input
-                  type="number"
-                  step="0.0001"
-                  value={exchangeRate}
-                  onChange={(e) => setExchangeRate(Number(e.target.value))}
-                  className="tabular-nums"
-                />
-                <FieldHint>Required only for non-NGN invoices.</FieldHint>
               </Field>
             </div>
           </SectionCard>
