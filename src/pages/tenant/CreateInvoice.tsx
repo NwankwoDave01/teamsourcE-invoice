@@ -27,6 +27,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useCustomers, useProducts, useInvoices, useCreateInvoice } from "@/hooks/useCompanyData";
 import { TRANSACTION_TYPE_OPTIONS } from "@/lib/nrs/codes";
 import { useNrsMasterData } from "@/hooks/useNrsMasterData";
+import {
+  invoiceTypeDisplayLabel,
+  paymentMeansDisplayLabel,
+} from "@/lib/nrs/displayLabels";
 import { formatNGN } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -307,7 +311,7 @@ export default function CreateInvoice() {
                   </SelectTrigger>
                   <SelectContent>
                     {invoiceTypes.map((o) => (
-                      <SelectItem key={o.code} value={o.code}>{o.label}</SelectItem>
+                      <SelectItem key={o.code} value={o.code}>{invoiceTypeDisplayLabel(o)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -338,7 +342,7 @@ export default function CreateInvoice() {
                   </SelectTrigger>
                   <SelectContent>
                     {paymentMeans.map((pm) => (
-                      <SelectItem key={pm.code} value={pm.code}>{pm.label}</SelectItem>
+                      <SelectItem key={pm.code} value={pm.code}>{paymentMeansDisplayLabel(pm)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
