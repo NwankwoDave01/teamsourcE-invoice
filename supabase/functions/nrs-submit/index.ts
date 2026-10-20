@@ -312,7 +312,7 @@ function buildPayload(invoice: any, lines: any[], company: any, customer: any, i
   const discountTotal = Number(invoice.discount_total ?? 0);
   const grandTotal = round2(subtotal + taxTotal - discountTotal);
   const currency = (invoice.currency ?? "NGN").toUpperCase();
-  const invoiceType = invoice.invoice_type ?? "commercial";
+  const invoiceTypeCode = normalizeInvoiceTypeCode(invoice.invoice_type);
   const taxSubtotals = Object.values(
     builtLines.reduce((groups: Record<string, any>, line: any) => {
       const key = `${line.tax_category}:${line.tax_rate}`;
