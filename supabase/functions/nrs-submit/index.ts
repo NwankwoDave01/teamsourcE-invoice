@@ -19,10 +19,10 @@ const NRS_AUTHENTICATE_PATH = "/api/v1/utilities/authenticate";
 const NRS_VALIDATE_PATH = "/api/v1/invoice/validate";
 const NRS_SIGN_PATH = "/api/v1/invoice/sign";
 const NRS_TRANSMIT_PATH = "/api/v1/invoice/transmit";
-// Invoice type mapping aligned with deployed v82: missing/empty/"commercial"
-// -> "380", three-digit numeric codes preserved as-is, semantic aliases via
-// INVOICE_TYPE_CODE, safe fallback "380".
-import { normalizeInvoiceTypeCode } from "../../../src/lib/nrs/invoiceTypeCode.ts";
+// Invoice type mapping aligned with deployed v83: missing/empty/"commercial"
+// and "380" -> "396", preserved numeric codes (381, 383, 384, 325) preserved as-is,
+// semantic aliases via INVOICE_TYPE_CODE, safe fallback "396".
+import { normalizeInvoiceTypeCode } from "../_shared/invoiceTypeCode.ts";
 const TAX_CATEGORY_ID: Record<string, string> = {
   S: "STANDARD_VAT",
   Z: "ZERO_RATED",

@@ -93,5 +93,5 @@ export interface NrsBuildResult {
 }
 
 // Map internal invoice_type enum -> NRS invoice type code.
-// Aligned with deployed nrs-submit v82 (commercial is 380, not 396).
+// Aligned with deployed nrs-submit v83 (commercial is 396).
 export { INVOICE_TYPE_CODE, normalizeInvoiceTypeCode } from "./invoiceTypeCode";
