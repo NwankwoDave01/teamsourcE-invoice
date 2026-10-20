@@ -93,10 +93,5 @@ export interface NrsBuildResult {
 }
 
 // Map internal invoice_type enum -> NRS invoice type code.
-export const INVOICE_TYPE_CODE: Record<string, string> = {
-  commercial: "396",
-  credit_note: "381",
-  debit_note: "383",
-  corrected: "384",
-  proforma: "325",
-};
+// Aligned with deployed nrs-submit v82 (commercial is 380, not 396).
+export { INVOICE_TYPE_CODE, normalizeInvoiceTypeCode } from "./invoiceTypeCode";
