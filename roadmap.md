@@ -37,3 +37,8 @@ External deployment version and authenticated live save/disconnect remain unveri
 - [x] Remove visible Payment terms and Exchange rate inputs plus their unused state/submit properties
 - [x] Keep currency selection, payment means, invoice type, DB columns and stored defaults unchanged
 - [x] Typecheck, tests, changed-file lint and build all pass
+
+## Dropdown display labels (preview only)
+- [x] Frontend-only label resolver for invoice type and payment means (metadata.value, then label, then code)
+- [x] Explicit display overrides 380 Commercial Invoice, 381 Credit Note, 383 Debit Note; values stay the stored codes
+- [x] Backend master-data rows, payload mapping and selected values untouched
