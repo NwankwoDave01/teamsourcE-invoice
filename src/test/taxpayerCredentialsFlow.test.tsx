@@ -55,12 +55,25 @@ describe("write-only taxpayer settings flow", () => {
     expect(screen.queryByLabelText("Taxpayer API key")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Disconnect taxpayer credentials" })).not.toBeInTheDocument();
   });
-  it("keeps unsupported crypto unavailable without calling save_crypto or verify", async () => {
+  it("keeps crypto setup write-only and calls save_crypto only when the button is clicked", async () => {
     openSettings();
-    await screen.findByText("Crypto key upload and verification unavailable here");
+    const publicKey = await screen.findByLabelText("Public key (PEM / Base64 PEM)");
+    const certificate = screen.getByLabelText("NRS certificate value");
+    await waitFor(() => expect(publicKey).toBeEnabled());
+    expect(publicKey).toHaveAttribute("type", "password");
+    expect(certificate).toHaveAttribute("type", "password");
+    expect(screen.queryByText(/certificate id/i)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check saved crypto format" })).toBeDisabled();
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
     expect(mocks.invoke).toHaveBeenCalledWith("nrs-credentials", { body: { action: "status" } });
-    expect(screen.queryByRole("textbox", { name: /certificate/i })).not.toBeInTheDocument();
+    fireEvent.change(publicKey, { target: { value: "test-public-key" } });
+    fireEvent.change(certificate, { target: { value: "test-certificate" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save crypto values" }));
+    await screen.findByText("Crypto save request completed. Review refreshed metadata; saving is not NRS verification.");
+    expect(mocks.invoke).toHaveBeenCalledWith("nrs-credentials", { body: { action: "save_crypto", public_key: "test-public-key", certificate: "test-certificate" } });
+    expect(publicKey).toHaveValue("");
+    expect(certificate).toHaveValue("");
+    expect(screen.queryByRole("button", { name: /verify/i })).not.toBeInTheDocument();
   });
   it("shows service errors without claiming saved status or exposing response error details", async () => {
     mocks.invoke.mockResolvedValue({ data: null, error: { message: "test-private-provider-detail" } });

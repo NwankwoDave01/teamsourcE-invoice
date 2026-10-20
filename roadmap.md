@@ -30,5 +30,10 @@ External deployment version and authenticated live save/disconnect remain unveri
 ## NRS crypto settings (preview only)
 - [x] Add confirmed save_crypto and explicit validate_crypto controls with write-only inputs
 - [x] Map crypto metadata and distinguish local format checks from NRS acceptance
-- [ ] Run credential tests and changed-file lint; inspect preview diagnostics
+- [x] Run credential tests and changed-file lint; inspect preview diagnostics
 - [ ] External authenticated save/check flow requires manual verification (no live writes in this task)
+
+## Create-invoice form trim (preview only)
+- [x] Remove visible Payment terms and Exchange rate inputs plus their unused state/submit properties
+- [x] Keep currency selection, payment means, invoice type, DB columns and stored defaults unchanged
+- [x] Typecheck, tests, changed-file lint and build all pass
