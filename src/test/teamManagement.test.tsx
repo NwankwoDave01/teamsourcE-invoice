@@ -43,6 +43,12 @@ describe("tenant team management", () => {
   it("offers exactly the three supported tenant roles, never super_admin", () => {
     expect([...tenantRoles]).toEqual(["company_admin", "finance_officer", "staff_user"]);
   });
+  it("changes an existing member role through set_role with the active company", async () => {
+    openTeam(); await screen.findByText("member@example.test");
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Role for member@example.test" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("option", { name: "Finance Officer" }));
+    await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", { body: { action: "set_role", company_id: "company-a", user_id: "user-a", role: "finance_officer" } }));
+  });
   it("requires confirmation for member removal", async () => {
     openTeam(); await screen.findByText("member@example.test");
     fireEvent.click(screen.getByRole("button", { name: "Remove" }));
