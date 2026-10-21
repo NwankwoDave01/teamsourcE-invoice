@@ -3,6 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Database } from "@/integrations/supabase/types";
 import { invokeTenantAdmin, parseTeam, type TeamChange } from "@/lib/tenantAdmin";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { AppDatabase } from "@/integrations/supabase/appSchema";
+import type { Json } from "@/integrations/supabase/types";
 
 export type DBInvoiceStatus = Database["public"]["Enums"]["invoice_status"];
 
@@ -12,8 +15,8 @@ export const INVOICE_STATUSES: DBInvoiceStatus[] = [
 ];
 
 export type DBCompany = Database["public"]["Tables"]["companies"]["Row"];
-export type DBCustomer = Database["public"]["Tables"]["customers"]["Row"];
-export type DBProduct = Database["public"]["Tables"]["products"]["Row"];
+export type DBCustomer = Database["public"]["Tables"]["customers"]["Row"] & { notes?: string | null };
+export type DBProduct = Database["public"]["Tables"]["products"]["Row"] & { description?: string | null };
 export type DBInvoice = Database["public"]["Tables"]["invoices"]["Row"];
 export type DBInvoiceLine = Database["public"]["Tables"]["invoice_lines"]["Row"];
 
@@ -482,11 +485,11 @@ export function useUpdateInvoice() {
       });
 
       // Atomic update via PostgreSQL RPC in a single transaction
-      const { data, error } = await supabase.rpc("update_invoice_atomic", {
+      const { data, error } = await (supabase as SupabaseClient<AppDatabase>).rpc("update_invoice_atomic", {
         p_invoice_id: input.id,
         p_company_id: companyId,
-        p_header: headerPayload as any,
-        p_lines: linesPayload as any,
+        p_header: headerPayload as Json,
+        p_lines: linesPayload as Json,
       });
 
       if (error) {
