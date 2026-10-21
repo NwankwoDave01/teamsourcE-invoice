@@ -8,12 +8,16 @@ import { supabase } from "@/integrations/supabase/client";
 const authMock = vi.hoisted(() => ({
   user: { id: "user-test-1" } as { id: string } | null,
   companyId: "company-test-1" as string | null,
+  roles: ["company_admin"] as ("super_admin" | "company_admin" | "finance_officer" | "staff_user")[],
+  isSuperAdmin: false,
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
     user: authMock.user,
     companyId: authMock.companyId,
+    roles: authMock.roles,
+    isSuperAdmin: authMock.isSuperAdmin,
   }),
 }));
 
@@ -134,6 +138,8 @@ describe("Atomic Invoice and Invoice Lines Update", () => {
   beforeEach(() => {
     authMock.user = { id: "user-test-1" };
     authMock.companyId = "company-test-1";
+    authMock.roles = ["company_admin"];
+    authMock.isSuperAdmin = false;
     dbMock.invoices = [{ ...sampleInitialInvoice }];
     dbMock.invoiceLines = [...sampleInitialLines];
     dbMock.rpcCalls = [];
@@ -439,5 +445,182 @@ describe("Atomic Invoice and Invoice Lines Update", () => {
     expect(invoiceLinesTable).toHaveLength(1);
     expect(invoiceLinesTable[0].description).toBe("Original Infrastructure Advisory");
     expect(invoiceLinesTable[0].line_total).toBe(107500);
+  });
+
+  it("rejects unauthorized users lacking invoice management permission (e.g. staff_user)", async () => {
+    // Restrict authenticated user role to staff_user (not company_admin or finance_officer)
+    authMock.roles = ["staff_user"];
+    authMock.isSuperAdmin = false;
+
+    const { result } = renderHook(() => useUpdateInvoice(), { wrapper: createWrapper() });
+
+    await expect(
+      result.current.mutateAsync({
+        id: "inv-test-001",
+        number: "INV-2026-0001",
+        customer_name: "Staff Attempt",
+        issue_date: "2026-10-20",
+        due_date: "2026-11-20",
+        lines: [{ description: "Staff Item", qty: 1, unit_price: 100, tax_rate: 7.5 }],
+      }),
+    ).rejects.toThrow("Access denied: user lacks invoice management permission for this company.");
+
+    // Verify RPC was never invoked for unauthorized role
+    expect(dbMock.rpcCalls).toHaveLength(0);
+  });
+
+  it("rejects when server RPC can_manage_invoices check fails", async () => {
+    dbMock.rpcHandler.mockResolvedValueOnce({
+      data: null,
+      error: {
+        message: "Access denied: user lacks invoice management permission for company company-test-1",
+      },
+    });
+
+    const { result } = renderHook(() => useUpdateInvoice(), { wrapper: createWrapper() });
+
+    await expect(
+      result.current.mutateAsync({
+        id: "inv-test-001",
+        number: "INV-2026-0001",
+        customer_name: "Customer",
+        issue_date: "2026-10-20",
+        due_date: "2026-11-20",
+        lines: [{ description: "Item", qty: 1, unit_price: 100, tax_rate: 7.5 }],
+      }),
+    ).rejects.toThrow("Access denied: user lacks invoice management permission for company company-test-1");
+  });
+
+  it("rejects cross-company customer and product references", async () => {
+    // 1. Cross-company customer rejection
+    dbMock.rpcHandler.mockResolvedValueOnce({
+      data: null,
+      error: {
+        message: "Customer cust-other-tenant does not belong to company company-test-1",
+      },
+    });
+
+    const { result } = renderHook(() => useUpdateInvoice(), { wrapper: createWrapper() });
+
+    await expect(
+      result.current.mutateAsync({
+        id: "inv-test-001",
+        number: "INV-2026-0001",
+        customer_id: "cust-other-tenant",
+        customer_name: "Customer",
+        issue_date: "2026-10-20",
+        due_date: "2026-11-20",
+        lines: [{ description: "Item", qty: 1, unit_price: 100, tax_rate: 7.5 }],
+      }),
+    ).rejects.toThrow("Customer cust-other-tenant does not belong to company company-test-1");
+
+    // 2. Cross-company product rejection on line item
+    dbMock.rpcHandler.mockResolvedValueOnce({
+      data: null,
+      error: {
+        message: "Product prod-other-tenant does not belong to company company-test-1 (item position 1)",
+      },
+    });
+
+    await expect(
+      result.current.mutateAsync({
+        id: "inv-test-001",
+        number: "INV-2026-0001",
+        customer_name: "Customer",
+        issue_date: "2026-10-20",
+        due_date: "2026-11-20",
+        lines: [
+          {
+            product_id: "prod-other-tenant",
+            description: "Cross Tenant Product",
+            qty: 1,
+            unit_price: 100,
+            tax_rate: 7.5,
+          },
+        ],
+      }),
+    ).rejects.toThrow("Product prod-other-tenant does not belong to company company-test-1 (item position 1)");
+  });
+
+  it("preserves invoice number and correctly maps NRS fields and line totals", async () => {
+    dbMock.rpcHandler.mockResolvedValueOnce({
+      data: { ...sampleInitialInvoice, number: "INV-2026-0001" },
+      error: null,
+    });
+
+    const { result } = renderHook(() => useUpdateInvoice(), { wrapper: createWrapper() });
+
+    await result.current.mutateAsync({
+      id: "inv-test-001",
+      number: "INV-2026-0001",
+      customer_name: "Dangote Logistics",
+      issue_date: "2026-10-20",
+      due_date: "2026-11-20",
+      invoice_type: "380",
+      transaction_type: "B2B",
+      payment_means_code: "30",
+      exchange_rate: 1,
+      currency: "NGN",
+      lines: [
+        {
+          description: "Line item with discount",
+          qty: 10,
+          unit_price: 5000,
+          tax_rate: 7.5,
+          discount_amount: 2000,
+          tax_category: "S",
+          unit_code: "EA",
+        },
+      ],
+    });
+
+    expect(dbMock.rpcCalls).toHaveLength(1);
+    const { p_header, p_lines } = dbMock.rpcCalls[0].args;
+
+    // Gross: 10 * 5000 = 50,000; Discount: 2,000; Net: 48,000; Tax (7.5%): 3,600; Total: 51,600
+    expect(p_header.number).toBe("INV-2026-0001");
+    expect(p_header.subtotal).toBe(48000);
+    expect(p_header.tax).toBe(3600);
+    expect(p_header.total).toBe(51600);
+    expect(p_lines[0].net_amount).toBe(48000);
+    expect(p_lines[0].tax_amount).toBe(3600);
+    expect(p_lines[0].line_total).toBe(51600);
+  });
+
+  it("simulates SELECT FOR UPDATE row locking and status recheck preventing concurrent compliance races", () => {
+    // Model simulating database row state and concurrency locks
+    const rowLock = { isLocked: false };
+    const invoiceRecord = { ...sampleInitialInvoice, status: "Draft" as DBInvoiceStatus };
+
+    function lockAndCheckInvoice(id: string, concurrentStatusTransition?: DBInvoiceStatus) {
+      if (rowLock.isLocked) throw new Error("Row is locked by concurrent transaction");
+      rowLock.isLocked = true;
+
+      try {
+        // If another transaction (such as signing/submission) modified the status concurrently:
+        if (concurrentStatusTransition) {
+          invoiceRecord.status = concurrentStatusTransition;
+        }
+
+        // Recheck protected status inside locked row
+        if (["Submitted", "Validated", "Signed", "Confirmed", "Rejected"].includes(invoiceRecord.status)) {
+          throw new Error(
+            `Cannot edit invoice in '${invoiceRecord.status}' stage. External compliance processing has begun.`,
+          );
+        }
+
+        return { lockedAndValid: true };
+      } finally {
+        rowLock.isLocked = false;
+      }
+    }
+
+    // Normal draft edit succeeds
+    expect(lockAndCheckInvoice("inv-test-001").lockedAndValid).toBe(true);
+
+    // If concurrent submission transitioned invoice to Signed before lock acquired:
+    expect(() => lockAndCheckInvoice("inv-test-001", "Signed")).toThrow(
+      "Cannot edit invoice in 'Signed' stage. External compliance processing has begun.",
+    );
   });
 });

@@ -338,7 +338,7 @@ export function useCreateInvoice() {
 }
 
 export function useUpdateInvoice() {
-  const { companyId, user } = useAuth();
+  const { companyId, user, roles = [], isSuperAdmin = false } = useAuth();
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: {
@@ -372,6 +372,11 @@ export function useUpdateInvoice() {
       }>;
     }) => {
       if (!companyId || !user) throw new Error("An active company is required.");
+
+      // Check client-side role authorization if roles are present (matching can_manage_invoices)
+      if (roles.length > 0 && !isSuperAdmin && !roles.includes("company_admin") && !roles.includes("finance_officer")) {
+        throw new Error("Access denied: user lacks invoice management permission for this company.");
+      }
 
       // Check current invoice status to protect external compliance stages
       const { data: currentInv, error: fetchErr } = await supabase
