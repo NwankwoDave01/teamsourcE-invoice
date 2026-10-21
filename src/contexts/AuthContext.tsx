@@ -45,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let disposed = false;
     let loadedUid: string | null = null;
     let generation = 0;
+    let receivedAuthEvent = false;
     const applySession = (sess: Session | null) => {
       if (disposed) return;
       setSession(sess);
@@ -70,10 +71,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!disposed && run === generation) setLoading(false);
       }, 0);
     };
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => applySession(sess));
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
+      receivedAuthEvent = true;
+      applySession(sess);
+    });
     supabase.auth.getSession().then(({ data: { session: sess } }) => {
       // An auth event that already loaded a user wins over the initial read.
-      if (!loadedUid) applySession(sess);
+      if (!receivedAuthEvent) applySession(sess);
     }).catch(() => {
       if (!disposed && !loadedUid) {
         applySession(null);
