@@ -45,7 +45,7 @@ describe("tenant team management", () => {
   });
   it("changes an existing member role through set_role with the active company", async () => {
     openTeam(); await screen.findByText("member@example.test");
-    fireEvent.pointerDown(screen.getByRole("combobox", { name: "Role for member@example.test" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Role for member@example.test" }), { key: "ArrowDown" });
     fireEvent.click(await screen.findByRole("option", { name: "Finance Officer" }));
     await waitFor(() => expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", { body: { action: "set_role", company_id: "company-a", user_id: "user-a", role: "finance_officer" } }));
   });
