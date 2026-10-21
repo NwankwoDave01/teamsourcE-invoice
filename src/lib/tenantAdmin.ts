@@ -60,3 +60,25 @@ export async function loadActiveMembership(uid: string) {
   const companyId = membership?.company_id ?? null;
   return { companyId, roles: (roleRows ?? []).filter((r) => r.role === "super_admin" || (companyId && r.company_id === companyId)).map((r) => r.role) };
 }
+
+export interface InvitationDetails {
+  companyName: string;
+  role: string;
+  email?: string;
+}
+
+export async function fetchInvitationStatus(): Promise<InvitationDetails> {
+  const data = (await invokeTenantAdmin({ action: "invitation_status" })) as Record<string, unknown>;
+  const companyName =
+    (typeof data.company_name === "string" && data.company_name) ||
+    (typeof (data.company as { name?: string })?.name === "string" && (data.company as { name: string }).name) ||
+    (typeof data.companyName === "string" && data.companyName) ||
+    "Inviting Company";
+  const role = typeof data.role === "string" ? data.role : "staff_user";
+  const email = typeof data.email === "string" ? data.email : undefined;
+  return { companyName, role, email };
+}
+
+export async function acceptTenantInvitation(): Promise<unknown> {
+  return invokeTenantAdmin({ action: "accept_invitation" });
+}

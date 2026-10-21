@@ -10,9 +10,13 @@ import { toast } from "@/hooks/use-toast";
 import { BrandMark } from "@/components/shared/BrandMark";
 import { BRAND } from "@/lib/brand";
 
+import { useAuth } from "@/contexts/AuthContext";
+
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { user, signOut } = useAuth();
+  const noMembership = (location.state as { reason?: string } | null)?.reason === "no_active_membership";
   const from = (location.state as { from?: string } | null)?.from ?? "/app/dashboard";
 
   const [email, setEmail] = useState("");
@@ -43,6 +47,31 @@ export default function Login() {
             <h1 className="text-2xl font-semibold">Welcome back</h1>
             <p className="text-sm text-muted-foreground">Sign in to your workspace.</p>
           </div>
+
+          {noMembership && (
+            <div className="mb-6 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
+              <p className="font-medium">No active company workspace</p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Your account is not currently an active member of any company workspace. If you received an invitation email, please click the link in your email to accept your invitation.
+              </p>
+              {user && (
+                <div className="mt-3 flex items-center justify-between border-t border-amber-500/20 pt-2">
+                  <span className="text-xs text-muted-foreground">Signed in as {user.email}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={async () => {
+                      await signOut();
+                      toast({ title: "Signed out" });
+                    }}
+                  >
+                    Sign out
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">

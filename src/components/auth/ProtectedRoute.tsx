@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Loader2 } from "lucide-react";
 
 export function ProtectedRoute({ requireSuperAdmin = false }: { requireSuperAdmin?: boolean }) {
-  const { user, loading, isSuperAdmin } = useAuth();
+  const { user, loading, isSuperAdmin, companyId } = useAuth();
   const location = useLocation();
 
   if (loading) {
@@ -19,7 +19,11 @@ export function ProtectedRoute({ requireSuperAdmin = false }: { requireSuperAdmi
   }
 
   if (requireSuperAdmin && !isSuperAdmin) {
-    return <Navigate to="/app/dashboard" replace />;
+    return <Navigate to={companyId ? "/app/dashboard" : "/auth/login"} replace />;
+  }
+
+  if (!requireSuperAdmin && !companyId && !isSuperAdmin) {
+    return <Navigate to="/auth/login" state={{ reason: "no_active_membership" }} replace />;
   }
 
   return <Outlet />;

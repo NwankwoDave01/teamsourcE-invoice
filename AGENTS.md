@@ -2,7 +2,7 @@
 
 - Keep migration-evidenced missing client types in a frontend-only schema extension rather than editing generated types or changing runtime requests; this preserves managed files and existing backend behavior.
 
-- Route tenant team reads and mutations through the authenticated tenant-admin contract using the active auth company; accept invitations once per loaded user before reading Active-only membership, with stale-session guards, so the server remains authoritative for access and roles.
+- Route tenant team reads and mutations through the authenticated tenant-admin contract using the active auth company; accept invitations explicitly via /auth/accept-invite (invitation_status, password set, accept_invitation) before reading Active-only membership, with stale-session guards and normal sign-in kept separate from auto-acceptance, so the server remains authoritative for access and roles.
 
 - Keep taxpayer credential UI in a dedicated settings section with an explicit contract adapter that strips non-metadata response fields; this isolates secret handling from company identity updates and the non-secret APP draft.
 - Credential requests must use the existing authenticated client with no client-supplied tenant identity or environment, and expose only actions supported by the confirmed deployed contract; server membership and authorization remain authoritative while external deployment access is unavailable.
