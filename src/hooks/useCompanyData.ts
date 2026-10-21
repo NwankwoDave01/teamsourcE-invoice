@@ -337,6 +337,171 @@ export function useCreateInvoice() {
   });
 }
 
+export function useUpdateInvoice() {
+  const { companyId, user, roles = [], isSuperAdmin = false } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      number: string;
+      customer_id?: string | null;
+      customer_name: string;
+      issue_date: string;
+      due_date: string;
+      notes?: string;
+      po_reference?: string;
+      invoice_type?: string;
+      transaction_type?: string;
+      supply_date?: string | null;
+      payment_terms?: string | null;
+      payment_means_code?: string | null;
+      exchange_rate?: number | null;
+      currency?: string;
+      lines: Array<{
+        product_id?: string | null;
+        description: string;
+        qty: number;
+        unit_price: number;
+        tax_rate: number;
+        unit_code?: string;
+        tax_category?: string;
+        discount_amount?: number;
+        item_classification_code?: string | null;
+        hsn_code?: string | null;
+        product_category?: string | null;
+      }>;
+    }) => {
+      if (!companyId || !user) throw new Error("An active company is required.");
+
+      // Check client-side role authorization if roles are present (matching can_manage_invoices)
+      if (roles.length > 0 && !isSuperAdmin && !roles.includes("company_admin") && !roles.includes("finance_officer")) {
+        throw new Error("Access denied: user lacks invoice management permission for this company.");
+      }
+
+      // Check current invoice status to protect external compliance stages
+      const { data: currentInv, error: fetchErr } = await supabase
+        .from("invoices")
+        .select("status, company_id")
+        .eq("id", input.id)
+        .eq("company_id", companyId)
+        .single();
+      if (fetchErr || !currentInv) throw new Error("Invoice not found or access denied.");
+
+      const protectedStatuses: DBInvoiceStatus[] = [
+        "Submitted",
+        "Validated",
+        "Signed",
+        "Confirmed",
+        "Rejected",
+      ];
+      if (protectedStatuses.includes(currentInv.status as DBInvoiceStatus)) {
+        throw new Error(
+          `Cannot edit invoice in '${currentInv.status}' stage. External compliance processing has begun.`,
+        );
+      }
+
+      // Pre-validate replacement lines before initiating database changes
+      if (!input.lines || input.lines.length === 0) {
+        throw new Error("Add at least one valid line item with description and quantity");
+      }
+      for (let i = 0; i < input.lines.length; i++) {
+        const l = input.lines[i];
+        if (!l.description || !l.description.trim()) {
+          throw new Error(`Line description cannot be empty (item #${i + 1})`);
+        }
+        if (l.qty == null || l.qty <= 0) {
+          throw new Error(`Line quantity must be greater than zero (item #${i + 1})`);
+        }
+        if (l.unit_price == null || l.unit_price < 0) {
+          throw new Error(`Line unit price cannot be negative (item #${i + 1})`);
+        }
+        if ((l.discount_amount ?? 0) < 0) {
+          throw new Error(`Line discount cannot be negative (item #${i + 1})`);
+        }
+      }
+
+      const subtotal = input.lines.reduce(
+        (s, l) => s + (l.qty * l.unit_price - (l.discount_amount ?? 0)),
+        0,
+      );
+      const tax = input.lines.reduce(
+        (s, l) =>
+          s +
+          (l.qty * l.unit_price - (l.discount_amount ?? 0)) *
+            ((l.tax_category ?? "S") !== "Z" && (l.tax_category ?? "S") !== "E" && (l.tax_category ?? "S") !== "O"
+              ? l.tax_rate / 100
+              : 0),
+        0,
+      );
+      const total = subtotal + tax;
+
+      const headerPayload = {
+        number: input.number,
+        customer_id: input.customer_id ?? null,
+        customer_name: input.customer_name,
+        issue_date: input.issue_date,
+        due_date: input.due_date,
+        notes: input.notes ?? null,
+        po_reference: input.po_reference ?? null,
+        subtotal,
+        tax,
+        total,
+        invoice_type: input.invoice_type ?? null,
+        transaction_type: input.transaction_type ?? null,
+        supply_date: input.supply_date ?? null,
+        payment_terms: input.payment_terms ?? null,
+        payment_means_code: input.payment_means_code ?? null,
+        exchange_rate: input.exchange_rate ?? null,
+        currency: input.currency ?? null,
+      };
+
+      const linesPayload = input.lines.map((l, i) => {
+        const discount = l.discount_amount ?? 0;
+        const cat = l.tax_category ?? "S";
+        const net = l.qty * l.unit_price - discount;
+        const lineTax = cat !== "Z" && cat !== "E" && cat !== "O" ? net * (l.tax_rate / 100) : 0;
+        return {
+          product_id: l.product_id ?? null,
+          description: l.description.trim(),
+          qty: l.qty,
+          unit_price: l.unit_price,
+          tax_rate: l.tax_rate,
+          line_total: net + lineTax,
+          position: i,
+          net_amount: net,
+          tax_amount: lineTax,
+          discount_amount: discount,
+          unit_code: (l.unit_code ?? "EA").toUpperCase(),
+          tax_category: cat,
+          tax_scheme: "VAT",
+          item_classification_code: l.item_classification_code ?? null,
+          hsn_code: l.hsn_code ?? null,
+          product_category: l.product_category ?? null,
+        };
+      });
+
+      // Atomic update via PostgreSQL RPC in a single transaction
+      const { data, error } = await supabase.rpc("update_invoice_atomic", {
+        p_invoice_id: input.id,
+        p_company_id: companyId,
+        p_header: headerPayload as any,
+        p_lines: linesPayload as any,
+      });
+
+      if (error) {
+        throw new Error(error.message || "Failed to update invoice atomically");
+      }
+
+      return data;
+
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoice", vars.id] });
+    },
+  });
+}
+
 export function useUpdateInvoiceStatus() {
   const qc = useQueryClient();
   return useMutation({

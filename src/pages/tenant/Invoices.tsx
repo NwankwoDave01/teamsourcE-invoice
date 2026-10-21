@@ -20,8 +20,8 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { Link } from "react-router-dom";
-import { useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Button } from "@/components/ui/button";
@@ -51,6 +51,7 @@ import {
   useInvoices,
   useUpdateInvoiceStatus,
   useDeleteInvoice,
+  useCurrentCompany,
   INVOICE_STATUSES,
   type DBInvoiceStatus,
 } from "@/hooks/useCompanyData";
@@ -62,6 +63,22 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useNrsSubmissionHistory } from "@/hooks/useNrsSubmissionHistory";
 import { hasDeviceAttempt, submissionBlockReason } from "@/lib/nrs/submissionSafety";
 import { SubmissionBadge } from "@/components/shared/SubmissionBadge";
+import { generateInvoicesCsv, downloadCsv } from "@/lib/csvExport";
+import { downloadInvoicePdf } from "@/lib/pdfExport";
+import { PrintableInvoice, type PrintableInvoiceData } from "@/components/shared/PrintableInvoice";
+import { supabase } from "@/integrations/supabase/client";
+
+const PAGE_SIZE = 15;
+
+const DRAFT_REVERTIBLE_STATUSES: readonly DBInvoiceStatus[] = [
+  "In Review",
+  "Approved",
+  "Ready",
+];
+
+function canRevertToDraft(status: string): boolean {
+  return DRAFT_REVERTIBLE_STATUSES.includes(status as DBInvoiceStatus);
+}
 
 const statusDot: Record<DBInvoiceStatus, string> = {
   Draft: "bg-muted-foreground/60",
@@ -82,12 +99,51 @@ export default function Invoices() {
   const submitToNrs = useNrsSubmit();
   const { user, companyId } = useAuth();
   const history = useNrsSubmissionHistory();
-  const blockReason = (inv: (typeof invoices)[number]) => submissionBlockReason(inv, companyId, history.isSuccess && !history.isFetching ? history.data : undefined, hasDeviceAttempt(user?.id, companyId, inv.id));
-  const [filter, setFilter] = useState<"All" | DBInvoiceStatus>("All");
+  const blockReason = (inv: (typeof invoices)[number]) =>
+    submissionBlockReason(
+      inv,
+      companyId,
+      history.isSuccess && !history.isFetching ? history.data : undefined,
+      hasDeviceAttempt(user?.id, companyId, inv.id),
+    );
+
+  const [searchParams, setSearchParams] = useSearchParams();
+  const rawStatus = searchParams.get("status");
+
+  // Validate status URL parameter against known statuses
+  const filter: "All" | DBInvoiceStatus = useMemo(() => {
+    if (rawStatus && (INVOICE_STATUSES as readonly string[]).includes(rawStatus)) {
+      return rawStatus as DBInvoiceStatus;
+    }
+    return "All";
+  }, [rawStatus]);
+
   const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [submittingToApp, setSubmittingToApp] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [confirmBulkDraft, setConfirmBulkDraft] = useState(false);
+  const [draftTarget, setDraftTarget] = useState<(typeof invoices)[number] | null>(null);
+  const { data: currentCompany } = useCurrentCompany();
+  const [invoicesToPrint, setInvoicesToPrint] = useState<PrintableInvoiceData[] | null>(null);
+
+  // Reset to page 1 whenever filter or search query changes
+  useEffect(() => {
+    setPage(1);
+  }, [filter, search]);
+
+  const setFilter = (nextStatus: "All" | DBInvoiceStatus) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      if (nextStatus === "All") {
+        next.delete("status");
+      } else {
+        next.set("status", nextStatus);
+      }
+      return next;
+    });
+  };
 
   const counts = useMemo(
     () => INVOICE_STATUSES.map((s) => ({ s, n: invoices.filter((i) => i.status === s).length })),
@@ -107,16 +163,40 @@ export default function Invoices() {
     });
   }, [filter, search, invoices]);
 
-  const allSelected = filtered.length > 0 && filtered.every((i) => selected.has(i.id));
-  const someSelected = selected.size > 0 && !allSelected;
+  // Client-side pagination calculations
+  const totalFiltered = filtered.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / PAGE_SIZE));
+  const currentPage = Math.min(Math.max(1, page), totalPages);
+
+  const startIndex = totalFiltered === 0 ? 0 : (currentPage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, totalFiltered);
+
+  const paginatedInvoices = useMemo(
+    () => filtered.slice(startIndex, endIndex),
+    [filtered, startIndex, endIndex],
+  );
+
+  const allOnPageSelected =
+    paginatedInvoices.length > 0 && paginatedInvoices.every((i) => selected.has(i.id));
+  const someOnPageSelected =
+    paginatedInvoices.some((i) => selected.has(i.id)) && !allOnPageSelected;
 
   const toggleAll = () => {
-    if (allSelected) {
-      setSelected(new Set());
+    if (allOnPageSelected) {
+      setSelected((prev) => {
+        const next = new Set(prev);
+        paginatedInvoices.forEach((i) => next.delete(i.id));
+        return next;
+      });
     } else {
-      setSelected(new Set(filtered.map((i) => i.id)));
+      setSelected((prev) => {
+        const next = new Set(prev);
+        paginatedInvoices.forEach((i) => next.add(i.id));
+        return next;
+      });
     }
   };
+
   const toggleOne = (id: string) => {
     setSelected((prev) => {
       const next = new Set(prev);
@@ -130,26 +210,167 @@ export default function Invoices() {
   };
 
   const clearFilters = () => {
-    setFilter("All");
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.delete("status");
+      return next;
+    });
     setSearch("");
   };
   const hasActiveFilters = filter !== "All" || search.trim().length > 0;
+
+  // CSV Export handlers
+  const handleExportFiltered = () => {
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filterSuffix = filter !== "All" ? `-${filter.toLowerCase().replace(/\s+/g, "-")}` : "";
+    const filename = `invoices${filterSuffix}-${dateStr}.csv`;
+    const csv = generateInvoicesCsv(filtered);
+    downloadCsv(csv, filename);
+    if (filtered.length === 0) {
+      toast.info("Exported empty CSV template (0 matching invoices)");
+    } else {
+      toast.success(`Exported ${filtered.length} invoice${filtered.length === 1 ? "" : "s"} to CSV`);
+    }
+  };
+
+  const handleExportSelected = () => {
+    const selectedInvoices = invoices.filter((i) => selected.has(i.id));
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const filename = `selected-invoices-${dateStr}.csv`;
+    const csv = generateInvoicesCsv(selectedInvoices);
+    downloadCsv(csv, filename);
+    if (selectedInvoices.length === 0) {
+      toast.info("Exported empty CSV template (0 selected invoices)");
+    } else {
+      toast.success(
+        `Exported ${selectedInvoices.length} selected invoice${selectedInvoices.length === 1 ? "" : "s"} to CSV`,
+      );
+    }
+  };
+
+  const handlePrintSingle = async (inv: (typeof invoices)[number]) => {
+    let lines: any[] = [];
+    try {
+      const { data: dbLines } = await supabase
+        .from("invoice_lines")
+        .select("*")
+        .eq("invoice_id", inv.id)
+        .order("position");
+      if (dbLines) lines = dbLines;
+    } catch {
+      // fallback without lines
+    }
+    setInvoicesToPrint([{ ...inv, lines }]);
+    setTimeout(() => {
+      if (typeof window !== "undefined") {
+        window.print();
+      }
+    }, 100);
+  };
+
+  const handleBulkPrint = async () => {
+    const selectedInvoices = invoices.filter((i) => selected.has(i.id));
+    if (selectedInvoices.length === 0) {
+      toast.error("No invoices selected to print");
+      return;
+    }
+    const ids = selectedInvoices.map((i) => i.id);
+    let linesByInvoice: Record<string, any[]> = {};
+    try {
+      const { data: dbLines } = await supabase
+        .from("invoice_lines")
+        .select("*")
+        .in("invoice_id", ids)
+        .order("position");
+      if (dbLines) {
+        for (const line of dbLines) {
+          if (!linesByInvoice[line.invoice_id]) linesByInvoice[line.invoice_id] = [];
+          linesByInvoice[line.invoice_id].push(line);
+        }
+      }
+    } catch {
+      // fallback without lines
+    }
+    const prepared: PrintableInvoiceData[] = selectedInvoices.map((inv) => ({
+      ...inv,
+      lines: linesByInvoice[inv.id] || [],
+    }));
+    setInvoicesToPrint(prepared);
+    setTimeout(() => {
+      if (typeof window !== "undefined") {
+        window.print();
+      }
+    }, 100);
+  };
+
+  const handleDownloadPdfSingle = async (inv: (typeof invoices)[number]) => {
+    let lines: any[] = [];
+    try {
+      const { data: dbLines } = await supabase
+        .from("invoice_lines")
+        .select("*")
+        .eq("invoice_id", inv.id)
+        .order("position");
+      if (dbLines) lines = dbLines;
+    } catch {
+      // fallback
+    }
+    downloadInvoicePdf({ ...inv, lines }, currentCompany);
+    toast.success(`Downloaded PDF for ${inv.number}`);
+  };
+
+  // Draft reversion handlers
+  const eligibleForDraft = useMemo(
+    () => invoices.filter((i) => selected.has(i.id) && canRevertToDraft(i.status)),
+    [invoices, selected],
+  );
+
+  const handleConfirmSingleDraft = async () => {
+    if (!draftTarget) return;
+    try {
+      await updateStatus.mutateAsync({ id: draftTarget.id, status: "Draft" });
+      toast.success(`${draftTarget.number} marked as Draft`);
+    } catch (e: unknown) {
+      const err = e as Error;
+      toast.error("Failed to mark invoice as Draft", { description: err.message });
+    } finally {
+      setDraftTarget(null);
+    }
+  };
+
+  const handleConfirmBulkDraft = async () => {
+    try {
+      await Promise.all(
+        eligibleForDraft.map((inv) => updateStatus.mutateAsync({ id: inv.id, status: "Draft" })),
+      );
+      toast.success(
+        `Marked ${eligibleForDraft.length} invoice${eligibleForDraft.length === 1 ? "" : "s"} as Draft`,
+      );
+      setSelected(new Set());
+    } catch (e: unknown) {
+      const err = e as Error;
+      toast.error("Failed to update status", { description: err.message });
+    } finally {
+      setConfirmBulkDraft(false);
+    }
+  };
 
   const submitRowToApp = async (id: string) => {
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return;
     const blocked = blockReason(inv);
-    if (blocked) { toast.error(blocked); return; }
+    if (blocked) {
+      toast.error(blocked);
+      return;
+    }
     setSubmittingToApp(true);
     try {
       const res = await submitToNrs(id);
       if (res.kind === "success") toast.success(`${inv.number}: ${res.message}`);
       else if (res.kind === "rejected") {
         toast.error(`${inv.number}: ${res.message}`, { description: res.details ?? undefined });
-
       } else {
         toast.warning(`${inv.number}: ${res.message}`, { description: res.details ?? undefined });
-
       }
     } finally {
       setSubmittingToApp(false);
@@ -158,28 +379,38 @@ export default function Invoices() {
 
   const bulkSubmit = async () => {
     const ids = Array.from(selected);
-    const eligible = ids.filter((id) => { const inv = invoices.find((i) => i.id === id); return inv && !blockReason(inv); });
+    const eligible = ids.filter((id) => {
+      const inv = invoices.find((i) => i.id === id);
+      return inv && !blockReason(inv);
+    });
     const skipped = ids.length - eligible.length;
     if (eligible.length === 0) {
       toast.error('No selected invoices are at "Ready" with a confirmed prior state');
       return;
     }
     setSubmittingToApp(true);
-    let success = 0, rejected = 0, unconfirmed = 0;
+    let success = 0,
+      rejected = 0,
+      unconfirmed = 0;
     try {
       // Sequential on purpose: stop the batch on the first unconfirmed outcome.
       for (const id of eligible) {
         const res = await submitToNrs(id);
         if (res.kind === "success") success++;
         else {
-          if (res.kind === "rejected") rejected++; else unconfirmed++;
+          if (res.kind === "rejected") rejected++;
+          else unconfirmed++;
           if (res.kind === "unconfirmed") break;
         }
       }
       const notRun = eligible.length - success - rejected - unconfirmed;
-      if (success > 0) toast.success(`${success} invoice${success === 1 ? "" : "s"} validated and signed (NRS sandbox)`);
+      if (success > 0)
+        toast.success(`${success} invoice${success === 1 ? "" : "s"} validated and signed (NRS sandbox)`);
       if (rejected > 0) toast.error(`${rejected} rejected — open each invoice for details`);
-      if (unconfirmed > 0) toast.warning(`1 result unconfirmed — batch stopped. ${notRun} not sent. Do not resubmit until status is reviewed.`);
+      if (unconfirmed > 0)
+        toast.warning(
+          `1 result unconfirmed — batch stopped. ${notRun} not sent. Do not resubmit until status is reviewed.`,
+        );
       if (skipped > 0) toast.message(`Skipped ${skipped} not eligible`);
       setSelected(new Set());
     } finally {
@@ -203,12 +434,24 @@ export default function Invoices() {
 
   return (
     <div>
-      <PageHeader
+      <div className="print-only">
+        {invoicesToPrint && invoicesToPrint.length > 0 && (
+          <PrintableInvoice invoices={invoicesToPrint} company={currentCompany} />
+        )}
+      </div>
+
+      <div className="screen-only">
+        <PageHeader
         title="Invoices"
         description="All invoices across the compliance pipeline."
         actions={
           <>
-            <Button variant="outline" size="sm" className="gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={handleExportFiltered}
+            >
               <Download className="h-4 w-4" />
               Export
             </Button>
@@ -287,7 +530,10 @@ export default function Invoices() {
         </Card>
 
         {/* ============================== TABLE ============================== */}
-        <p className="text-xs text-muted-foreground">Current path: direct NRS sandbox validation and signing. APP handoff is not live. Recorded attempts require review; the backend remains the final retry safeguard.</p>
+        <p className="text-xs text-muted-foreground">
+          Current path: direct NRS sandbox validation and signing. APP handoff is not live. Recorded
+          attempts require review; the backend remains the final retry safeguard.
+        </p>
         <Card className="overflow-hidden shadow-elegant-sm">
           {/* Bulk actions bar */}
           {selected.size > 0 && (
@@ -310,16 +556,29 @@ export default function Invoices() {
                   size="sm"
                   className="gap-1.5"
                   onClick={bulkSubmit}
-                  disabled={submittingToApp || !invoices.some((inv) => selected.has(inv.id) && !blockReason(inv))}
+                  disabled={
+                    submittingToApp ||
+                    !invoices.some((inv) => selected.has(inv.id) && !blockReason(inv))
+                  }
                 >
                   <Send className="h-3.5 w-3.5" />
                   Validate & sign (NRS sandbox)
                 </Button>
-                <Button variant="outline" size="sm" className="gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleExportSelected}
+                >
                   <Download className="h-3.5 w-3.5" />
                   Export
                 </Button>
-                <Button variant="outline" size="sm" className="gap-1.5">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  onClick={handleBulkPrint}
+                >
                   <Printer className="h-3.5 w-3.5" />
                   Print
                 </Button>
@@ -331,13 +590,28 @@ export default function Invoices() {
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
-                    <DropdownMenuItem>
-                      <Copy className="mr-2 h-4 w-4" />
-                      Duplicate
-                    </DropdownMenuItem>
-                    <DropdownMenuItem>
+                    {selected.size === 1 ? (
+                      <DropdownMenuItem asChild>
+                        <Link to={`/app/invoices/new?duplicate=${Array.from(selected)[0]}`}>
+                          <Copy className="mr-2 h-4 w-4" />
+                          Duplicate
+                        </Link>
+                      </DropdownMenuItem>
+                    ) : (
+                      <DropdownMenuItem disabled title="Select a single invoice to duplicate">
+                        <Copy className="mr-2 h-4 w-4" />
+                        Duplicate
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem
+                      disabled={eligibleForDraft.length === 0 || updateStatus.isPending}
+                      onSelect={(e) => {
+                        e.preventDefault();
+                        setConfirmBulkDraft(true);
+                      }}
+                    >
                       <FileText className="mr-2 h-4 w-4" />
-                      Mark as Draft
+                      Mark as Draft ({eligibleForDraft.length})
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
@@ -365,7 +639,7 @@ export default function Invoices() {
                   <tr>
                     <th className="w-10 px-5 py-3 text-left">
                       <Checkbox
-                        checked={allSelected ? true : someSelected ? "indeterminate" : false}
+                        checked={allOnPageSelected ? true : someOnPageSelected ? "indeterminate" : false}
                         onCheckedChange={toggleAll}
                         aria-label="Select all"
                       />
@@ -381,7 +655,7 @@ export default function Invoices() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((inv) => {
+                  {paginatedInvoices.map((inv) => {
                     const isSelected = selected.has(inv.id);
                     return (
                       <tr
@@ -416,15 +690,27 @@ export default function Invoices() {
                         </td>
                         <td className="px-3 py-4 font-mono text-xs text-muted-foreground">{inv.irn ?? "—"}</td>
                         <td className="px-3 py-4">
-                          <div className="flex flex-wrap gap-1.5"><StatusBadge status={inv.status} /><SubmissionBadge status={(inv as { submission_status?: string | null }).submission_status} showUnknown /></div>
-                          {inv.status === "Ready" && blockReason(inv) && <p className="mt-1 max-w-56 text-xs text-muted-foreground">{blockReason(inv)}</p>}
+                          <div className="flex flex-wrap gap-1.5">
+                            <StatusBadge status={inv.status} />
+                            <SubmissionBadge
+                              status={(inv as { submission_status?: string | null }).submission_status}
+                              showUnknown
+                            />
+                          </div>
+                          {inv.status === "Ready" && blockReason(inv) && (
+                            <p className="mt-1 max-w-56 text-xs text-muted-foreground">{blockReason(inv)}</p>
+                          )}
                         </td>
                         <td className="px-5 py-4 text-right">
                           <RowActions
-                            invoiceId={inv.id}
+                            invoice={inv}
                             canSubmit={!blockReason(inv)}
                             submitting={submittingToApp}
+                            updatingStatus={updateStatus.isPending}
                             onSubmitApp={() => submitRowToApp(inv.id)}
+                            onMarkDraft={() => setDraftTarget(inv)}
+                            onPrint={() => handlePrintSingle(inv)}
+                            onDownloadPdf={() => handleDownloadPdfSingle(inv)}
                           />
                         </td>
                       </tr>
@@ -438,14 +724,25 @@ export default function Invoices() {
           {filtered.length > 0 && (
             <div className="flex items-center justify-between border-t border-border px-5 py-3 text-xs text-muted-foreground">
               <span>
-                Showing <span className="font-medium text-foreground">{filtered.length}</span> of{" "}
-                <span className="font-medium text-foreground">{invoices.length}</span> invoices
+                Showing <span className="font-medium text-foreground">{totalFiltered === 0 ? 0 : startIndex + 1}</span> to{" "}
+                <span className="font-medium text-foreground">{endIndex}</span> of{" "}
+                <span className="font-medium text-foreground">{totalFiltered}</span> invoices
               </span>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" disabled>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={currentPage <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
                   Previous
                 </Button>
-                <Button variant="ghost" size="sm">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={currentPage >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
                   Next
                 </Button>
               </div>
@@ -454,12 +751,16 @@ export default function Invoices() {
         </Card>
       </div>
 
+      {/* Delete confirmation dialog */}
       <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {selected.size} invoice{selected.size === 1 ? "" : "s"}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete {selected.size} invoice{selected.size === 1 ? "" : "s"}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              This permanently removes the selected invoice{selected.size === 1 ? "" : "s"} and {selected.size === 1 ? "its" : "their"} line items. This action cannot be undone.
+              This permanently removes the selected invoice{selected.size === 1 ? "" : "s"} and{" "}
+              {selected.size === 1 ? "its" : "their"} line items. This action cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -473,6 +774,60 @@ export default function Invoices() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Bulk Mark as Draft confirmation dialog */}
+      <AlertDialog open={confirmBulkDraft} onOpenChange={setConfirmBulkDraft}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Mark {eligibleForDraft.length} invoice{eligibleForDraft.length === 1 ? "" : "s"} as Draft?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will return {eligibleForDraft.length} eligible pre-submission invoice
+              {eligibleForDraft.length === 1 ? "" : "s"} to Draft status.
+              {selected.size > eligibleForDraft.length && (
+                <span className="mt-2 block text-muted-foreground">
+                  {selected.size - eligibleForDraft.length} selected invoice
+                  {selected.size - eligibleForDraft.length === 1 ? " was" : "s were"} skipped because
+                  only pre-submission invoices (In Review, Approved, Ready) can be returned to Draft.
+                </span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmBulkDraft}
+              disabled={updateStatus.isPending}
+            >
+              Mark as Draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Single invoice Mark as Draft confirmation dialog */}
+      <AlertDialog open={!!draftTarget} onOpenChange={(open) => !open && setDraftTarget(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Mark {draftTarget?.number} as Draft?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will return invoice {draftTarget?.number} to Draft status. Any pre-submission approvals
+              will need to be repeated before submission.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmSingleDraft}
+              disabled={updateStatus.isPending}
+            >
+              Mark as Draft
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      </div>
     </div>
   );
 }
@@ -527,22 +882,40 @@ function FilterButton({ icon: Icon, label }: { icon: typeof Filter; label: strin
 }
 
 function RowActions({
-  invoiceId,
+  invoice,
   canSubmit,
   submitting,
+  updatingStatus,
   onSubmitApp,
+  onMarkDraft,
+  onPrint,
+  onDownloadPdf,
 }: {
-  invoiceId: string;
+  invoice: { id: string; number: string; status: DBInvoiceStatus };
   canSubmit: boolean;
   submitting: boolean;
+  updatingStatus: boolean;
   onSubmitApp: () => void;
+  onMarkDraft: () => void;
+  onPrint: () => void;
+  onDownloadPdf: () => void;
 }) {
+  const eligibleDraft = canRevertToDraft(invoice.status);
+  const isProtected = [
+    "Submitted",
+    "Validated",
+    "Signed",
+    "Confirmed",
+    "Rejected",
+  ].includes(invoice.status);
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
           size="icon"
+          aria-label={`Actions for ${invoice.number}`}
           className="h-8 w-8 text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100 data-[state=open]:opacity-100"
         >
           <MoreHorizontal className="h-4 w-4" />
@@ -553,18 +926,42 @@ function RowActions({
           Actions
         </DropdownMenuLabel>
         <DropdownMenuItem asChild>
-          <Link to={`/app/invoices/${invoiceId}`}>
+          <Link to={`/app/invoices/${invoice.id}`}>
             <FileText className="mr-2 h-4 w-4" />
             View details
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem>
-          <Pencil className="mr-2 h-4 w-4" />
-          Edit
+        {isProtected ? (
+          <DropdownMenuItem
+            disabled
+            title="Protected compliance stage. Invoices that have entered external verification cannot be edited."
+          >
+            <Pencil className="mr-2 h-4 w-4" />
+            Edit
+          </DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem asChild>
+            <Link to={`/app/invoices/${invoice.id}/edit`}>
+              <Pencil className="mr-2 h-4 w-4" />
+              Edit
+            </Link>
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem asChild>
+          <Link to={`/app/invoices/new?duplicate=${invoice.id}`}>
+            <Copy className="mr-2 h-4 w-4" />
+            Duplicate
+          </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem>
-          <Copy className="mr-2 h-4 w-4" />
-          Duplicate
+        <DropdownMenuItem
+          disabled={!eligibleDraft || updatingStatus}
+          onSelect={(e) => {
+            e.preventDefault();
+            onMarkDraft();
+          }}
+        >
+          <FileText className="mr-2 h-4 w-4" />
+          Mark as Draft
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
@@ -577,16 +974,30 @@ function RowActions({
           <Send className="mr-2 h-4 w-4" />
           Validate & sign (NRS sandbox)
         </DropdownMenuItem>
-        <DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            onDownloadPdf();
+          }}
+        >
           <Download className="mr-2 h-4 w-4" />
           Download PDF
         </DropdownMenuItem>
-        <DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={(e) => {
+            e.preventDefault();
+            onPrint();
+          }}
+        >
           <Printer className="mr-2 h-4 w-4" />
           Print
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem className="text-destructive focus:text-destructive">
+        <DropdownMenuItem
+          disabled
+          className="text-muted-foreground cursor-not-allowed opacity-50"
+          title="Voiding is unsupported by the current status model. FIRS compliance requires Credit Note (381) issuance or cancellation submission to NRS."
+        >
           <XCircle className="mr-2 h-4 w-4" />
           Void invoice
         </DropdownMenuItem>

@@ -57,6 +57,7 @@ type FormState = {
   lga: string;
   postcode: string;
   country_code: string;
+  notes: string;
 };
 
 export default function CustomerForm({ mode }: CustomerFormProps) {
@@ -73,7 +74,7 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
   const [form, setForm] = useState<FormState>({
     name: "", tin: "", status: "Active", city: "", email: "", phone: "",
     buyer_type: "business", rc_number: "", address_line1: "", address_line2: "",
-    state: "", lga: "", postcode: "", country_code: "NG",
+    state: "", lga: "", postcode: "", country_code: "NG", notes: "",
   });
 
   useEffect(() => {
@@ -94,6 +95,7 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
         lga: ex.lga ?? "",
         postcode: ex.postcode ?? "",
         country_code: ex.country_code ?? "NG",
+        notes: ex.notes ?? "",
       });
       
       if (ex.rc_number && ex.rc_number.startsWith("RN-")) {
@@ -117,7 +119,10 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
       return;
     }
     try {
-      const payload = { ...form };
+      const payload = {
+        ...form,
+        notes: form.notes.trim() || null,
+      };
       if (regMode === "cac") {
         payload.tin = "";
         if (payload.rc_number && !payload.rc_number.startsWith("RN-")) {
@@ -413,6 +418,8 @@ export default function CustomerForm({ mode }: CustomerFormProps) {
           >
             <Field label="Notes">
               <Textarea
+                value={form.notes}
+                onChange={(e) => set("notes")(e.target.value)}
                 placeholder="Payment preferences, key contacts, special arrangements…"
                 rows={4}
                 className="resize-none"

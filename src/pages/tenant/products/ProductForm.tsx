@@ -166,6 +166,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
   const [name, setName] = useState("");
   const [sku, setSku] = useState("");
   const [category, setCategory] = useState("");
+  const [description, setDescription] = useState("");
   const [unit, setUnit] = useState("Bag");
   const [price, setPrice] = useState<number>(0);
   const [taxRate, setTaxRate] = useState<number>(7.5);
@@ -253,6 +254,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
     setName(existing.name);
     setSku(existing.sku);
     setCategory(existing.category ?? "");
+    setDescription(existing.description ?? "");
     setUnit(existing.unit ?? "Bag");
     setPrice(Number(existing.price));
     setActive(existing.active);
@@ -277,7 +279,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
 
   const title = isEdit ? "Edit product" : "Add product";
 
-  const description = isEdit
+  const pageDescription = isEdit
     ? "Update catalog details, pricing, and tax rate."
     : "Add a new product or service to your catalog.";
 
@@ -321,6 +323,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
         name: trimmedName,
         sku: trimmedSku,
         category: category.trim() || null,
+        description: description.trim() || null,
         unit: unit.trim() || "Bag",
         price,
         tax_rate: normalizedTaxRate,
@@ -379,7 +382,7 @@ export default function ProductForm({ mode }: ProductFormProps) {
     <div>
       <PageHeader
         title={title}
-        description={description}
+        description={pageDescription}
         breadcrumbs={[
           { label: "Products" },
           { label: isEdit ? "Edit" : "New" },
@@ -813,6 +816,8 @@ export default function ProductForm({ mode }: ProductFormProps) {
           >
             <Field label="Item description">
               <Textarea
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 placeholder="A short description that appears under the item name on invoices…"
                 rows={4}
                 className="resize-none"
