@@ -337,6 +337,152 @@ export function useCreateInvoice() {
   });
 }
 
+export function useUpdateInvoice() {
+  const { companyId, user } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      id: string;
+      number: string;
+      customer_id?: string | null;
+      customer_name: string;
+      issue_date: string;
+      due_date: string;
+      notes?: string;
+      po_reference?: string;
+      invoice_type?: string;
+      transaction_type?: string;
+      supply_date?: string | null;
+      payment_terms?: string | null;
+      payment_means_code?: string | null;
+      exchange_rate?: number | null;
+      currency?: string;
+      lines: Array<{
+        product_id?: string | null;
+        description: string;
+        qty: number;
+        unit_price: number;
+        tax_rate: number;
+        unit_code?: string;
+        tax_category?: string;
+        discount_amount?: number;
+        item_classification_code?: string | null;
+        hsn_code?: string | null;
+        product_category?: string | null;
+      }>;
+    }) => {
+      if (!companyId || !user) throw new Error("An active company is required.");
+
+      // Check current invoice status to protect external compliance stages
+      const { data: currentInv, error: fetchErr } = await supabase
+        .from("invoices")
+        .select("status, company_id")
+        .eq("id", input.id)
+        .eq("company_id", companyId)
+        .single();
+      if (fetchErr || !currentInv) throw new Error("Invoice not found or access denied.");
+
+      const protectedStatuses: DBInvoiceStatus[] = [
+        "Submitted",
+        "Validated",
+        "Signed",
+        "Confirmed",
+        "Rejected",
+      ];
+      if (protectedStatuses.includes(currentInv.status as DBInvoiceStatus)) {
+        throw new Error(
+          `Cannot edit invoice in '${currentInv.status}' stage. External compliance processing has begun.`,
+        );
+      }
+
+      const subtotal = input.lines.reduce(
+        (s, l) => s + (l.qty * l.unit_price - (l.discount_amount ?? 0)),
+        0,
+      );
+      const tax = input.lines.reduce(
+        (s, l) =>
+          s +
+          (l.qty * l.unit_price - (l.discount_amount ?? 0)) *
+            ((l.tax_category ?? "S") !== "Z" && (l.tax_category ?? "S") !== "E" && (l.tax_category ?? "S") !== "O"
+              ? l.tax_rate / 100
+              : 0),
+        0,
+      );
+      const total = subtotal + tax;
+
+      // Update invoice header
+      const { data: inv, error } = await supabase
+        .from("invoices")
+        .update({
+          customer_id: input.customer_id ?? null,
+          customer_name: input.customer_name,
+          issue_date: input.issue_date,
+          due_date: input.due_date,
+          notes: input.notes ?? null,
+          po_reference: input.po_reference ?? null,
+          subtotal,
+          tax,
+          total,
+          updated_at: new Date().toISOString(),
+          ...(input.invoice_type ? { invoice_type: input.invoice_type } : {}),
+          ...(input.transaction_type ? { transaction_type: input.transaction_type } : {}),
+          ...(input.supply_date !== undefined ? { supply_date: input.supply_date } : {}),
+          ...(input.payment_terms !== undefined ? { payment_terms: input.payment_terms } : {}),
+          ...(input.payment_means_code !== undefined ? { payment_means_code: input.payment_means_code } : {}),
+          ...(input.exchange_rate != null ? { exchange_rate: input.exchange_rate } : {}),
+          ...(input.currency ? { currency: input.currency } : {}),
+        } as any)
+        .eq("id", input.id)
+        .eq("company_id", companyId)
+        .select()
+        .single();
+      if (error) throw error;
+
+      // Replace invoice lines
+      const { error: deleteLinesError } = await supabase
+        .from("invoice_lines")
+        .delete()
+        .eq("invoice_id", input.id);
+      if (deleteLinesError) throw deleteLinesError;
+
+      const { error: linesError } = await supabase.from("invoice_lines").insert(
+        input.lines.map((l, i) => {
+          const discount = l.discount_amount ?? 0;
+          const cat = l.tax_category ?? "S";
+          const net = l.qty * l.unit_price - discount;
+          const lineTax = cat !== "Z" && cat !== "E" && cat !== "O" ? net * (l.tax_rate / 100) : 0;
+          return {
+            invoice_id: input.id,
+            product_id: l.product_id ?? null,
+            description: l.description,
+            qty: l.qty,
+            unit_price: l.unit_price,
+            tax_rate: l.tax_rate,
+            line_total: net + lineTax,
+            position: i,
+            net_amount: net,
+            tax_amount: lineTax,
+            discount_amount: discount,
+            unit_code: (l.unit_code ?? "EA").toUpperCase(),
+            tax_category: cat,
+            tax_scheme: "VAT",
+            item_classification_code: l.item_classification_code ?? null,
+            hsn_code: l.hsn_code ?? null,
+            product_category: l.product_category ?? null,
+          };
+        }) as any,
+      );
+      if (linesError) throw linesError;
+
+      return inv;
+    },
+    onSuccess: (_d, vars) => {
+      qc.invalidateQueries({ queryKey: ["invoices"] });
+      qc.invalidateQueries({ queryKey: ["invoice", vars.id] });
+    },
+  });
+}
+
 export function useUpdateInvoiceStatus() {
   const qc = useQueryClient();
   return useMutation({

@@ -211,6 +211,7 @@ export type Database = {
           id: string
           lga: string | null
           name: string
+          notes: string | null
           phone: string | null
           postcode: string | null
           rc_number: string | null
@@ -231,6 +232,7 @@ export type Database = {
           id?: string
           lga?: string | null
           name: string
+          notes?: string | null
           phone?: string | null
           postcode?: string | null
           rc_number?: string | null
@@ -251,6 +253,7 @@ export type Database = {
           id?: string
           lga?: string | null
           name?: string
+          notes?: string | null
           phone?: string | null
           postcode?: string | null
           rc_number?: string | null
@@ -553,6 +556,7 @@ export type Database = {
           category: string | null
           company_id: string
           created_at: string
+          description: string | null
           hsn_code: string | null
           id: string
           item_classification_code: string | null
@@ -571,6 +575,7 @@ export type Database = {
           category?: string | null
           company_id: string
           created_at?: string
+          description?: string | null
           hsn_code?: string | null
           id?: string
           item_classification_code?: string | null
@@ -589,6 +594,7 @@ export type Database = {
           category?: string | null
           company_id?: string
           created_at?: string
+          description?: string | null
           hsn_code?: string | null
           id?: string
           item_classification_code?: string | null

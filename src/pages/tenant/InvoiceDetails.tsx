@@ -34,6 +34,8 @@ import { hasDeviceAttempt, submissionBlockReason } from "@/lib/nrs/submissionSaf
 import { resolveQrImageSource } from "@/lib/nrs/qrDisplay";
 import type { SubmitResult } from "@/lib/nrs/submitContract";
 import { SubmissionBadge, submissionLabel } from "@/components/shared/SubmissionBadge";
+import { downloadInvoicePdf } from "@/lib/pdfExport";
+import { PrintableInvoice } from "@/components/shared/PrintableInvoice";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -149,8 +151,12 @@ export default function InvoiceDetails() {
 
   return (
     <div>
-      <PageHeader
-        title={invoice.number}
+      <div className="print-only">
+        <PrintableInvoice invoices={[invoice as any]} company={company} />
+      </div>
+      <div className="screen-only">
+        <PageHeader
+          title={invoice.number}
         description={`Issued to ${invoice.customer_name}`}
         breadcrumbs={[{ label: "Invoices" }, { label: invoice.number }]}
         actions={
@@ -161,11 +167,28 @@ export default function InvoiceDetails() {
                 Back
               </Link>
             </Button>
-            <Button variant="outline" size="sm" className="gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  window.print();
+                }
+              }}
+            >
               <Printer className="h-4 w-4" />
               Print
             </Button>
-            <Button variant="outline" size="sm" className="gap-1.5">
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => {
+                downloadInvoicePdf(invoice, company);
+                toast.success(`Downloaded PDF for ${invoice.number}`);
+              }}
+            >
               <Download className="h-4 w-4" />
               PDF
             </Button>
@@ -417,6 +440,7 @@ export default function InvoiceDetails() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </div>
     </div>
   );
 }

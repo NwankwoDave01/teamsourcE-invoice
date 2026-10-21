@@ -123,3 +123,56 @@
   .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
   .scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 4px; }
 }
+
+@media print {
+  @page {
+    margin: 10mm;
+    size: auto;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 11pt;
+  }
+
+  /* Hide app shell and interactive elements during print */
+  header,
+  aside,
+  nav,
+  .no-print,
+  button,
+  [data-sidebar],
+  [data-sonner-toaster],
+  .toaster {
+    display: none !important;
+  }
+
+  /* Display print-only elements */
+  .print-only {
+    display: block !important;
+  }
+
+  .screen-only {
+    display: none !important;
+  }
+
+  .printable-invoice-page {
+    page-break-after: always;
+    break-after: page;
+    background: white !important;
+    color: black !important;
+    width: 100% !important;
+  }
+
+  .printable-invoice-page:last-child {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+}
+
+@media screen {
+  .print-only {
+    display: none !important;
+  }
+}
