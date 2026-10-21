@@ -41,7 +41,7 @@ describe("PDF Export Utilities", () => {
   it("generates a valid jsPDF instance with expected pages", () => {
     const doc = generateInvoicePdf(sampleInvoice, sampleCompany);
     expect(doc).toBeDefined();
-    expect(doc.internal.getNumberOfPages()).toBeGreaterThanOrEqual(1);
+    expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(1);
   });
 
   it("handles invoice with empty line items gracefully", () => {
@@ -51,7 +51,7 @@ describe("PDF Export Utilities", () => {
     };
     const doc = generateInvoicePdf(invoiceWithoutLines, sampleCompany);
     expect(doc).toBeDefined();
-    expect(doc.internal.getNumberOfPages()).toBeGreaterThanOrEqual(1);
+    expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(1);
   });
 
   it("includes FIRS/NRS metrics only when legitimately present", () => {
