@@ -1,10 +1,12 @@
 # Frontend SI → APP alignment
 
-## Tenant team management (preview only)
+## Tenant team management & invitation acceptance
 - [x] Implement tenant-admin team list, invitations, role changes, removal and revocation UI
-- [x] Accept invitations once on authenticated user load and reload Active-only membership
-- [x] Add team/auth regression tests and verify available checks (automatic typecheck blocked by existing unrelated errors; no production deployment)
-- [ ] Verify real invitation email acceptance and admin changes on the external backend (authenticated external session unavailable here)
+- [x] Dedicated /auth/accept-invite page: verify invitation_status, set password, accept_invitation, and reload active membership
+- [x] Remove automatic invitation acceptance from AuthContext during normal sign-in
+- [x] Guard ProtectedRoute against users without active company access and eliminate redirect loops
+- [x] Expand Signup with all database trigger fields and honest email verification handling
+- [x] Add team/auth/invitation regression tests and verify typecheck, build, and tests
 
 - [x] Audit NRS/APP settings, onboarding, invoice workflow, and public documentation
 - [x] Replace credential-oriented settings with honest APP connection setup

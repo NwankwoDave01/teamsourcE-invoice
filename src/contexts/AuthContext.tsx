@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { invokeTenantAdmin, loadActiveMembership } from "@/lib/tenantAdmin";
+import { loadActiveMembership } from "@/lib/tenantAdmin";
 
 type Role = "super_admin" | "company_admin" | "finance_officer" | "staff_user";
 
@@ -61,11 +61,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(!!uid);
       if (!uid) return;
       // Defer authenticated requests outside the auth callback. Initial-session
-      // and getSession duplicates share this run; token refresh never re-accepts.
+      // and getSession duplicates share this run; token refresh does not trigger duplicate loads.
       setTimeout(async () => {
-        if (disposed || run !== generation) return;
-        try { await invokeTenantAdmin({ action: "accept_invitation" }); }
-        catch { /* No pending invite or a failed acceptance never grants access. */ }
         if (disposed || run !== generation) return;
         await loadMembership(uid);
         if (!disposed && run === generation) setLoading(false);
@@ -91,7 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshMembership = async () => {
-    if (user) await loadMembership(user.id);
+    const uid = currentUid.current ?? user?.id;
+    if (uid) await loadMembership(uid);
   };
 
   return (

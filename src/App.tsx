@@ -16,6 +16,7 @@ import AdminLayout from "./layouts/AdminLayout";
 
 import Login from "./pages/auth/Login";
 import Signup from "./pages/auth/Signup";
+import AcceptInvitation from "./pages/auth/AcceptInvitation";
 
 import Dashboard from "./pages/tenant/Dashboard";
 import Customers from "./pages/tenant/Customers";
@@ -55,6 +56,7 @@ const App = () => (
 
             <Route path="/auth/login" element={<Login />} />
             <Route path="/auth/signup" element={<Signup />} />
+            <Route path="/auth/accept-invite" element={<AcceptInvitation />} />
             <Route path="/api-docs" element={<ApiDocs />} />
             <Route path="/sla" element={<SLA />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
