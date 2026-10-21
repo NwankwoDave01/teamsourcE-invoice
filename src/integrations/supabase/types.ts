@@ -727,6 +727,15 @@ export type Database = {
         Returns: boolean
       }
       is_super_admin: { Args: { _user_id: string }; Returns: boolean }
+      update_invoice_atomic: {
+        Args: {
+          p_company_id: string
+          p_header: Json
+          p_invoice_id: string
+          p_lines: Json
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role:
