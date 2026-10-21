@@ -70,7 +70,21 @@ export default function InvoiceDetails() {
   const [submitting, setSubmitting] = useState(false);
   const [lastResult, setLastResult] = useState<SubmitResult | null>(null);
   const submitToNrs = useNrsSubmit();
-  const { user, companyId } = useAuth();
+  let user: any = null;
+  let companyId: string | null = null;
+  let roles: string[] = [];
+  let isSuperAdmin = false;
+  try {
+    const auth = useAuth();
+    user = auth.user;
+    companyId = auth.companyId;
+    roles = (auth.roles as string[]) ?? [];
+    isSuperAdmin = auth.isSuperAdmin ?? false;
+  } catch {
+    // Graceful fallback when rendered without AuthProvider
+  }
+  const isStaff = roles.includes("staff_user") && !roles.includes("company_admin") && !roles.includes("finance_officer") && !isSuperAdmin;
+  const canManage = isSuperAdmin || roles.includes("company_admin") || roles.includes("finance_officer") || (!isStaff && roles.length === 0);
   const history = useNrsSubmissionHistory();
   const [confirmReject, setConfirmReject] = useState(false);
 
@@ -104,6 +118,10 @@ export default function InvoiceDetails() {
   const blocked = submissionBlockReason(invoice, companyId, history.isSuccess && !history.isFetching ? history.data : undefined, hasDeviceAttempt(user?.id, companyId, invoice.id));
 
   const advance = async () => {
+    if (!canManage) {
+      toast.error("Staff users cannot submit invoices or elevate invoice status.");
+      return;
+    }
     if (invoice.status === "Ready") {
       if (blocked) { toast.error(blocked); return; }
       setSubmitting(true);
@@ -129,6 +147,10 @@ export default function InvoiceDetails() {
   };
 
   const performReject = async () => {
+    if (!canManage) {
+      toast.error("Staff users cannot elevate or reject invoice status.");
+      return;
+    }
     try {
       await updateStatus.mutateAsync({ id: invoice.id, status: "Rejected" });
       toast.success("Invoice rejected");
@@ -201,7 +223,7 @@ export default function InvoiceDetails() {
               <FileJson className="h-4 w-4" />
               Preview NRS Payload
             </Button>
-            {invoice.status !== "Confirmed" && invoice.status !== "Rejected" && (nextStatus || invoice.status === "Ready") && (
+            {canManage && invoice.status !== "Confirmed" && invoice.status !== "Rejected" && (nextStatus || invoice.status === "Ready") && (
               <Button size="sm" onClick={advance} disabled={updateStatus.isPending || submitting || (invoice.status === "Ready" && Boolean(blocked))} className="gap-1.5">
                 <Send className="h-4 w-4" />
                 {nextLabel}
@@ -392,7 +414,7 @@ export default function InvoiceDetails() {
                 <p className="mt-3 text-xs text-muted-foreground">Shown from the recorded submission status only. APP handoff is planned and not live.</p>
               </div>
             )}
-            {invoice.status !== "Confirmed" && invoice.status !== "Rejected" && (
+            {canManage && invoice.status !== "Confirmed" && invoice.status !== "Rejected" && (
               <Button
                 variant="outline"
                 size="sm"

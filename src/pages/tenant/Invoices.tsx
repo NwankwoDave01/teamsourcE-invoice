@@ -97,15 +97,31 @@ export default function Invoices() {
   const updateStatus = useUpdateInvoiceStatus();
   const deleteMut = useDeleteInvoice();
   const submitToNrs = useNrsSubmit();
-  const { user, companyId } = useAuth();
+  let user: any = null;
+  let companyId: string | null = null;
+  let roles: string[] = [];
+  let isSuperAdmin = false;
+  try {
+    const auth = useAuth();
+    user = auth.user;
+    companyId = auth.companyId;
+    roles = (auth.roles as string[]) ?? [];
+    isSuperAdmin = auth.isSuperAdmin ?? false;
+  } catch {
+    // Graceful fallback when rendered without AuthProvider
+  }
+  const isStaff = roles.includes("staff_user") && !roles.includes("company_admin") && !roles.includes("finance_officer") && !isSuperAdmin;
+  const canManage = isSuperAdmin || roles.includes("company_admin") || roles.includes("finance_officer") || (!isStaff && roles.length === 0);
   const history = useNrsSubmissionHistory();
-  const blockReason = (inv: (typeof invoices)[number]) =>
-    submissionBlockReason(
+  const blockReason = (inv: (typeof invoices)[number]) => {
+    if (!canManage) return "Staff users cannot submit invoices to NRS.";
+    return submissionBlockReason(
       inv,
       companyId,
       history.isSuccess && !history.isFetching ? history.data : undefined,
       hasDeviceAttempt(user?.id, companyId, inv.id),
     );
+  };
 
   const [searchParams, setSearchParams] = useSearchParams();
   const rawStatus = searchParams.get("status");
@@ -327,6 +343,11 @@ export default function Invoices() {
 
   const handleConfirmSingleDraft = async () => {
     if (!draftTarget) return;
+    if (!canManage) {
+      toast.error("Staff users cannot elevate or change invoice status.");
+      setDraftTarget(null);
+      return;
+    }
     try {
       await updateStatus.mutateAsync({ id: draftTarget.id, status: "Draft" });
       toast.success(`${draftTarget.number} marked as Draft`);
@@ -339,6 +360,10 @@ export default function Invoices() {
   };
 
   const handleConfirmBulkDraft = async () => {
+    if (!canManage) {
+      toast.error("Staff users cannot elevate or change invoice status.");
+      return;
+    }
     try {
       await Promise.all(
         eligibleForDraft.map((inv) => updateStatus.mutateAsync({ id: inv.id, status: "Draft" })),
@@ -356,6 +381,10 @@ export default function Invoices() {
   };
 
   const submitRowToApp = async (id: string) => {
+    if (!canManage) {
+      toast.error("Staff users cannot submit invoices to NRS.");
+      return;
+    }
     const inv = invoices.find((i) => i.id === id);
     if (!inv) return;
     const blocked = blockReason(inv);
@@ -378,6 +407,10 @@ export default function Invoices() {
   };
 
   const bulkSubmit = async () => {
+    if (!canManage) {
+      toast.error("Staff users cannot submit invoices to NRS.");
+      return;
+    }
     const ids = Array.from(selected);
     const eligible = ids.filter((id) => {
       const inv = invoices.find((i) => i.id === id);
@@ -419,6 +452,10 @@ export default function Invoices() {
   };
 
   const performBulkDelete = async () => {
+    if (!canManage) {
+      toast.error("Staff users cannot delete invoices.");
+      return;
+    }
     const ids = Array.from(selected);
     try {
       await Promise.all(ids.map((id) => deleteMut.mutateAsync(id)));
@@ -557,6 +594,7 @@ export default function Invoices() {
                   className="gap-1.5"
                   onClick={bulkSubmit}
                   disabled={
+                    !canManage ||
                     submittingToApp ||
                     !invoices.some((inv) => selected.has(inv.id) && !blockReason(inv))
                   }
@@ -604,7 +642,7 @@ export default function Invoices() {
                       </DropdownMenuItem>
                     )}
                     <DropdownMenuItem
-                      disabled={eligibleForDraft.length === 0 || updateStatus.isPending}
+                      disabled={!canManage || eligibleForDraft.length === 0 || updateStatus.isPending}
                       onSelect={(e) => {
                         e.preventDefault();
                         setConfirmBulkDraft(true);
@@ -615,6 +653,7 @@ export default function Invoices() {
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
+                      disabled={!canManage}
                       onClick={() => setConfirmDelete(true)}
                       className="text-destructive focus:text-destructive"
                     >
@@ -704,7 +743,8 @@ export default function Invoices() {
                         <td className="px-5 py-4 text-right">
                           <RowActions
                             invoice={inv}
-                            canSubmit={!blockReason(inv)}
+                            canManage={canManage}
+                            canSubmit={canManage && !blockReason(inv)}
                             submitting={submittingToApp}
                             updatingStatus={updateStatus.isPending}
                             onSubmitApp={() => submitRowToApp(inv.id)}
@@ -883,6 +923,7 @@ function FilterButton({ icon: Icon, label }: { icon: typeof Filter; label: strin
 
 function RowActions({
   invoice,
+  canManage = true,
   canSubmit,
   submitting,
   updatingStatus,
@@ -892,6 +933,7 @@ function RowActions({
   onDownloadPdf,
 }: {
   invoice: { id: string; number: string; status: DBInvoiceStatus };
+  canManage?: boolean;
   canSubmit: boolean;
   submitting: boolean;
   updatingStatus: boolean;
@@ -939,6 +981,14 @@ function RowActions({
             <Pencil className="mr-2 h-4 w-4" />
             Edit
           </DropdownMenuItem>
+        ) : !canManage && invoice.status !== "Draft" ? (
+          <DropdownMenuItem
+            disabled
+            title="Staff users can only edit draft invoices."
+          >
+            <Pencil className="mr-2 h-4 w-4" />
+            Edit
+          </DropdownMenuItem>
         ) : (
           <DropdownMenuItem asChild>
             <Link to={`/app/invoices/${invoice.id}/edit`}>
@@ -954,7 +1004,7 @@ function RowActions({
           </Link>
         </DropdownMenuItem>
         <DropdownMenuItem
-          disabled={!eligibleDraft || updatingStatus}
+          disabled={!canManage || !eligibleDraft || updatingStatus}
           onSelect={(e) => {
             e.preventDefault();
             onMarkDraft();
@@ -965,7 +1015,7 @@ function RowActions({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          disabled={!canSubmit || submitting}
+          disabled={!canManage || !canSubmit || submitting}
           onSelect={(e) => {
             e.preventDefault();
             onSubmitApp();

@@ -58,6 +58,7 @@ import {
   paymentMeansDisplayLabel,
 } from "@/lib/nrs/displayLabels";
 import { formatCurrency, formatNGN } from "@/lib/format";
+import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
@@ -118,6 +119,17 @@ export default function CreateInvoice({ mode = "create" }: { mode?: "create" | "
   const duplicateId = searchParams.get("duplicate") ?? undefined;
   const isEditing = mode === "edit";
   const sourceId = isEditing ? id : duplicateId;
+
+  let roles: string[] = [];
+  let isSuperAdmin = false;
+  try {
+    const auth = useAuth();
+    roles = (auth.roles as string[]) ?? [];
+    isSuperAdmin = auth.isSuperAdmin ?? false;
+  } catch {
+    // Graceful fallback when rendered without AuthProvider in standalone component tests
+  }
+  const isStaff = roles.includes("staff_user") && !roles.includes("company_admin") && !roles.includes("finance_officer") && !isSuperAdmin;
 
   const { data: sourceInvoice, isLoading: loadingSource } = useInvoice(sourceId);
   const { data: customers = [] } = useCustomers();
@@ -360,6 +372,45 @@ export default function CreateInvoice({ mode = "create" }: { mode?: "create" | "
             <p className="text-sm text-muted-foreground">
               This invoice is in the protected compliance stage <strong>{sourceInvoice.status}</strong>.
               Invoices that have entered external verification, signing or confirmation cannot be modified.
+            </p>
+            <Button asChild variant="outline" size="sm">
+              <Link to={`/app/invoices/${sourceInvoice.id}`}>
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Return to invoice
+              </Link>
+            </Button>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  const isStaffEditingNonDraft =
+    isEditing &&
+    sourceInvoice &&
+    isStaff &&
+    sourceInvoice.status !== "Draft";
+
+  if (isStaffEditingNonDraft && sourceInvoice) {
+    return (
+      <div>
+        <PageHeader
+          title={`Edit ${sourceInvoice.number}`}
+          description="Draft invoices only."
+          breadcrumbs={[
+            { label: "Invoices", href: "/app/invoices" },
+            { label: sourceInvoice.number, href: `/app/invoices/${sourceInvoice.id}` },
+            { label: "Edit" },
+          ]}
+        />
+        <div className="p-6">
+          <Card className="p-6 max-w-xl space-y-4">
+            <div className="flex items-center gap-3 text-destructive">
+              <AlertCircle className="h-6 w-6" />
+              <h3 className="font-semibold text-lg">Invoice Cannot Be Edited</h3>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Staff users can only edit draft invoices. This invoice is in stage <strong>{sourceInvoice.status}</strong>.
             </p>
             <Button asChild variant="outline" size="sm">
               <Link to={`/app/invoices/${sourceInvoice.id}`}>

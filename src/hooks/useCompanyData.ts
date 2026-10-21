@@ -186,8 +186,13 @@ export function useUpdateCompany() {
 
 export function useDeleteInvoice() {
   const qc = useQueryClient();
+  const { roles = [], isSuperAdmin = false } = useAuth();
   return useMutation({
     mutationFn: async (id: string) => {
+      const isManager = isSuperAdmin || roles.includes("company_admin") || roles.includes("finance_officer");
+      if (roles.length > 0 && !isManager) {
+        throw new Error("Access denied: staff users cannot delete invoices.");
+      }
       const { error } = await supabase.from("invoices").delete().eq("id", id);
       if (error) throw error;
     },
@@ -377,12 +382,15 @@ export function useUpdateInvoice() {
     }) => {
       if (!companyId || !user) throw new Error("An active company is required.");
 
-      // Check client-side role authorization if roles are present (matching can_manage_invoices)
-      if (roles.length > 0 && !isSuperAdmin && !roles.includes("company_admin") && !roles.includes("finance_officer")) {
-        throw new Error("Access denied: user lacks invoice management permission for this company.");
+      // Check client-side role authorization matching can_edit_invoice
+      const isManager = isSuperAdmin || roles.includes("company_admin") || roles.includes("finance_officer");
+      const isStaff = roles.includes("staff_user");
+
+      if (roles.length > 0 && !isManager && !isStaff) {
+        throw new Error("Access denied: user lacks invoice edit permission for this company.");
       }
 
-      // Check current invoice status to protect external compliance stages
+      // Check current invoice status to protect external compliance stages and enforce staff draft restrictions
       const { data: currentInv, error: fetchErr } = await supabase
         .from("invoices")
         .select("status, company_id")
@@ -390,6 +398,10 @@ export function useUpdateInvoice() {
         .eq("company_id", companyId)
         .single();
       if (fetchErr || !currentInv) throw new Error("Invoice not found or access denied.");
+
+      if (!isManager && isStaff && currentInv.status !== "Draft") {
+        throw new Error("Access denied: staff users can only edit draft invoices.");
+      }
 
       const protectedStatuses: DBInvoiceStatus[] = [
         "Submitted",
@@ -508,8 +520,13 @@ export function useUpdateInvoice() {
 
 export function useUpdateInvoiceStatus() {
   const qc = useQueryClient();
+  const { roles = [], isSuperAdmin = false } = useAuth();
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: DBInvoiceStatus }) => {
+      const isManager = isSuperAdmin || roles.includes("company_admin") || roles.includes("finance_officer");
+      if (roles.length > 0 && !isManager) {
+        throw new Error("Access denied: staff users cannot elevate invoice status or submit invoices.");
+      }
       const { error } = await supabase.from("invoices").update({ status }).eq("id", id);
       if (error) throw error;
     },

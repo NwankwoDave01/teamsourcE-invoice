@@ -2,7 +2,7 @@ import { cleanup, renderHook } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import React from "react";
-import { useUpdateInvoice, type DBInvoiceStatus } from "@/hooks/useCompanyData";
+import { useUpdateInvoice, useUpdateInvoiceStatus, useDeleteInvoice, type DBInvoiceStatus } from "@/hooks/useCompanyData";
 import { supabase } from "@/integrations/supabase/client";
 
 const authMock = vi.hoisted(() => ({
@@ -49,11 +49,14 @@ vi.mock("@/integrations/supabase/client", () => {
             update: vi.fn((payload: any) => {
               dbMock.directInvoiceUpdateSpy(payload);
               return {
-                eq: vi.fn().mockReturnThis(),
+                eq: vi.fn().mockImplementation(() => Promise.resolve({ data: payload, error: null })),
                 select: vi.fn().mockReturnThis(),
                 single: vi.fn().mockResolvedValue({ data: payload, error: null }),
               };
             }),
+            delete: vi.fn(() => ({
+              eq: vi.fn().mockResolvedValue({ error: null }),
+            })),
           };
         }
         if (table === "invoice_lines") {
@@ -447,9 +450,57 @@ describe("Atomic Invoice and Invoice Lines Update", () => {
     expect(invoiceLinesTable[0].line_total).toBe(107500);
   });
 
-  it("rejects unauthorized users lacking invoice management permission (e.g. staff_user)", async () => {
-    // Restrict authenticated user role to staff_user (not company_admin or finance_officer)
+  it("permits Staff Users to edit permitted draft invoices", async () => {
+    // Restrict authenticated user role to staff_user
     authMock.roles = ["staff_user"];
+    authMock.isSuperAdmin = false;
+
+    dbMock.rpcHandler.mockResolvedValueOnce({
+      data: { id: "inv-test-001", status: "Draft", customer_name: "Staff Draft Edit" },
+      error: null,
+    });
+
+    const { result } = renderHook(() => useUpdateInvoice(), { wrapper: createWrapper() });
+
+    const updated = await result.current.mutateAsync({
+      id: "inv-test-001",
+      number: "INV-2026-0001",
+      customer_name: "Staff Draft Edit",
+      issue_date: "2026-10-20",
+      due_date: "2026-11-20",
+      lines: [{ description: "Staff Item", qty: 2, unit_price: 100, tax_rate: 7.5 }],
+    });
+
+    expect(updated).toBeDefined();
+    expect(dbMock.rpcCalls).toHaveLength(1);
+    expect(dbMock.rpcCalls[0].args.p_header.customer_name).toBe("Staff Draft Edit");
+  });
+
+  it("rejects Staff Users attempting to edit non-draft invoices (e.g. In Review)", async () => {
+    authMock.roles = ["staff_user"];
+    authMock.isSuperAdmin = false;
+
+    // Set invoice status in db to In Review
+    dbMock.invoices[0].status = "In Review";
+
+    const { result } = renderHook(() => useUpdateInvoice(), { wrapper: createWrapper() });
+
+    await expect(
+      result.current.mutateAsync({
+        id: "inv-test-001",
+        number: "INV-2026-0001",
+        customer_name: "Staff Non-Draft Edit",
+        issue_date: "2026-10-20",
+        due_date: "2026-11-20",
+        lines: [{ description: "Staff Item", qty: 1, unit_price: 100, tax_rate: 7.5 }],
+      }),
+    ).rejects.toThrow("Access denied: staff users can only edit draft invoices.");
+
+    expect(dbMock.rpcCalls).toHaveLength(0);
+  });
+
+  it("rejects unauthorized users lacking any invoice edit role", async () => {
+    authMock.roles = ["other_role" as any];
     authMock.isSuperAdmin = false;
 
     const { result } = renderHook(() => useUpdateInvoice(), { wrapper: createWrapper() });
@@ -458,22 +509,21 @@ describe("Atomic Invoice and Invoice Lines Update", () => {
       result.current.mutateAsync({
         id: "inv-test-001",
         number: "INV-2026-0001",
-        customer_name: "Staff Attempt",
+        customer_name: "Unauthorized Attempt",
         issue_date: "2026-10-20",
         due_date: "2026-11-20",
-        lines: [{ description: "Staff Item", qty: 1, unit_price: 100, tax_rate: 7.5 }],
+        lines: [{ description: "Item", qty: 1, unit_price: 100, tax_rate: 7.5 }],
       }),
-    ).rejects.toThrow("Access denied: user lacks invoice management permission for this company.");
+    ).rejects.toThrow("Access denied: user lacks invoice edit permission for this company.");
 
-    // Verify RPC was never invoked for unauthorized role
     expect(dbMock.rpcCalls).toHaveLength(0);
   });
 
-  it("rejects when server RPC can_manage_invoices check fails", async () => {
+  it("rejects when server RPC can_edit_invoice check fails", async () => {
     dbMock.rpcHandler.mockResolvedValueOnce({
       data: null,
       error: {
-        message: "Access denied: user lacks invoice management permission for company company-test-1",
+        message: "Access denied: user lacks invoice edit permission for company company-test-1",
       },
     });
 
@@ -488,7 +538,65 @@ describe("Atomic Invoice and Invoice Lines Update", () => {
         due_date: "2026-11-20",
         lines: [{ description: "Item", qty: 1, unit_price: 100, tax_rate: 7.5 }],
       }),
-    ).rejects.toThrow("Access denied: user lacks invoice management permission for company company-test-1");
+    ).rejects.toThrow("Access denied: user lacks invoice edit permission for company company-test-1");
+  });
+
+  it("permits Finance Officers to edit invoices across non-protected stages", async () => {
+    authMock.roles = ["finance_officer"];
+    authMock.isSuperAdmin = false;
+
+    // Finance officer can edit even "In Review" stage
+    dbMock.invoices[0].status = "In Review";
+
+    dbMock.rpcHandler.mockResolvedValueOnce({
+      data: { id: "inv-test-001", status: "In Review" },
+      error: null,
+    });
+
+    const { result } = renderHook(() => useUpdateInvoice(), { wrapper: createWrapper() });
+
+    const updated = await result.current.mutateAsync({
+      id: "inv-test-001",
+      number: "INV-2026-0001",
+      customer_name: "Finance Officer Edit",
+      issue_date: "2026-10-20",
+      due_date: "2026-11-20",
+      lines: [{ description: "Finance Item", qty: 1, unit_price: 500, tax_rate: 7.5 }],
+    });
+
+    expect(updated).toBeDefined();
+    expect(dbMock.rpcCalls).toHaveLength(1);
+  });
+
+  it("rejects Staff Users from elevating invoice status or deleting invoices", async () => {
+    authMock.roles = ["staff_user"];
+    authMock.isSuperAdmin = false;
+
+    const { result: statusHook } = renderHook(() => useUpdateInvoiceStatus(), { wrapper: createWrapper() });
+    await expect(
+      statusHook.current.mutateAsync({ id: "inv-test-001", status: "In Review" }),
+    ).rejects.toThrow("Access denied: staff users cannot elevate invoice status or submit invoices.");
+
+    const { result: deleteHook } = renderHook(() => useDeleteInvoice(), { wrapper: createWrapper() });
+    await expect(
+      deleteHook.current.mutateAsync("inv-test-001"),
+    ).rejects.toThrow("Access denied: staff users cannot delete invoices.");
+  });
+
+  it("permits Finance Officers and Company Admins to elevate status and delete invoices", async () => {
+    authMock.roles = ["finance_officer"];
+    authMock.isSuperAdmin = false;
+
+    const { result: statusHook } = renderHook(() => useUpdateInvoiceStatus(), { wrapper: createWrapper() });
+    await expect(
+      statusHook.current.mutateAsync({ id: "inv-test-001", status: "Approved" }),
+    ).resolves.not.toThrow();
+
+    authMock.roles = ["company_admin"];
+    const { result: deleteHook } = renderHook(() => useDeleteInvoice(), { wrapper: createWrapper() });
+    await expect(
+      deleteHook.current.mutateAsync("inv-test-001"),
+    ).resolves.not.toThrow();
   });
 
   it("rejects cross-company customer and product references", async () => {
