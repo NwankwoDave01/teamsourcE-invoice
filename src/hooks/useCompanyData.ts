@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Database } from "@/integrations/supabase/types";
+import { invokeTenantAdmin, parseTeam, type TeamChange } from "@/lib/tenantAdmin";
 
 export type DBInvoiceStatus = Database["public"]["Enums"]["invoice_status"];
 
@@ -518,32 +519,37 @@ export function useUpdateInvoiceStatus() {
 
 /* ----------------------------- Team ----------------------------- */
 export function useTeam() {
-  const { companyId } = useAuth();
+  const { companyId, roles, isSuperAdmin } = useAuth();
   return useQuery({
     queryKey: ["team", companyId],
-    enabled: !!companyId,
+    enabled: !!companyId && (isSuperAdmin || roles.includes("company_admin")),
     queryFn: async () => {
-      const { data: members, error } = await supabase
-        .from("company_members")
-        .select("id, user_id, status, last_active_at")
-        .eq("company_id", companyId!);
-      if (error) throw error;
-      if (!members?.length) return [];
-
-      const ids = members.map((m) => m.user_id);
-      const [{ data: profiles }, { data: roles }] = await Promise.all([
-        supabase.from("profiles").select("id, display_name").in("id", ids),
-        supabase.from("user_roles").select("user_id, role").in("user_id", ids).eq("company_id", companyId!),
-      ]);
-
-      return members.map((m) => ({
-        ...m,
-        display_name: profiles?.find((p) => p.id === m.user_id)?.display_name ?? "Unknown",
-        role: roles?.find((r) => r.user_id === m.user_id)?.role ?? "staff_user",
-      }));
+      if (!companyId) throw new Error("No active company selected.");
+      return parseTeam(await invokeTenantAdmin({ action: "list", company_id: companyId }));
     },
   });
 }
+
+function useTeamChange<Action extends TeamChange["action"]>(action: Action) {
+  const { companyId, roles, isSuperAdmin, refreshMembership } = useAuth();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: Omit<Extract<TeamChange, { action: Action }>, "action">) => {
+      if (!companyId || (!isSuperAdmin && !roles.includes("company_admin"))) throw new Error("An active company admin is required.");
+      await invokeTenantAdmin({ ...input, action, company_id: companyId });
+      return companyId;
+    },
+    onSuccess: async (changedCompanyId) => {
+      await qc.invalidateQueries({ queryKey: ["team", changedCompanyId] });
+      await refreshMembership();
+    },
+  });
+}
+
+export const useInviteTeamMember = () => useTeamChange("invite");
+export const useSetTeamRole = () => useTeamChange("set_role");
+export const useRemoveTeamMember = () => useTeamChange("remove_member");
+export const useRevokeTeamInvitation = () => useTeamChange("revoke_invitation");
 
 /* ----------------------------- Audit logs ----------------------------- */
 export function useAuditLogs() {

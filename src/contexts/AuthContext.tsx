@@ -1,6 +1,7 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
+import { invokeTenantAdmin, loadActiveMembership } from "@/lib/tenantAdmin";
 
 type Role = "super_admin" | "company_admin" | "finance_officer" | "staff_user";
 
@@ -23,49 +24,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
+  const currentUid = useRef<string | null>(null);
+  const membershipRequest = useRef(0);
 
   const loadMembership = async (uid: string) => {
-    const { data: member } = await supabase
-      .from("company_members")
-      .select("company_id")
-      .eq("user_id", uid)
-      .eq("status", "Active")
-      .maybeSingle();
-    setCompanyId(member?.company_id ?? null);
-
-    const { data: roleRows } = await supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", uid);
-    setRoles((roleRows ?? []).map((r) => r.role as Role));
+    const request = ++membershipRequest.current;
+    try {
+      const membership = await loadActiveMembership(uid);
+      if (currentUid.current !== uid || request !== membershipRequest.current) return;
+      setCompanyId(membership.companyId);
+      setRoles(membership.roles as Role[]);
+    } catch {
+      if (currentUid.current !== uid || request !== membershipRequest.current) return;
+      setCompanyId(null);
+      setRoles([]);
+    }
   };
 
   useEffect(() => {
-    // 1. Subscribe to auth changes BEFORE getSession (per Lovable Cloud guidance)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
+    let disposed = false;
+    let loadedUid: string | null = null;
+    let generation = 0;
+    const applySession = (sess: Session | null) => {
+      if (disposed) return;
       setSession(sess);
       setUser(sess?.user ?? null);
-      if (sess?.user) {
-        // Defer Supabase calls to avoid deadlocks
-        setTimeout(() => loadMembership(sess.user.id), 0);
-      } else {
-        setCompanyId(null);
-        setRoles([]);
-      }
-    });
-
-    // 2. Then get current session
+      const uid = sess?.user.id ?? null;
+      currentUid.current = uid;
+      if (uid && loadedUid === uid) return;
+      loadedUid = uid;
+      const run = ++generation;
+      ++membershipRequest.current;
+      setCompanyId(null);
+      setRoles([]);
+      setLoading(!!uid);
+      if (!uid) return;
+      // Defer authenticated requests outside the auth callback. Initial-session
+      // and getSession duplicates share this run; token refresh never re-accepts.
+      setTimeout(async () => {
+        if (disposed || run !== generation) return;
+        try { await invokeTenantAdmin({ action: "accept_invitation" }); }
+        catch { /* No pending invite or a failed acceptance never grants access. */ }
+        if (disposed || run !== generation) return;
+        await loadMembership(uid);
+        if (!disposed && run === generation) setLoading(false);
+      }, 0);
+    };
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => applySession(sess));
     supabase.auth.getSession().then(({ data: { session: sess } }) => {
-      setSession(sess);
-      setUser(sess?.user ?? null);
-      if (sess?.user) {
-        loadMembership(sess.user.id).finally(() => setLoading(false));
-      } else {
-        setLoading(false);
+      // An auth event that already loaded a user wins over the initial read.
+      if (!loadedUid) applySession(sess);
+    }).catch(() => {
+      if (!disposed && !loadedUid) {
+        applySession(null);
       }
     });
-
-    return () => subscription.unsubscribe();
+    return () => { disposed = true; ++generation; ++membershipRequest.current; subscription.unsubscribe(); };
   }, []);
 
   const signOut = async () => {

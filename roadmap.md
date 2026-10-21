@@ -1,5 +1,10 @@
 # Frontend SI → APP alignment
 
+## Tenant team management (preview only)
+- [ ] Implement tenant-admin team list, invitations, role changes, removal and revocation UI
+- [ ] Accept invitations once on authenticated user load and reload Active-only membership
+- [ ] Add team/auth regression tests and verify available checks (no production deployment)
+
 - [x] Audit NRS/APP settings, onboarding, invoice workflow, and public documentation
 - [x] Replace credential-oriented settings with honest APP connection setup
 - [x] Align onboarding and invoice labels/actions with SI → APP architecture
