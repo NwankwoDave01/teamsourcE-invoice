@@ -11,11 +11,12 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrentCompany } from "@/hooks/useCompanyData";
+import { teamRoleLabels } from "@/lib/tenantAdmin";
 
 export function TopBar({ variant = "tenant" }: { variant?: "tenant" | "admin" }) {
   const navigate = useNavigate();
   const isAdmin = variant === "admin";
-  const { user, isSuperAdmin, signOut } = useAuth();
+  const { user, roles, isSuperAdmin, signOut } = useAuth();
   const { data: company } = useCurrentCompany();
 
   const displayName = (user?.user_metadata?.display_name as string) || user?.email?.split("@")[0] || "User";
@@ -25,6 +26,16 @@ export function TopBar({ variant = "tenant" }: { variant?: "tenant" | "admin" })
     await signOut();
     navigate("/auth/login", { replace: true });
   };
+
+  const tenantRole = roles.find((r) => r === "company_admin")
+    || roles.find((r) => r === "finance_officer")
+    || roles.find((r) => r === "staff_user");
+
+  const roleLabel = isAdmin || isSuperAdmin
+    ? "Super Admin"
+    : tenantRole
+    ? teamRoleLabels[tenantRole] ?? "Member"
+    : "Member";
 
   return (
     <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-card px-4">
@@ -99,7 +110,7 @@ export function TopBar({ variant = "tenant" }: { variant?: "tenant" | "admin" })
               <div className="hidden flex-col items-start text-left leading-tight md:flex">
                 <span className="text-xs font-medium">{displayName}</span>
                 <span className="text-[10px] text-muted-foreground">
-                  {isAdmin ? "Super Admin" : isSuperAdmin ? "Super Admin" : "Company Admin"}
+                  {roleLabel}
                 </span>
               </div>
             </Button>
