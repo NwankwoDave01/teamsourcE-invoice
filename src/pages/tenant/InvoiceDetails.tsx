@@ -32,7 +32,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useNrsSubmissionHistory } from "@/hooks/useNrsSubmissionHistory";
 import { hasDeviceAttempt, submissionBlockReason } from "@/lib/nrs/submissionSafety";
 import { resolveQrImageSource } from "@/lib/nrs/qrDisplay";
-import type { SubmitResult } from "@/lib/nrs/submitContract";
+import { submissionStageLabel, type SubmitResult } from "@/lib/nrs/submitContract";
 import { SubmissionBadge, submissionLabel } from "@/components/shared/SubmissionBadge";
 import { downloadInvoicePdf } from "@/lib/pdfExport";
 import { PrintableInvoice } from "@/components/shared/PrintableInvoice";
@@ -48,14 +48,14 @@ import {
 } from "@/components/ui/alert-dialog";
 
 const NEXT_STATUS: Partial<Record<DBInvoiceStatus, DBInvoiceStatus>> = {
-  Draft: "In Review",
-  "In Review": "Approved",
+  Draft: "Ready",
+  "In Review": "Ready",
   Approved: "Ready",
 };
 
 const NEXT_LABEL: Partial<Record<DBInvoiceStatus, string>> = {
-  Draft: "Submit for review",
-  "In Review": "Approve",
+  Draft: "Mark as ready",
+  "In Review": "Mark as ready",
   Approved: "Mark as ready",
   Ready: "Validate & sign (NRS sandbox)",
 };
@@ -111,8 +111,12 @@ export default function InvoiceDetails() {
     );
   }
 
-  const workflow = INVOICE_STATUSES.filter((s) => ["Draft", "In Review", "Approved", "Ready"].includes(s));
-  const currentIdx = workflow.indexOf(invoice.status as (typeof workflow)[number]);
+  const workflow = INVOICE_STATUSES.filter((s) => ["Draft", "Ready"].includes(s));
+  const currentIdx = ["Draft", "In Review", "Approved"].includes(invoice.status)
+    ? 0
+    : ["Ready", "Submitted", "Validated", "Signed", "Confirmed"].includes(invoice.status)
+      ? workflow.indexOf("Ready")
+      : -1;
   const nextStatus = NEXT_STATUS[invoice.status];
   const nextLabel = NEXT_LABEL[invoice.status];
   const blocked = submissionBlockReason(invoice, companyId, history.isSuccess && !history.isFetching ? history.data : undefined, hasDeviceAttempt(user?.id, companyId, invoice.id));
@@ -130,7 +134,7 @@ export default function InvoiceDetails() {
         setLastResult(res);
         await refetchInvoice();
         if (res.kind === "success") toast.success(res.message);
-        else if (res.kind === "rejected") toast.error(res.message, { description: res.details ?? undefined });
+        else if (res.kind === "rejected" || res.kind === "failed") toast.error(res.message, { description: res.details ?? undefined });
         else toast.warning(res.message, { description: res.details ?? undefined });
       } finally {
         setSubmitting(false);
@@ -272,8 +276,9 @@ export default function InvoiceDetails() {
 
             {invoice.status === "Ready" && blocked && <p role="alert" className="mt-4 text-sm text-warning">{blocked} Backend safeguards remain authoritative across devices.</p>}
             {lastResult && lastResult.kind !== "success" && (
-              <div role="alert" className={cn("mt-6 rounded-md border p-4 text-sm", lastResult.kind === "rejected" ? "border-destructive/30 bg-destructive/5" : "border-warning/30 bg-warning/5")}>
-                <p className="font-medium">{lastResult.kind === "rejected" ? "Rejected" : "Result unconfirmed"}</p>
+              <div role="alert" className={cn("mt-6 rounded-md border p-4 text-sm", lastResult.kind === "unconfirmed" ? "border-warning/30 bg-warning/5" : "border-destructive/30 bg-destructive/5")}>
+                <p className="font-medium">{lastResult.kind === "rejected" ? "Rejected" : lastResult.kind === "failed" ? "Submission failed" : "Result unconfirmed"}</p>
+                {lastResult.stage && <p className="mt-1 text-xs font-medium">Stage: {submissionStageLabel(lastResult.stage)} · Status: {lastResult.kind}</p>}
                 <p className="mt-1 text-muted-foreground">{lastResult.message}</p>
                 {lastResult.details && <p className="mt-1 break-words text-xs text-muted-foreground">{lastResult.details}</p>}
                 <p className="mt-2 text-xs text-muted-foreground">Next step: {lastResult.retrySafe ? "correct the invoice data, then request review before retrying." : "the invoice status has been refreshed. Contact support to review the recorded attempt before trying again."}</p>
@@ -387,7 +392,7 @@ export default function InvoiceDetails() {
         <div className="space-y-6">
           <Card className="p-5 shadow-elegant-sm">
             <h3 className="text-base font-semibold">Compliance workflow</h3>
-            <p className="mb-4 text-xs text-muted-foreground">Draft → approval → NRS sandbox signing (APP handoff planned)</p>
+            <p className="mb-4 text-xs text-muted-foreground">Draft → Ready → Validate & sign (NRS sandbox)</p>
             <ol className="space-y-3">
               {workflow.map((s, i) => {
                 const done = i <= currentIdx;

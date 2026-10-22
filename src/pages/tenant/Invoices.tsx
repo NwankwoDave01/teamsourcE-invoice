@@ -396,7 +396,7 @@ export default function Invoices() {
     try {
       const res = await submitToNrs(id);
       if (res.kind === "success") toast.success(`${inv.number}: ${res.message}`);
-      else if (res.kind === "rejected") {
+      else if (res.kind === "rejected" || res.kind === "failed") {
         toast.error(`${inv.number}: ${res.message}`, { description: res.details ?? undefined });
       } else {
         toast.warning(`${inv.number}: ${res.message}`, { description: res.details ?? undefined });
@@ -424,6 +424,7 @@ export default function Invoices() {
     setSubmittingToApp(true);
     let success = 0,
       rejected = 0,
+      failed = 0,
       unconfirmed = 0;
     try {
       // Sequential on purpose: stop the batch on the first unconfirmed outcome.
@@ -432,14 +433,16 @@ export default function Invoices() {
         if (res.kind === "success") success++;
         else {
           if (res.kind === "rejected") rejected++;
+          else if (res.kind === "failed") failed++;
           else unconfirmed++;
           if (res.kind === "unconfirmed") break;
         }
       }
-      const notRun = eligible.length - success - rejected - unconfirmed;
+      const notRun = eligible.length - success - rejected - failed - unconfirmed;
       if (success > 0)
         toast.success(`${success} invoice${success === 1 ? "" : "s"} validated and signed (NRS sandbox)`);
       if (rejected > 0) toast.error(`${rejected} rejected — open each invoice for details`);
+      if (failed > 0) toast.error(`${failed} failed — open each invoice for details`);
       if (unconfirmed > 0)
         toast.warning(
           `1 result unconfirmed — batch stopped. ${notRun} not sent. Do not resubmit until status is reviewed.`,
