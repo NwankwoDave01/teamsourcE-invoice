@@ -49,6 +49,7 @@ function Probe() {
 }
 
 beforeEach(() => {
+  window.history.replaceState({}, "", "/auth/login");
   filters = [];
   activeMember = { company_id: "company-a" };
   mocks.invoke.mockReset().mockResolvedValue({
@@ -80,11 +81,11 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); window.history.replaceState({}, "", "/"); });
 
 describe("Authentication & Invitation Flow Safeguards", () => {
   describe("AuthProvider normal sign-in", () => {
-    it("does NOT automatically invoke accept_invitation during normal session load", async () => {
+    it("accepts once before reading Active membership during normal session load", async () => {
       mocks.getSession.mockResolvedValueOnce({ data: { session } });
       render(
         <AuthProvider>
@@ -92,8 +93,8 @@ describe("Authentication & Invitation Flow Safeguards", () => {
         </AuthProvider>
       );
       await screen.findByText("company-a:company_admin");
-      // Must NOT invoke accept_invitation automatically
-      expect(mocks.invoke).not.toHaveBeenCalledWith("tenant-admin", { body: { action: "accept_invitation" } });
+      expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", { body: { action: "accept_invitation" } });
+      expect(mocks.invoke.mock.invocationCallOrder[0]).toBeLessThan(mocks.from.mock.invocationCallOrder[0]);
       // Must only query Active company_members
       expect(filters).toContainEqual(["user_id", "user-a"]);
       expect(filters).toContainEqual(["status", "Active"]);
@@ -113,6 +114,37 @@ describe("Authentication & Invitation Flow Safeguards", () => {
         mocks.callback?.("TOKEN_REFRESHED", session);
       });
       expect(mocks.from.mock.calls.length).toBe(initialFromCalls);
+      expect(mocks.invoke).toHaveBeenCalledTimes(1);
+    });
+
+    it("fails safely on no pending invite and still requires Active membership", async () => {
+      mocks.getSession.mockResolvedValueOnce({ data: { session } });
+      mocks.invoke.mockResolvedValueOnce({ data: { ok: false, error: "No pending invitation" }, error: null });
+      activeMember = null;
+      render(<AuthProvider><Probe /></AuthProvider>);
+      await screen.findByText("no-company:");
+      expect(filters).toContainEqual(["status", "Active"]);
+    });
+
+    it("does not auto-accept on the explicit invitation setup page", async () => {
+      window.history.replaceState({}, "", "/auth/accept-invite");
+      mocks.getSession.mockResolvedValueOnce({ data: { session } });
+      activeMember = null;
+      render(<AuthProvider><Probe /></AuthProvider>);
+      await screen.findByText("no-company:");
+      expect(mocks.invoke).not.toHaveBeenCalled();
+    });
+
+    it("ignores an acceptance response after sign-out", async () => {
+      let finish: ((value: unknown) => void) | undefined;
+      mocks.invoke.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+      mocks.getSession.mockResolvedValueOnce({ data: { session } });
+      render(<AuthProvider><Probe /></AuthProvider>);
+      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+      act(() => { mocks.callback?.("SIGNED_OUT", null); });
+      await act(async () => { finish?.({ data: { ok: true }, error: null }); });
+      await screen.findByText("no-company:");
+      expect(mocks.from).not.toHaveBeenCalled();
     });
 
     it("leaves companyId as null when user has no active membership", async () => {

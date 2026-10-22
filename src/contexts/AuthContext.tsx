@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
-import { loadActiveMembership } from "@/lib/tenantAdmin";
+import { acceptTenantInvitation, loadActiveMembership } from "@/lib/tenantAdmin";
 
 type Role = "super_admin" | "company_admin" | "finance_officer" | "staff_user";
 
@@ -64,6 +64,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // and getSession duplicates share this run; token refresh does not trigger duplicate loads.
       setTimeout(async () => {
         if (disposed || run !== generation) return;
+        // The invite-link page owns password setup and explicit acceptance.
+        // Other session loads reconcile eligible invitations once; refresh events
+        // for the same user must not repeat this request.
+        if (window.location.pathname.replace(/\/$/, "") !== "/auth/accept-invite") {
+          try {
+            await acceptTenantInvitation();
+          } catch {
+            // No eligible invitation is normal. Access still requires the
+            // subsequent server-owned Active membership read to succeed.
+          }
+        }
+        if (disposed || run !== generation || currentUid.current !== uid) return;
         await loadMembership(uid);
         if (!disposed && run === generation) setLoading(false);
       }, 0);
@@ -88,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const refreshMembership = async () => {
-    const uid = currentUid.current ?? user?.id;
+    const uid = currentUid.current;
     if (uid) await loadMembership(uid);
   };
 

@@ -65,7 +65,7 @@ function TeamContent({ canManage }: { canManage: boolean }) {
   const errorNotice = error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null;
 
   return <div>
-    <PageHeader title="Team" description="Manage users and their access roles." actions={canManage ? <Button size="sm" className="gap-1.5" onClick={() => { setError(null); setInviteOpen(true); }}><Plus className="h-4 w-4" />Invite member</Button> : undefined} />
+    <PageHeader title="Team" description="Manage users and their access roles." actions={canManage ? <Button size="sm" className="gap-1.5" disabled={busy || team.isFetching} onClick={() => { setError(null); setInviteOpen(true); }}><Plus className="h-4 w-4" />Invite member</Button> : undefined} />
     <div className="space-y-4 p-6">
       {!canManage ? <p className="text-sm text-muted-foreground">Only active company admins can manage the team.</p> : <>
         {errorNotice}

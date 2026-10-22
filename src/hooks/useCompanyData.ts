@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { Database } from "@/integrations/supabase/types";
-import { invokeTenantAdmin, parseTeam, type TeamChange } from "@/lib/tenantAdmin";
+import { invokeTenantAdmin, parseTeam, tenantRoles, type TeamChange } from "@/lib/tenantAdmin";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AppDatabase } from "@/integrations/supabase/appSchema";
 import type { Json } from "@/integrations/supabase/types";
@@ -556,7 +556,27 @@ function useTeamChange<Action extends TeamChange["action"]>(action: Action) {
   return useMutation({
     mutationFn: async (input: Omit<Extract<TeamChange, { action: Action }>, "action">) => {
       if (!companyId || (!isSuperAdmin && !roles.includes("company_admin"))) throw new Error("An active company admin is required.");
-      await invokeTenantAdmin({ ...input, action, company_id: companyId });
+      // Allowlist request fields even if a caller supplies extra runtime values.
+      const change: Record<string, unknown> = { ...input };
+      if ((action === "invite" || action === "set_role") && !tenantRoles.some((role) => role === change.role)) {
+        throw new Error("Choose a supported tenant role.");
+      }
+      let body: Record<string, unknown>;
+      switch (action) {
+        case "invite":
+          body = { action, company_id: companyId, email: change.email, display_name: change.display_name, role: change.role };
+          break;
+        case "set_role":
+          body = { action, company_id: companyId, user_id: change.user_id, role: change.role };
+          break;
+        case "remove_member":
+          body = { action, company_id: companyId, user_id: change.user_id };
+          break;
+        case "revoke_invitation":
+          body = { action, company_id: companyId, invitation_id: change.invitation_id };
+          break;
+      }
+      await invokeTenantAdmin(body);
       return companyId;
     },
     onSuccess: async (changedCompanyId) => {

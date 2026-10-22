@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Team from "@/pages/tenant/Team";
 import { parseTeam, tenantRoles } from "@/lib/tenantAdmin";
+import { useInviteTeamMember } from "@/hooks/useCompanyData";
 
 const mocks = vi.hoisted(() => ({ invoke: vi.fn(), roles: ["company_admin"], refreshMembership: vi.fn() }));
 vi.mock("@/integrations/supabase/client", () => ({ supabase: { functions: { invoke: mocks.invoke } } }));
@@ -74,5 +75,27 @@ describe("tenant team management", () => {
   });
   it("rejects an incomplete list instead of showing an empty successful team", () => {
     expect(() => parseTeam({ ok: true, members: [] })).toThrow();
+  });
+  it("uses only allowed invite fields and the authenticated company", async () => {
+    client = new QueryClient({ defaultOptions: { mutations: { retry: false } } });
+    const { result } = renderHook(() => useInviteTeamMember(), {
+      wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    });
+    const input = { email: "new@example.test", display_name: "New", role: "staff_user" as const, company_id: "other-company", user_id: "other-user" };
+    await act(async () => { await result.current.mutateAsync(input); });
+    expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", { body: { action: "invite", company_id: "company-a", email: "new@example.test", display_name: "New", role: "staff_user" } });
+  });
+  it.each(["set_role", "remove_member", "revoke_invitation"])("shows %s failures without treating the change as successful", async (action) => {
+    mocks.invoke.mockImplementation(async (_name, { body }) => ({ data: body.action === "list" ? { ok: true, members: [member], invitations: [invitation] } : { ok: false, error: "Change denied" }, error: null }));
+    openTeam(); await screen.findByText("member@example.test");
+    if (action === "set_role") {
+      fireEvent.keyDown(screen.getByRole("combobox", { name: "Role for member@example.test" }), { key: "ArrowDown" });
+      fireEvent.click(await screen.findByRole("option", { name: "Finance Officer" }));
+    } else {
+      fireEvent.click(screen.getByRole("button", { name: action === "remove_member" ? "Remove" : "Revoke invitation" }));
+      fireEvent.click(screen.getByRole("button", { name: action === "remove_member" ? "Confirm removal" : "Confirm revocation" }));
+    }
+    await waitFor(() => expect(screen.getAllByRole("alert").some((el) => el.textContent === "Change denied")).toBe(true));
+    expect(mocks.invoke.mock.calls.filter(([, { body }]) => body.action === "list")).toHaveLength(1);
   });
 });
