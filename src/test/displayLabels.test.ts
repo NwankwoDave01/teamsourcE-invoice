@@ -30,7 +30,7 @@ describe("invoiceTypeDisplayLabel", () => {
   });
 
   it("falls back to label, then code, when metadata is missing, blank or repeats the code", () => {
-    expect(invoiceTypeDisplayLabel(row("325", "Proforma Invoice"))).toBe("Proforma Invoice");
+    expect(invoiceTypeDisplayLabel(row("390", "Proforma Invoice"))).toBe("Proforma Invoice");
     expect(invoiceTypeDisplayLabel(row("456", "456", { value: "   " }))).toBe("456");
     expect(invoiceTypeDisplayLabel(row("457", "457", { value: "457" }))).toBe("457");
     expect(invoiceTypeDisplayLabel(row("777", "777"))).toBe("777");

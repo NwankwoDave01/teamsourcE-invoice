@@ -4,26 +4,27 @@ DO $$
 DECLARE
   unexpected_values TEXT;
 BEGIN
-  SELECT string_agg(DISTINCT quote_literal(trim(invoice_type::text)), ', ')
+  SELECT string_agg(
+    DISTINCT COALESCE(quote_literal(trim(invoice_type::text)), 'NULL'),
+    ', '
+  )
   INTO unexpected_values
   FROM public.invoices
-  WHERE invoice_type IS NOT NULL
-    AND (
-      trim(invoice_type::text) = ''
-      OR lower(trim(invoice_type::text)) NOT IN (
-        '380', '381', '384', '385', '386', '388', '389', '390', '392', '393',
-        '394', '395', '396', '397', '399', '400', '402', '404', '406', '408',
-        'commercial',
-        'commercial_invoice',
-        'credit_note',
-        'credit-note',
-        'credit note',
-        'debit_note',
-        'debit-note',
-        'debit note',
-        'proforma',
-        'proforma_invoice'
-      )
+  WHERE invoice_type IS NULL
+    OR trim(invoice_type::text) = ''
+    OR lower(trim(invoice_type::text)) NOT IN (
+      '380', '381', '384', '385', '386', '388', '389', '390', '392', '393',
+      '394', '395', '396', '397', '399', '400', '402', '404', '406', '408',
+      'commercial',
+      'commercial_invoice',
+      'credit_note',
+      'credit-note',
+      'credit note',
+      'debit_note',
+      'debit-note',
+      'debit note',
+      'proforma',
+      'proforma_invoice'
     );
 
   IF unexpected_values IS NOT NULL THEN
@@ -74,3 +75,7 @@ DO UPDATE SET label = EXCLUDED.label;
 DELETE FROM public.nrs_master_data
 WHERE resource_type = 'invoice-types'
   AND code = '383';
+
+DELETE FROM public.nrs_master_data
+WHERE resource_type = 'invoice-types'
+  AND code = '325';

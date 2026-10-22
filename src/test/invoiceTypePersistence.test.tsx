@@ -32,6 +32,8 @@ vi.mock("@/hooks/useNrsMasterData", () => ({
           { code: "381", label: "Credit Note", metadata: null },
           { code: "384", label: "Debit Note", metadata: null },
           { code: "393", label: "Self-billed Credit Note", metadata: null },
+          { code: "390", label: "Proforma Invoice", metadata: null },
+          { code: "325", label: "Proforma Invoice", metadata: null },
         ]
       : resourceType === "currencies"
         ? [{ code: "NGN", label: "NGN — Nigerian Naira" }]
@@ -130,6 +132,23 @@ describe("invoice type selection and persistence", () => {
 
     expect(invoiceMocks.createMutateAsync).toHaveBeenCalledWith(
       expect.objectContaining({ invoice_type: "380" }),
+    );
+  });
+
+  it("does not offer unsupported legacy catalogue code 325", async () => {
+    renderInvoice("/app/invoices/new");
+
+    const trigger = screen.getByText("Invoice type").parentElement?.querySelector("[role=combobox]");
+    expect(trigger).not.toBeNull();
+    fireEvent.keyDown(trigger!, { key: "Enter" });
+
+    const proformaOption = await screen.findByRole("option", { name: "Proforma Invoice" });
+    expect(screen.getAllByRole("option", { name: "Proforma Invoice" })).toHaveLength(1);
+    fireEvent.click(proformaOption);
+    await saveDraft();
+
+    expect(invoiceMocks.createMutateAsync).toHaveBeenCalledWith(
+      expect.objectContaining({ invoice_type: "390" }),
     );
   });
 
