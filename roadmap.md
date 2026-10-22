@@ -48,10 +48,10 @@ External deployment version and authenticated live save/disconnect remain unveri
 
 ## Dropdown display labels (preview only)
 - [x] Frontend-only label resolver for invoice type and payment means (metadata.value, then label, then code)
-- [x] Explicit display overrides 380 Commercial Invoice, 381 Credit Note, 383 Debit Note; values stay the stored codes
-- [x] Backend master-data rows, payload mapping and selected values untouched
+- [x] Explicit display overrides 380 Credit Note, 381 Commercial Invoice, 384 Debit Note; values stay the stored codes
+- [x] Corrected the stale seeded labels and invoice-type default with a forward migration; existing numeric invoice records are not rewritten
 
-## Invoice type code alignment (nrs-submit v82)
-- [x] INVOICE_TYPE_CODE: commercial 380, credit_note 381, debit_note 383, corrected 384, proforma 325
-- [x] Shared normalizeInvoiceTypeCode (empty/commercial->380, 3-digit codes preserved, aliases mapped, fallback 380) used by buildPayload.ts and the checked-in nrs-submit copy
-- [x] Focused mapping tests; typecheck/tests/build passed (lint: new files clean, pre-existing any errors in buildPayload.ts untouched)
+## Invoice type code alignment
+- [x] Canonical NRS codes: 380 Credit Note, 381 Commercial Invoice, 384 Debit Note; other supported codes remain explicit and unsupported values fail validation
+- [x] Invoice-type option values pass unchanged through create, edit, duplicate, and NRS payload construction
+- [x] Forward migration corrects the database default and seeded labels without rewriting existing invoice records

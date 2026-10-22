@@ -20,9 +20,9 @@ export function useNrsSubmit() {
       if (blocked) return { kind: "unconfirmed", stage: null, retrySafe: false, message: blocked, details: null };
       markDeviceAttempt(user.id, companyId, invoiceId);
       const { data, error } = await supabase.functions.invoke("nrs-submit", { body: { invoice_id: invoiceId } });
-      result = parseSubmitResult(data, error);
+      result = await parseSubmitResult(data, error);
     } catch (e) {
-      result = parseSubmitResult(null, e ?? new Error("invoke failed"));
+      result = await parseSubmitResult(null, e ?? new Error("invoke failed"));
     }
     await Promise.all([
       qc.invalidateQueries({ queryKey: ["invoices"] }),

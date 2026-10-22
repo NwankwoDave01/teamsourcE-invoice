@@ -21,7 +21,6 @@ describe("invoiceTypeDisplayLabel", () => {
       "Commercial Invoice"
     );
     expect(invoiceTypeDisplayLabel(row("384", "384", { value: "Debit Note" }))).toBe("Debit Note");
-    expect(invoiceTypeDisplayLabel(row("383", "Debit Note"))).toBe("Debit Note");
   });
 
   it("prefers metadata.value for codes without an override", () => {

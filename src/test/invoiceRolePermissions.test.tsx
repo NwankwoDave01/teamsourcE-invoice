@@ -297,4 +297,29 @@ describe("Invoice role permissions enforcement", () => {
       expect(screen.getByRole("button", { name: /Mark as rejected/i })).toBeInTheDocument();
     });
   });
+
+  it("shows confirmed NRS rejection details and validation stage in InvoiceDetails", async () => {
+    authMock.roles = ["finance_officer"];
+    invoiceDataMock.currentInvoice = {
+      ...invoiceDataMock.invoices[0],
+      status: "Ready",
+      submission_status: "not_submitted",
+    };
+    invoiceDataMock.nrsSubmit.mockResolvedValueOnce({
+      kind: "rejected",
+      stage: "validate",
+      retrySafe: false,
+      message: "NRS validation rejected: Invoice validation failed.",
+      details: "invoicerequest.invoice.billingreference: [REQUIRED] billingreference is required for credit note and debit note invoices.",
+    });
+
+    renderInvoiceDetailsPage("inv-draft-001");
+    fireEvent.click(screen.getByRole("button", { name: /Validate & sign \(NRS sandbox\)/i }));
+
+    const result = await screen.findByRole("alert");
+    expect(result).toHaveTextContent("Rejected");
+    expect(result).toHaveTextContent("Stage: NRS validation · Status: rejected");
+    expect(result).toHaveTextContent("billingreference is required for credit note and debit note invoices");
+    expect(result).not.toHaveTextContent("Result unconfirmed");
+  });
 });

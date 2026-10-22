@@ -171,7 +171,7 @@ async function signNrsInvoice(baseUrl: string, credentials: NrsCredentials, payl
   });
   const responseBody = await readResponseBody(signRes);
 
-  if (!signRes.ok) {
+  if (!signRes.ok || responseBody?.status === false) {
     const failedResponse = typeof responseBody === "object" && responseBody !== null
       ? responseBody
       : { message: `NRS signing failed with HTTP ${signRes.status}` };
@@ -208,7 +208,7 @@ async function transmitNrsInvoice(baseUrl: string, credentials: NrsCredentials, 
   });
   const responseBody = await readResponseBody(transmitRes);
 
-  if (!transmitRes.ok) {
+  if (!transmitRes.ok || responseBody?.status === false) {
     const failedResponse = typeof responseBody === "object" && responseBody !== null
       ? responseBody
       : { message: `NRS transmission failed with HTTP ${transmitRes.status}` };
@@ -437,6 +437,7 @@ Deno.serve(async (req: Request) => {
 
     const environment: string = (company as any)?.nrs_environment ?? "mock";
     const serviceId: string | null = (company as any)?.nrs_service_id ?? null;
+    let submissionStage = "local_validation";
 
     const normalizedInvoiceType = normalizeInvoiceTypeCode(invoice.invoice_type);
     if ("reason" in normalizedInvoiceType) {
@@ -460,13 +461,20 @@ Deno.serve(async (req: Request) => {
       if (logErr) {
         console.error("nrs_submissions insert failed", logErr.message);
       }
-      return json({ error: validationErrors[0].message, errors: validationErrors }, 400);
+      return json({
+        ok: false,
+        stage: submissionStage,
+        outcome: "rejected",
+        error: validationErrors[0].message,
+        errors: validationErrors,
+      }, 400);
     }
 
     // IRN: reuse existing if already persisted, otherwise build & persist
     const irn = invoice.irn ?? buildIrn(invoice.number, serviceId, invoice.issue_date);
     const payload = buildPayload(invoice, lines ?? [], company, customer, irn, normalizedInvoiceType.code);
 
+    submissionStage = "validate";
     let response: any;
     let httpStatus = 200;
     let submissionStatus = "signed";
@@ -484,6 +492,7 @@ Deno.serve(async (req: Request) => {
         httpStatus = 422;
       } else {
         const signed = JSON.stringify(payload);
+        submissionStage = "sign";
         response = {
           status: true,
           message: "Mock submission successful",
@@ -499,9 +508,11 @@ Deno.serve(async (req: Request) => {
       const credentials = await loadNrsCredentials(supabase, invoice.company_id, company);
 
       // Step 0: Session Authentication
+      submissionStage = "authenticate";
       await authenticateNrsTaxpayer(baseUrl, credentials);
 
       // Step 1: Validate
+      submissionStage = "validate";
       const validateResult = await validateNrsInvoice(baseUrl, credentials, payload);
       response = validateResult.response;
       httpStatus = validateResult.httpStatus;
@@ -511,6 +522,7 @@ Deno.serve(async (req: Request) => {
         nextInvoiceStatus = "Rejected";
       } else {
         // Step 2: Sign
+        submissionStage = "sign";
         const signResult = await signNrsInvoice(baseUrl, credentials, payload);
         if (!signResult.ok) {
           response = signResult.response ?? { status: false, message: signResult.message };
@@ -522,6 +534,7 @@ Deno.serve(async (req: Request) => {
           const signedPayload = signResult.data;
 
           // Step 3: Transmit to Ledger
+          submissionStage = "transmit";
           const transmitResult = await transmitNrsInvoice(baseUrl, credentials, irn, signedPayload);
           if (!transmitResult.ok) {
             // Validate & Sign succeeded, but transmission failed.
@@ -577,10 +590,16 @@ Deno.serve(async (req: Request) => {
     // by leaving the invoice at "Signed". The UI can advance to "Confirmed" via the
     // existing manual workflow button. (Do not auto-jump silently to Confirmed.)
 
+    const confirmedSuccess = (submissionStatus === "signed" || submissionStatus === "validated")
+      && response.status !== false;
+    const outcome = confirmedSuccess ? "success" : submissionStage === "transmit" ? "failed" : "rejected";
     return json({
-      ok: response.status !== false,
+      ok: confirmedSuccess,
       environment,
       irn,
+      stage: submissionStage,
+      outcome,
+      status: confirmedSuccess,
       response,
     }, httpStatus === 422 ? 200 : 200);
   } catch (e) {
