@@ -10,7 +10,9 @@ const migration = readFileSync(
 describe("invoice type correction migration safeguards", () => {
   it("aborts when any invoice type is NULL", () => {
     expect(migration).toMatch(/WHERE invoice_type IS NULL/);
-    expect(migration).toMatch(/COALESCE\(quote_literal\(trim\(invoice_type::text\)\), 'NULL'\)/);
+    expect(migration).toMatch(
+      /CASE\s+WHEN invoice_type IS NULL THEN 'NULL'\s+ELSE quote_literal\(trim\(invoice_type::text\)\)\s+END/,
+    );
   });
 
   it("uses the same supported numeric invoice type codes as the frontend", () => {

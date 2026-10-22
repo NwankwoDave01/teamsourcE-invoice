@@ -5,7 +5,10 @@ DECLARE
   unexpected_values TEXT;
 BEGIN
   SELECT string_agg(
-    DISTINCT COALESCE(quote_literal(trim(invoice_type::text)), 'NULL'),
+    DISTINCT CASE
+      WHEN invoice_type IS NULL THEN 'NULL'
+      ELSE quote_literal(trim(invoice_type::text))
+    END,
     ', '
   )
   INTO unexpected_values
