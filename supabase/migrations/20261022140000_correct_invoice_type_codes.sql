@@ -10,20 +10,19 @@ BEGIN
   WHERE invoice_type IS NOT NULL
     AND (
       trim(invoice_type::text) = ''
-      OR (
-        trim(invoice_type::text) !~ '^[0-9]+$'
-        AND lower(trim(invoice_type::text)) NOT IN (
-          'commercial',
-          'commercial_invoice',
-          'credit_note',
-          'credit-note',
-          'credit note',
-          'debit_note',
-          'debit-note',
-          'debit note',
-          'proforma',
-          'proforma_invoice'
-        )
+      OR lower(trim(invoice_type::text)) NOT IN (
+        '380', '381', '384', '385', '386', '388', '389', '390', '392', '393',
+        '394', '395', '396', '397', '399', '400', '402', '404', '406', '408',
+        'commercial',
+        'commercial_invoice',
+        'credit_note',
+        'credit-note',
+        'credit note',
+        'debit_note',
+        'debit-note',
+        'debit note',
+        'proforma',
+        'proforma_invoice'
       )
     );
 
