@@ -19,9 +19,6 @@ const NRS_AUTHENTICATE_PATH = "/api/v1/utilities/authenticate";
 const NRS_VALIDATE_PATH = "/api/v1/invoice/validate";
 const NRS_SIGN_PATH = "/api/v1/invoice/sign";
 const NRS_TRANSMIT_PATH = "/api/v1/invoice/transmit";
-// Invoice type mapping aligned with deployed v82: missing/empty/"commercial"
-// -> "380", three-digit numeric codes preserved as-is, semantic aliases via
-// INVOICE_TYPE_CODE, safe fallback "380".
 import { normalizeInvoiceTypeCode } from "../../../src/lib/nrs/invoiceTypeCode.ts";
 const TAX_CATEGORY_ID: Record<string, string> = {
   S: "STANDARD_VAT",
@@ -266,7 +263,14 @@ function buildParty(source: any, fallbackName: string | null | undefined) {
   });
 }
 
-function buildPayload(invoice: any, lines: any[], company: any, customer: any, irn: string) {
+function buildPayload(
+  invoice: any,
+  lines: any[],
+  company: any,
+  customer: any,
+  irn: string,
+  invoiceTypeCode: string,
+) {
   const builtLines = (lines ?? []).map((l: any, idx: number) => {
     const qty = Number(l.qty ?? 0);
     const unitPrice = Number(l.unit_price ?? 0);
@@ -312,7 +316,6 @@ function buildPayload(invoice: any, lines: any[], company: any, customer: any, i
   const discountTotal = Number(invoice.discount_total ?? 0);
   const grandTotal = round2(subtotal + taxTotal - discountTotal);
   const currency = (invoice.currency ?? "NGN").toUpperCase();
-  const invoiceTypeCode = normalizeInvoiceTypeCode(invoice.invoice_type);
   const taxSubtotals = Object.values(
     builtLines.reduce((groups: Record<string, any>, line: any) => {
       const key = `${line.tax_category}:${line.tax_rate}`;
@@ -435,9 +438,34 @@ Deno.serve(async (req: Request) => {
     const environment: string = (company as any)?.nrs_environment ?? "mock";
     const serviceId: string | null = (company as any)?.nrs_service_id ?? null;
 
+    const normalizedInvoiceType = normalizeInvoiceTypeCode(invoice.invoice_type);
+    if ("reason" in normalizedInvoiceType) {
+      const validationErrors = [{
+        field: "invoice.invoice_type",
+        code: normalizedInvoiceType.reason === "missing" ? "INVOICE_TYPE_REQUIRED" : "INVOICE_TYPE_UNSUPPORTED",
+        message: normalizedInvoiceType.reason === "missing"
+          ? "Invoice type is required."
+          : "Invoice type is not supported by the NRS resource.",
+      }];
+      const { error: logErr } = await supabase.from("nrs_submissions").insert({
+        company_id: invoice.company_id,
+        invoice_id: invoiceId,
+        payload: null,
+        validation_errors: validationErrors,
+        result: "rejected",
+        scenario: environment,
+        mock: environment === "mock",
+        created_by: userData.user.id,
+      });
+      if (logErr) {
+        console.error("nrs_submissions insert failed", logErr.message);
+      }
+      return json({ error: validationErrors[0].message, errors: validationErrors }, 400);
+    }
+
     // IRN: reuse existing if already persisted, otherwise build & persist
     const irn = invoice.irn ?? buildIrn(invoice.number, serviceId, invoice.issue_date);
-    const payload = buildPayload(invoice, lines ?? [], company, customer, irn);
+    const payload = buildPayload(invoice, lines ?? [], company, customer, irn, normalizedInvoiceType.code);
 
     let response: any;
     let httpStatus = 200;

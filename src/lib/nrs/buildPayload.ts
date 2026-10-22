@@ -35,6 +35,23 @@ export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult
     };
   }
 
+  const normalizedInvoiceType = normalizeInvoiceTypeCode(invoice.invoice_type);
+  if ("reason" in normalizedInvoiceType) {
+    return {
+      payload: null,
+      issues: [{
+        field: "invoice.invoice_type",
+        code: normalizedInvoiceType.reason === "missing" ? "INVOICE_TYPE_REQUIRED" : "INVOICE_TYPE_UNSUPPORTED",
+        message: normalizedInvoiceType.reason === "missing"
+          ? "Invoice type is required."
+          : "Invoice type is not supported by the NRS resource.",
+        severity: "error",
+      }],
+      hasErrors: true,
+      hasWarnings: false,
+    };
+  }
+
   const [{ data: lines }, { data: companyRaw }, customerRes] = await Promise.all([
     supabase.from("invoice_lines").select("*").eq("invoice_id", invoiceId).order("position"),
     supabase.from("companies").select("*").eq("id", invoice.company_id).maybeSingle(),
@@ -60,7 +77,7 @@ export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult
   }
 
   const currency = (invoice.currency ?? "NGN").toUpperCase();
-  const invoiceTypeCode = normalizeInvoiceTypeCode(invoice.invoice_type);
+  const invoiceTypeCode = normalizedInvoiceType.code;
 
   const builtLines: NrsLine[] = (lines ?? []).map((l: any, idx: number) => {
     const qty = Number(l.qty ?? 0);

@@ -106,12 +106,6 @@ const DEFAULT_CURRENCIES = [
   { code: "EUR", label: "EUR — Euro" },
 ];
 
-const DEFAULT_INVOICE_TYPES = [
-  { code: "396", label: "Commercial Invoice" },
-  { code: "381", label: "Credit Note" },
-  { code: "383", label: "Debit Note" },
-];
-
 export default function CreateInvoice({ mode = "create" }: { mode?: "create" | "edit" }) {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -146,7 +140,7 @@ export default function CreateInvoice({ mode = "create" }: { mode?: "create" | "
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<LineDraft[]>([newLine()]);
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
-  const [invoiceType, setInvoiceType] = useState<string>("380");
+  const [invoiceType, setInvoiceType] = useState<string>("381");
   const [transactionType, setTransactionType] = useState<string>("B2B");
   const [supplyDate, setSupplyDate] = useState<string>("");
   const [paymentMeansCode, setPaymentMeansCode] = useState<string>("");
@@ -172,7 +166,7 @@ export default function CreateInvoice({ mode = "create" }: { mode?: "create" | "
       }
       setPoRef(sourceInvoice.po_reference ?? "");
       setNotes(sourceInvoice.notes ?? "");
-      setInvoiceType(sourceInvoice.invoice_type ?? "380");
+      setInvoiceType(sourceInvoice.invoice_type ?? "381");
       setTransactionType(sourceInvoice.transaction_type ?? "B2B");
       setSupplyDate(sourceInvoice.supply_date ?? "");
       setPaymentMeansCode(sourceInvoice.payment_means_code ?? "");
