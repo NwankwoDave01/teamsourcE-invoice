@@ -92,6 +92,5 @@ export interface NrsBuildResult {
   hasWarnings: boolean;
 }
 
-// Map internal invoice_type enum -> NRS invoice type code.
-// Aligned with deployed nrs-submit v82 (commercial is 380, not 396).
+// Shared NRS invoice-type resource mapping and validation.
 export { INVOICE_TYPE_CODE, normalizeInvoiceTypeCode } from "./invoiceTypeCode";

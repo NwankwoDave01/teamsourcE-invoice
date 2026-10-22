@@ -8,16 +8,10 @@ import type { NRSResource } from "@/hooks/useNrsMasterData";
  * payload, and they never write to nrs_master_data.
  */
 
-/**
- * Explicit, frontend-only corrections for invoice-type rows whose stored
- * label/metadata are contradictory in nrs_master_data (verified by read-only
- * inspection): code 380 carries metadata.value "Credit Note" and code 381
- * carries "Commercial Invoice", i.e. the two are swapped. Codes are unchanged.
- */
 export const INVOICE_TYPE_DISPLAY_LABELS: Record<string, string> = {
-  "380": "Commercial Invoice",
-  "381": "Credit Note",
-  "383": "Debit Note",
+  "380": "Credit Note",
+  "381": "Commercial Invoice",
+  "384": "Debit Note",
 };
 
 function asText(value: unknown): string | null {

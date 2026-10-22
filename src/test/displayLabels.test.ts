@@ -13,25 +13,20 @@ const row = (code: string, label: string, metadata?: Record<string, unknown> | n
 });
 
 describe("invoiceTypeDisplayLabel", () => {
-  it("applies the frontend override to the swapped 380/381 rows", () => {
+  it("displays invoice-type labels according to the resource codes", () => {
     expect(invoiceTypeDisplayLabel(row("380", "380", { value: "Credit Note" }))).toBe(
-      "Commercial Invoice"
-    );
-    expect(invoiceTypeDisplayLabel(row("381", "381", { value: "Commercial Invoice" }))).toBe(
       "Credit Note"
     );
+    expect(invoiceTypeDisplayLabel(row("381", "381", { value: "Commercial Invoice" }))).toBe(
+      "Commercial Invoice"
+    );
+    expect(invoiceTypeDisplayLabel(row("384", "384", { value: "Debit Note" }))).toBe("Debit Note");
     expect(invoiceTypeDisplayLabel(row("383", "Debit Note"))).toBe("Debit Note");
   });
 
   it("prefers metadata.value for codes without an override", () => {
     expect(invoiceTypeDisplayLabel(row("396", "396", { value: "Invoice Request" }))).toBe(
       "Invoice Request"
-    );
-  });
-
-  it("does not show wording another invoice type already owns without naming the code", () => {
-    expect(invoiceTypeDisplayLabel(row("384", "384", { value: "Debit Note" }))).toBe(
-      "Debit Note (384)"
     );
   });
 
