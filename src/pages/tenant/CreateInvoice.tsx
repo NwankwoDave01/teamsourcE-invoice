@@ -52,6 +52,7 @@ import {
   type DBInvoiceStatus,
 } from "@/hooks/useCompanyData";
 import { TRANSACTION_TYPE_OPTIONS } from "@/lib/nrs/codes";
+import { NRS_INVOICE_TYPE_CODES } from "@/lib/nrs/invoiceTypeCode";
 import { useNrsMasterData } from "@/hooks/useNrsMasterData";
 import {
   invoiceTypeDisplayLabel,
@@ -106,6 +107,8 @@ const DEFAULT_CURRENCIES = [
   { code: "EUR", label: "EUR — Euro" },
 ];
 
+const supportedInvoiceTypeCodes: ReadonlySet<string> = new Set(NRS_INVOICE_TYPE_CODES);
+
 export default function CreateInvoice({ mode = "create" }: { mode?: "create" | "edit" }) {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
@@ -153,7 +156,9 @@ export default function CreateInvoice({ mode = "create" }: { mode?: "create" | "
 
   const currencies = currenciesRaw ?? [];
   const paymentMeans = paymentMeansRaw ?? [];
-  const invoiceTypes = invoiceTypesRaw ?? [];
+  const invoiceTypes = (invoiceTypesRaw ?? []).filter((option) =>
+    supportedInvoiceTypeCodes.has(option.code)
+  );
 
   // Populate from source invoice (for Edit or Duplicate)
   useEffect(() => {

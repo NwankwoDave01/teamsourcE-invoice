@@ -212,8 +212,8 @@ describe("Invoice role permissions enforcement", () => {
 
       renderInvoiceDetailsPage("inv-draft-001");
 
-      // Advance button (Submit for review) must not be rendered
-      expect(screen.queryByRole("button", { name: /Submit for review/i })).not.toBeInTheDocument();
+      // The Ready transition is reserved for invoice managers.
+      expect(screen.queryByRole("button", { name: /Mark as ready/i })).not.toBeInTheDocument();
       // Mark as rejected button must not be rendered
       expect(screen.queryByRole("button", { name: /Mark as rejected/i })).not.toBeInTheDocument();
     });
@@ -269,9 +269,17 @@ describe("Invoice role permissions enforcement", () => {
       };
       renderInvoiceDetailsPage("inv-draft-001");
 
-      // Advance and Reject buttons must be rendered and accessible
-      expect(screen.getByRole("button", { name: /Submit for review/i })).toBeInTheDocument();
+      // Finance can mark an invoice Ready directly; NRS signing remains separate.
+      const markReady = screen.getByRole("button", { name: /Mark as ready/i });
+      expect(markReady).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Mark as rejected/i })).toBeInTheDocument();
+      fireEvent.click(markReady);
+      await waitFor(() => {
+        expect(invoiceDataMock.updateStatusMutateAsync).toHaveBeenCalledWith({
+          id: "inv-draft-001",
+          status: "Ready",
+        });
+      });
     });
   });
 
@@ -293,8 +301,31 @@ describe("Invoice role permissions enforcement", () => {
       };
       renderInvoiceDetailsPage("inv-draft-001");
 
-      expect(screen.getByRole("button", { name: /Submit for review/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Mark as ready/i })).toBeInTheDocument();
       expect(screen.getByRole("button", { name: /Mark as rejected/i })).toBeInTheDocument();
     });
+  });
+
+  it("keeps Ready separate from NRS validation and signing", async () => {
+    authMock.roles = ["finance_officer"];
+    invoiceDataMock.currentInvoice = {
+      ...invoiceDataMock.invoices[0],
+      status: "Ready",
+      submission_status: "not_submitted",
+    };
+    invoiceDataMock.nrsSubmit.mockResolvedValueOnce({
+      kind: "success",
+      stage: null,
+      retrySafe: false,
+      message: "Invoice validated and signed in the NRS sandbox.",
+      details: null,
+    });
+
+    renderInvoiceDetailsPage("inv-draft-001");
+
+    fireEvent.click(screen.getByRole("button", { name: /Validate & sign \(NRS sandbox\)/i }));
+
+    await waitFor(() => expect(invoiceDataMock.nrsSubmit).toHaveBeenCalledWith("inv-draft-001"));
+    expect(invoiceDataMock.updateStatusMutateAsync).not.toHaveBeenCalled();
   });
 });
