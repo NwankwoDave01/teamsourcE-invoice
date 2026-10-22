@@ -557,12 +557,12 @@ function useTeamChange<Action extends TeamChange["action"]>(action: Action) {
     mutationFn: async (input: Omit<Extract<TeamChange, { action: Action }>, "action">) => {
       if (!companyId || (!isSuperAdmin && !roles.includes("company_admin"))) throw new Error("An active company admin is required.");
       // Allowlist request fields even if a caller supplies extra runtime values.
-      const change = { ...input, action } as TeamChange;
-      if ((change.action === "invite" || change.action === "set_role") && !tenantRoles.some((role) => role === change.role)) {
+      const change: Record<string, unknown> = { ...input };
+      if ((action === "invite" || action === "set_role") && !tenantRoles.some((role) => role === change.role)) {
         throw new Error("Choose a supported tenant role.");
       }
       let body: Record<string, unknown>;
-      switch (change.action) {
+      switch (action) {
         case "invite":
           body = { action, company_id: companyId, email: change.email, display_name: change.display_name, role: change.role };
           break;
