@@ -1,266 +1,279 @@
-// NRS submission edge function — supports mock / sandbox / production environments.
-// Credentials are per-company and Vault-backed: they are read server-side via the
-// `nrs_read_secrets` database helper and are NEVER logged or returned to clients.
-// All NRS HTTP calls happen here, never in the browser.
-
-// @ts-ignore deno remote import
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import forge from "npm:node-forge@1.3.1";
+import QRCode from "npm:qrcode@1.5.4";
 
-const corsHeaders = {
+const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
+  "Content-Type": "application/json",
 };
 
-// deno-lint-ignore no-explicit-any
-declare const Deno: any;
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: cors,
+  });
 
-const NRS_AUTHENTICATE_PATH = "/api/v1/utilities/authenticate";
-const NRS_VALIDATE_PATH = "/api/v1/invoice/validate";
-const NRS_SIGN_PATH = "/api/v1/invoice/sign";
-const NRS_TRANSMIT_PATH = "/api/v1/invoice/transmit";
-import { normalizeInvoiceTypeCode } from "../../../src/lib/nrs/invoiceTypeCode.ts";
-const TAX_CATEGORY_ID: Record<string, string> = {
+const VALID_TAX = new Set(["S", "Z", "E", "O"]);
+
+const TAX_ID = {
   S: "STANDARD_VAT",
   Z: "ZERO_RATED",
   E: "VAT_EXEMPT",
   O: "OUT_OF_SCOPE",
+} as const;
+
+const NRS_INVOICE_TYPE_CODES = new Set([
+  "380", "381", "384", "385", "386", "388", "389", "390", "392", "393",
+  "394", "395", "396", "397", "399", "400", "402", "404", "406", "408",
+]);
+
+const TYPE: Record<string, string> = {
+  commercial: "381",
+  commercial_invoice: "381",
+  credit_note: "380",
+  debit_note: "384",
+  self_billed_invoice: "385",
+  factored_invoice: "386",
+  statement_of_account: "388",
+  purchase_order: "389",
+  proforma: "390",
+  proforma_invoice: "390",
+  consignment_invoice: "392",
+  self_billed_credit_note: "393",
+  self_billed_invoice_debit_note: "394",
+  credit_note_request: "395",
+  invoice_request: "396",
+  final_settlement: "397",
+  bill_of_lading: "399",
+  waybill: "400",
+  shipping_instructions: "402",
+  certificate_of_origin: "404",
+  customs_declaration: "406",
+  packing_list: "408",
 };
 
-function joinUrl(baseUrl: string, path: string): string {
-  const base = baseUrl.replace(/\/+$/, "");
-  const suffix = path.startsWith("/") ? path : `/${path}`;
-  return `${base}${suffix}`;
-}
+type InvoiceTypeCodeResult =
+  | { valid: true; code: string }
+  | { valid: false; reason: "missing" | "unsupported" };
 
-interface NrsCredentials {
-  apiKey: string;
-  apiSecret: string;
-  taxpayerEmail: string;
-  taxpayerPassword: string;
-}
-
-async function loadNrsCredentials(admin: any, companyId: string, company: any): Promise<NrsCredentials> {
-  const { data, error } = await admin.rpc("nrs_read_secrets", { _company_id: companyId });
-  if (error) throw new Error("Unable to read NRS credentials for this company");
-  const s = Array.isArray(data) ? data[0] : data;
-  const creds: NrsCredentials = {
-    apiKey: String(s?.api_key ?? "").trim(),
-    apiSecret: String(s?.api_secret ?? "").trim(),
-    taxpayerPassword: String(s?.taxpayer_password ?? "").trim(),
-    taxpayerEmail: String(company?.nrs_taxpayer_email ?? company?.nrs_portal_email ?? "").trim(),
-  };
-  const missing: string[] = [];
-  if (!creds.apiKey) missing.push("API key");
-  if (!creds.apiSecret) missing.push("API secret");
-  if (!creds.taxpayerPassword) missing.push("taxpayer password");
-  if (!creds.taxpayerEmail) missing.push("taxpayer email");
-  if (missing.length) {
-    throw new Error(`NRS credentials are not configured: missing ${missing.join(", ")}`);
+function normalizeInvoiceTypeCode(value: unknown): InvoiceTypeCodeResult {
+  const raw = value == null ? "" : String(value).trim();
+  if (!raw) return { valid: false, reason: "missing" };
+  if (/^\d+$/.test(raw)) {
+    return NRS_INVOICE_TYPE_CODES.has(raw)
+      ? { valid: true, code: raw }
+      : { valid: false, reason: "unsupported" };
   }
-  return creds;
+  const code = TYPE[raw.toLowerCase()];
+  return code
+    ? { valid: true, code }
+    : { valid: false, reason: "unsupported" };
 }
 
-function omitEmpty(value: any): any {
+const omit = (value: any): any => {
   if (Array.isArray(value)) {
-    return value.map(omitEmpty).filter((item) => item !== undefined);
+    return value
+      .map(omit)
+      .filter((item) => item !== undefined);
   }
 
   if (value && typeof value === "object") {
-    const entries = Object.entries(value)
-      .map(([key, entryValue]) => [key, omitEmpty(entryValue)])
-      .filter(([, entryValue]) => entryValue !== undefined);
-    return Object.fromEntries(entries);
+    return Object.fromEntries(
+      Object.entries(value)
+        .map(([key, item]) => [key, omit(item)])
+        .filter(([, item]) => item !== undefined),
+    );
   }
 
-  return value === null || value === undefined || value === "" ? undefined : value;
-}
-
-function getNrsBaseUrl(company: any, environment: string): string {
-  const configured = environment === "production"
-    ? company?.nrs_production_base_url
-    : company?.nrs_sandbox_base_url;
-  const baseUrl = String(configured ?? "").trim();
-  if (!baseUrl) {
-    throw new Error(`NRS ${environment} base URL is required`);
-  }
-  return baseUrl;
-}
-
-async function readResponseBody(res: Response): Promise<any> {
-  const text = await res.text();
-  if (!text) return null;
-
-  try {
-    return JSON.parse(text);
-  } catch {
-    return { message: text };
-  }
-}
-
-async function authenticateNrsTaxpayer(baseUrl: string, credentials: NrsCredentials) {
-  const authEndpoint = joinUrl(baseUrl, NRS_AUTHENTICATE_PATH);
-
-  const authRes = await fetch(authEndpoint, {
-    method: "POST",
-    headers: {
-      "Accept": "application/json",
-      "Content-Type": "application/json",
-      "x-api-key": credentials.apiKey,
-      "x-api-secret": credentials.apiSecret,
-    },
-    body: JSON.stringify({
-      email: credentials.taxpayerEmail,
-      password: credentials.taxpayerPassword,
-    }),
-  });
-  const authBody = await readResponseBody(authRes);
-
-  if (!authRes.ok) {
-    throw new Error(`NRS taxpayer authentication failed with HTTP ${authRes.status}`);
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return undefined;
   }
 
-  return authBody;
-}
+  return value;
+};
 
-async function validateNrsInvoice(baseUrl: string, credentials: NrsCredentials, payload: any) {
-  const validateEndpoint = joinUrl(baseUrl, NRS_VALIDATE_PATH);
+const round = (value: number) =>
+  Math.round(value * 100) / 100;
 
-  const validateRes = await fetch(validateEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": credentials.apiKey,
-      "x-api-secret": credentials.apiSecret,
-    },
-    body: JSON.stringify(payload),
-  });
-  const responseBody = await readResponseBody(validateRes);
+/**
+ * NRS IRN:
+ *
+ * Invoice Number + Service ID + YYYYMMDD
+ *
+ * The invoice-number component supplied to the IRN
+ * must be alphanumeric.
+ */
+function toNrsInvoiceReference(number: string) {
+  const normalized = String(number ?? "")
+    .replace(/[^A-Za-z0-9]/g, "")
+    .toUpperCase();
 
-  if (!validateRes.ok) {
-    const failedResponse = typeof responseBody === "object" && responseBody !== null
-      ? responseBody
-      : { message: `NRS validation failed with HTTP ${validateRes.status}` };
-    return {
-      httpStatus: validateRes.status,
-      response: {
-        ...failedResponse,
-        status: false,
-        message: failedResponse.message ?? `NRS validation failed with HTTP ${validateRes.status}`,
-      },
-    };
+  if (!normalized) {
+    throw new Error(
+      "Invoice number must contain at least one letter or number for NRS IRN generation",
+    );
   }
 
-  return {
-    httpStatus: validateRes.status,
-    response: responseBody ?? { status: true, message: "NRS validation successful" },
-  };
+  return normalized;
 }
 
-async function signNrsInvoice(baseUrl: string, credentials: NrsCredentials, payload: any) {
-  const signEndpoint = joinUrl(baseUrl, NRS_SIGN_PATH);
+function strictIrn(
+  number: string,
+  serviceId: string,
+  date: string,
+) {
+  const invoiceReference =
+    toNrsInvoiceReference(number);
 
-  const signRes = await fetch(signEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": credentials.apiKey,
-      "x-api-secret": credentials.apiSecret,
-    },
-    body: JSON.stringify(payload),
-  });
-  const responseBody = await readResponseBody(signRes);
+  const normalizedServiceId =
+    String(serviceId ?? "").trim();
 
-  if (!signRes.ok) {
-    const failedResponse = typeof responseBody === "object" && responseBody !== null
-      ? responseBody
-      : { message: `NRS signing failed with HTTP ${signRes.status}` };
-    return {
-      ok: false,
-      status: signRes.status,
-      message: failedResponse.message ?? `NRS signing failed with HTTP ${signRes.status}`,
-      response: {
-        ...failedResponse,
-        status: false,
-        message: failedResponse.message ?? `NRS signing failed with HTTP ${signRes.status}`,
-      },
-    };
+  if (
+    !/^[A-Za-z0-9]{8}$/.test(
+      normalizedServiceId,
+    )
+  ) {
+    throw new Error(
+      "NRS Service ID must be exactly 8 alphanumeric characters",
+    );
   }
 
-  return {
-    ok: true,
-    status: signRes.status,
-    data: responseBody,
-  };
-}
-
-async function transmitNrsInvoice(baseUrl: string, credentials: NrsCredentials, irn: string, payload: any) {
-  const transmitEndpoint = joinUrl(baseUrl, `${NRS_TRANSMIT_PATH}/${encodeURIComponent(irn)}`);
-
-  const transmitRes = await fetch(transmitEndpoint, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": credentials.apiKey,
-      "x-api-secret": credentials.apiSecret,
-    },
-    body: JSON.stringify(payload),
-  });
-  const responseBody = await readResponseBody(transmitRes);
-
-  if (!transmitRes.ok) {
-    const failedResponse = typeof responseBody === "object" && responseBody !== null
-      ? responseBody
-      : { message: `NRS transmission failed with HTTP ${transmitRes.status}` };
-    return {
-      ok: false,
-      status: transmitRes.status,
-      message: failedResponse.message ?? `NRS transmission failed with HTTP ${transmitRes.status}`,
-      response: {
-        ...failedResponse,
-        status: false,
-        message: failedResponse.message ?? `NRS transmission failed with HTTP ${transmitRes.status}`,
-      },
-    };
+  if (
+    !/^\d{4}-\d{2}-\d{2}$/.test(date)
+  ) {
+    throw new Error(
+      "Issue date must be YYYY-MM-DD",
+    );
   }
 
-  return {
-    ok: true,
-    status: transmitRes.status,
-    data: responseBody,
-  };
+  return `${invoiceReference}-${normalizedServiceId.toUpperCase()}-${date.replaceAll(
+    "-",
+    "",
+  )}`;
 }
 
-function buildIrn(invoiceNumber: string, serviceId: string | null | undefined, issueDate: string): string {
-  const inv = (invoiceNumber ?? "").replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "INV";
-  const svc = (serviceId ?? "MOCKSVC").replace(/[^A-Za-z0-9]/g, "").toUpperCase() || "MOCKSVC";
-  const ymd = issueDate.slice(0, 10).replace(/-/g, "");
-  return `${inv}-${svc}-${ymd}`;
-}
-
-function round2(n: number) {
-  return Math.round(n * 100) / 100;
-}
-
-function b64encode(s: string): string {
-  // deno-lint-ignore no-explicit-any
-  return (globalThis as any).btoa(unescape(encodeURIComponent(s)));
-}
-
-function buildParty(source: any, fallbackName: string | null | undefined) {
-  return omitEmpty({
-    party_name: source?.legal_name ?? source?.name ?? fallbackName,
-    tin: source?.tin ?? null,
+function party(
+  source: any,
+  fallback: string,
+) {
+  // Match the NRS party shape used in the known-working Postman request.
+  // Do not add database UUIDs as NRS party/address identifiers unless the
+  // NRS schema explicitly requires them for this endpoint.
+  return omit({
+    party_name:
+      source?.legal_name ??
+      source?.name ??
+      fallback,
+    tin: String(source?.tin ?? "").trim() || undefined,
     email: source?.email ?? null,
     telephone: source?.phone ?? null,
-    business_description: source?.industry ?? source?.industry_code ?? null,
+    business_description:
+      source?.business_description ??
+      source?.industry ??
+      null,
     postal_address: {
       street_name: source?.address_line1 ?? null,
       city_name: source?.city ?? null,
       postal_zone: source?.postcode ?? null,
-      country: (source?.country_code ?? "NG").toUpperCase(),
+      lga: source?.lga ?? null,
+      state: source?.state ?? null,
+      country: String(source?.country_code ?? "NG").toUpperCase(),
     },
   });
+}
+
+function isRealIsoDate(value: unknown): boolean {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
+
+function validateInput(
+  invoice: any,
+  lines: any[],
+  company: any,
+  customer: any,
+) {
+  const errors: string[] = [];
+
+  if (!company?.nrs_business_id) errors.push("NRS Business ID is required");
+  if (!company?.nrs_service_id) errors.push("NRS Service ID is required");
+
+  if (!invoice.number || !toNrsInvoiceReference(invoice.number)) {
+    errors.push("Invoice number must contain at least one letter or number");
+  }
+
+  if (!isRealIsoDate(invoice.issue_date)) {
+    errors.push("Issue date must be a real calendar date in YYYY-MM-DD format");
+  }
+  if (invoice.due_date != null && invoice.due_date !== "" && !isRealIsoDate(invoice.due_date)) {
+    errors.push("Due date must be a real calendar date in YYYY-MM-DD format");
+  }
+  if (invoice.supply_date != null && invoice.supply_date !== "" && !isRealIsoDate(invoice.supply_date)) {
+    errors.push("Supply date must be a real calendar date in YYYY-MM-DD format");
+  }
+
+  if (!company?.tin) errors.push("Supplier TIN is required");
+  if (!company?.email) errors.push("Supplier email is required");
+  if (!customer?.tin) errors.push("Customer TIN is required");
+  if (!customer?.email) errors.push("Customer email is required");
+  if (!lines.length) errors.push("At least one invoice line is required");
+
+  const invoiceDiscount = Number(invoice.discount_total ?? 0);
+  if (!Number.isFinite(invoiceDiscount) || invoiceDiscount < 0) {
+    errors.push("Invoice discount must be a finite, non-negative amount");
+  }
+
+  for (const [index, line] of lines.entries()) {
+    const category = String(line.tax_category ?? "S").toUpperCase();
+    const quantity = Number(line.qty);
+    const unitPrice = Number(line.unit_price);
+    const discount = Number(line.discount_amount ?? 0);
+    const taxRate = Number(line.tax_rate ?? 0);
+
+    if (!VALID_TAX.has(category)) {
+      errors.push(`Line ${index + 1}: tax_category must be S|Z|E|O (got ${category})`);
+    }
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      errors.push(`Line ${index + 1}: quantity must be a finite number greater than zero`);
+    }
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      errors.push(`Line ${index + 1}: unit price must be a finite, non-negative number`);
+    }
+    if (!Number.isFinite(discount) || discount < 0) {
+      errors.push(`Line ${index + 1}: discount must be a finite, non-negative number`);
+    } else if (Number.isFinite(quantity) && quantity > 0 && Number.isFinite(unitPrice) && unitPrice >= 0 &&
+      discount > round(quantity * unitPrice) + 0.001) {
+      errors.push(`Line ${index + 1}: discount cannot exceed the gross line amount`);
+    }
+    if (!Number.isFinite(taxRate) || taxRate < 0 || taxRate > 100) {
+      errors.push(`Line ${index + 1}: tax rate must be a finite number between 0 and 100`);
+    }
+    if (!String(line.description ?? "").trim()) {
+      errors.push(`Line ${index + 1}: description is required`);
+    }
+  }
+
+  const netSubtotal = lines.reduce((sum, line) => {
+    const qty = Number(line.qty);
+    const price = Number(line.unit_price);
+    const discount = Number(line.discount_amount ?? 0);
+    if (!Number.isFinite(qty) || !Number.isFinite(price) || !Number.isFinite(discount)) return sum;
+    return sum + qty * price - discount;
+  }, 0);
+
+  if (Number.isFinite(invoiceDiscount) && invoiceDiscount > round(netSubtotal) + 0.001) {
+    errors.push("Invoice discount cannot exceed the net invoice line subtotal");
+  }
+
+  return errors;
 }
 
 function buildPayload(
@@ -271,327 +284,1639 @@ function buildPayload(
   irn: string,
   invoiceTypeCode: string,
 ) {
-  const builtLines = (lines ?? []).map((l: any, idx: number) => {
-    const qty = Number(l.qty ?? 0);
-    const unitPrice = Number(l.unit_price ?? 0);
-    const taxRate = Number(l.tax_rate ?? 0);
-    const discount = Number(l.discount_amount ?? 0);
-    const cat = (l.tax_category ?? "S") as string;
-    const net = round2(qty * unitPrice - discount);
-    const taxAmount = cat === "S" ? round2(net * (taxRate / 100)) : 0;
-    const unitCode = (l.unit_code ?? "EA").toUpperCase();
-    const gross = round2(qty * unitPrice);
-    return {
-      position: l.position ?? idx,
-      hsn_code: l.item_classification_code ?? null,
-      product_category: l.product_category ?? l.description,
-      discount_rate: gross > 0 ? round2((discount / gross) * 100) : 0,
-      discount_amount: discount,
-      fee_rate: 0,
-      fee_amount: 0,
-      invoiced_quantity: qty,
-      line_extension_amount: net,
-      item: {
-        name: l.description,
-        description: l.description,
-        sellers_item_identification: l.line_uuid ?? l.id,
-      },
-      price: {
-        price_amount: unitPrice,
-        base_quantity: 1,
-        price_unit: `${invoice.currency ?? "NGN"} per ${unitCode}`,
-      },
-      quantity: qty,
-      net_amount: net,
-      tax_category: cat,
-      tax_rate: taxRate,
-      taxable_amount: cat === "S" ? net : 0,
-      tax_amount: taxAmount,
-    };
-  });
+  const builtLines = lines.map(
+    (line: any, index: number) => {
+      const quantity = Number(
+        line.qty || 0,
+      );
 
-  const subtotal = round2(builtLines.reduce((s, l) => s + l.net_amount, 0));
-  const taxTotal = round2(builtLines.reduce((s, l) => s + l.tax_amount, 0));
-  const taxableAmount = round2(builtLines.reduce((s, l) => s + l.taxable_amount, 0));
-  const discountTotal = Number(invoice.discount_total ?? 0);
-  const grandTotal = round2(subtotal + taxTotal - discountTotal);
-  const currency = (invoice.currency ?? "NGN").toUpperCase();
-  const taxSubtotals = Object.values(
-    builtLines.reduce((groups: Record<string, any>, line: any) => {
-      const key = `${line.tax_category}:${line.tax_rate}`;
-      if (!groups[key]) {
-        groups[key] = {
-          taxable_amount: 0,
-          tax_amount: 0,
-          tax_category: {
-            id: TAX_CATEGORY_ID[line.tax_category] ?? line.tax_category,
-            percent: line.tax_rate,
-          },
-        };
-      }
-      groups[key].taxable_amount = round2(groups[key].taxable_amount + line.taxable_amount);
-      groups[key].tax_amount = round2(groups[key].tax_amount + line.tax_amount);
-      return groups;
-    }, {}),
+      const unitPrice = Number(
+        line.unit_price || 0,
+      );
+
+      const discount = Number(
+        line.discount_amount || 0,
+      );
+
+      const net = round(
+        quantity * unitPrice -
+          discount,
+      );
+
+      return {
+        position:
+          line.position ?? index,
+
+        // NRS requires HSN in ####.## format.
+        hsn_code: (() => {
+          const stored = String(
+            line.hsn_code ?? line.item_classification_code ?? "",
+          ).trim();
+          if (/^\d{4}\.\d{2}$/.test(stored)) return stored;
+          if (/^\d{4}$/.test(stored)) return stored + ".00";
+          if (/rice/i.test(String(line.description ?? ""))) return "1006.30";
+          return undefined;
+        })(),
+
+        // NRS requires product_category on each invoice line.
+        product_category: (() => {
+          const stored = String(line.product_category ?? "").trim();
+          if (/rice/i.test(String(line.description ?? "")) &&
+              /growing of rice/i.test(stored)) {
+            return "Cereals; rice";
+          }
+          return stored || line.description;
+        })(),
+
+        discount_rate:
+          quantity * unitPrice
+            ? round(
+                (discount /
+                  (quantity *
+                    unitPrice)) *
+                  100,
+              )
+            : 0,
+
+        discount_amount:
+          discount,
+
+        fee_rate: 0,
+
+        fee_amount: 0,
+
+        invoiced_quantity:
+          quantity,
+
+        line_extension_amount:
+          net,
+
+        item: {
+          name: line.description,
+
+          description:
+            line.description,
+
+          sellers_item_identification:
+            line.line_uuid ??
+            line.id,
+        },
+
+        price: {
+          price_amount:
+            unitPrice,
+
+          base_quantity: 1,
+
+          price_unit: String(
+            line.unit_code || "EA",
+          ).trim().toUpperCase().slice(0, 3),
+        },
+      };
+    },
   );
 
-  return omitEmpty({
-    business_id: company?.nrs_business_id ?? null,
+  const subtotal = round(
+    builtLines.reduce(
+      (sum, line) =>
+        sum +
+        line.line_extension_amount,
+      0,
+    ),
+  );
+
+  const taxTotal = round(
+    lines.reduce((sum, line) => {
+      const category =
+        String(
+          line.tax_category ||
+            "S",
+        ).toUpperCase();
+
+      const net = round(
+        Number(line.qty || 0) *
+          Number(
+            line.unit_price || 0,
+          ) -
+          Number(
+            line.discount_amount ||
+              0,
+          ),
+      );
+
+      return (
+        sum +
+        (category === "S"
+          ? round(
+              (net *
+                Number(
+                  line.tax_rate || 0,
+                )) /
+                100,
+            )
+          : 0)
+      );
+    }, 0),
+  );
+
+  const taxGroups: Record<
+    string,
+    any
+  > = {};
+
+  for (const line of lines) {
+    const category =
+      String(
+        line.tax_category || "S",
+      ).toUpperCase();
+
+    const configuredRate = Number(
+      line.tax_rate || 0,
+    );
+    // Non-standard tax categories must not inherit a standard VAT rate.
+    const rate = category === "S" ? configuredRate : 0;
+
+    const net = round(
+      Number(line.qty || 0) *
+        Number(
+          line.unit_price || 0,
+        ) -
+        Number(
+          line.discount_amount ||
+            0,
+        ),
+    );
+
+    const tax =
+      category === "S"
+        ? round(
+            (net * rate) / 100,
+          )
+        : 0;
+
+    const key =
+      `${category}:${rate}`;
+
+    taxGroups[key] ??= {
+      taxable_amount: 0,
+      tax_amount: 0,
+      tax_category: {
+        id: TAX_ID[
+          category as keyof typeof TAX_ID
+        ],
+        percent: rate,
+      },
+    };
+
+    // Keep the taxable base for zero-rated, exempt and out-of-scope
+    // lines visible in their own category subtotal; their tax remains zero.
+    taxGroups[key]
+      .taxable_amount = round(
+      taxGroups[key]
+        .taxable_amount +
+        net,
+    );
+
+    taxGroups[key].tax_amount =
+      round(
+        taxGroups[key]
+          .tax_amount + tax,
+      );
+  }
+
+  const invoiceDiscount =
+    Number(
+      invoice.discount_total || 0,
+    );
+
+  return omit({
+    business_id:
+      company.nrs_business_id,
+
     irn,
-    issue_date: invoice.issue_date,
-    due_date: invoice.due_date,
+
+    issue_date:
+      invoice.issue_date,
+
+    due_date:
+      invoice.due_date,
+
+    issue_time:
+      invoice.issue_time
+        ? String(
+            invoice.issue_time,
+          ).slice(0, 8)
+        : undefined,
+
     invoice_type_code: invoiceTypeCode,
-    payment_status: invoice.payment_status ?? "PENDING",
-    note: invoice.notes ?? null,
-    tax_point_date: invoice.supply_date ?? invoice.issue_date,
-    document_currency_code: currency,
-    tax_currency_code: currency,
-    accounting_cost: String(invoice.accounting_cost ?? subtotal),
-    buyer_reference: invoice.customer_name ?? null,
-    accounting_supplier_party: buildParty(company, company?.name),
-    accounting_customer_party: buildParty(customer, invoice.customer_name),
-    actual_delivery_date: invoice.supply_date ?? invoice.issue_date,
-    payment_means: invoice.payment_means_code
-      ? [{ payment_means_code: invoice.payment_means_code, payment_due_date: invoice.due_date }]
-      : undefined,
-    payment_terms_note: invoice.payment_terms ?? null,
-    allowance_charge: discountTotal > 0
-      ? [{ charge_indicator: false, amount: discountTotal }]
-      : undefined,
-    tax_total: [{
-      tax_amount: taxTotal,
-      tax_subtotal: taxSubtotals,
-    }],
+
+    invoice_kind:
+      invoice.invoice_kind ??
+      invoice.transaction_type ??
+      "B2B",
+
+    payment_status:
+      "PENDING",
+
+    note:
+      invoice.notes,
+
+    tax_point_date:
+      invoice.supply_date ??
+      invoice.issue_date,
+
+    document_currency_code:
+      String(
+        invoice.currency || "NGN",
+      ).toUpperCase(),
+
+    tax_currency_code:
+      String(
+        invoice.tax_currency_code ??
+          invoice.currency ??
+          "NGN",
+      ).toUpperCase(),
+
+    accounting_cost:
+      String(
+        invoice.accounting_cost ??
+          subtotal,
+      ),
+
+    buyer_reference:
+      invoice.customer_name,
+
+    accounting_supplier_party:
+      party(
+        company,
+        company.name,
+      ),
+
+    accounting_customer_party:
+      party(
+        customer,
+        invoice.customer_name,
+      ),
+
+    actual_delivery_date:
+      invoice.supply_date ??
+      invoice.issue_date,
+
+    payment_means:
+      invoice.payment_means_code
+        ? [
+            {
+              payment_means_code:
+                invoice.payment_means_code,
+
+              payment_due_date:
+                invoice.due_date,
+            },
+          ]
+        : undefined,
+
+    payment_terms_note:
+      invoice.payment_terms,
+
+    allowance_charge:
+      invoiceDiscount > 0
+        ? [
+            {
+              charge_indicator:
+                false,
+
+              amount:
+                invoiceDiscount,
+            },
+          ]
+        : undefined,
+
+    tax_total: [
+      {
+        tax_amount:
+          taxTotal,
+
+        tax_subtotal:
+          Object.values(
+            taxGroups,
+          ),
+      },
+    ],
+
     legal_monetary_total: {
-      line_extension_amount: subtotal,
-      tax_exclusive_amount: taxableAmount || subtotal,
-      tax_inclusive_amount: round2(subtotal + taxTotal),
-      payable_amount: grandTotal,
+      line_extension_amount:
+        subtotal,
+
+      tax_exclusive_amount:
+        subtotal,
+
+      tax_inclusive_amount:
+        round(
+          subtotal + taxTotal,
+        ),
+
+      payable_amount:
+        round(
+          subtotal +
+            taxTotal -
+            invoiceDiscount,
+        ),
     },
-    invoice_line: builtLines.map((line: any) => omitEmpty({
-      hsn_code: line.hsn_code,
-      product_category: line.product_category,
-      discount_rate: line.discount_rate,
-      discount_amount: line.discount_amount,
-      fee_rate: line.fee_rate,
-      fee_amount: line.fee_amount,
-      invoiced_quantity: line.invoiced_quantity,
-      line_extension_amount: line.line_extension_amount,
-      item: line.item,
-      price: line.price,
-    })),
+
+    invoice_line:
+      builtLines,
   });
 }
 
-Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+async function readBody(
+  response: Response,
+) {
+  const text =
+    await response.text();
+
+  if (!text) {
+    return null;
+  }
 
   try {
-    const authHeader = req.headers.get("Authorization") ?? "";
-    if (!authHeader.startsWith("Bearer ")) {
-      return json({ error: "Unauthorized" }, 401);
+    return JSON.parse(text);
+  } catch {
+    return {
+      message: text,
+    };
+  }
+}
+
+function getMessage(
+  response: any,
+  fallback: string,
+) {
+  if (
+    typeof response?.message ===
+    "string"
+  ) {
+    return response.message;
+  }
+
+  if (
+    typeof response?.error
+      ?.public_message ===
+    "string"
+  ) {
+    return response.error.public_message;
+  }
+
+  return fallback;
+}
+
+function publicPem(
+  value: string,
+) {
+  const normalized =
+    value.trim();
+
+  if (
+    normalized.includes(
+      "BEGIN PUBLIC KEY",
+    )
+  ) {
+    return normalized;
+  }
+
+  try {
+    return new TextDecoder().decode(
+      Uint8Array.from(
+        atob(normalized),
+        (character) =>
+          character.charCodeAt(0),
+      ),
+    );
+  } catch {
+    throw new Error(
+      "Stored taxpayer public key is not valid PEM/Base64 data",
+    );
+  }
+}
+
+async function generateQr(
+  irn: string,
+  crypto: any,
+) {
+  const timestamp =
+    Math.floor(
+      Date.now() / 1000,
+    );
+
+  const clearText =
+    JSON.stringify({
+      irn: `${irn}.${timestamp}`,
+      certificate:
+        crypto.certificate,
+    });
+
+  const publicKey =
+    forge.pki.publicKeyFromPem(
+      publicPem(
+        crypto.public_key,
+      ),
+    );
+
+  const encrypted =
+    publicKey.encrypt(
+      forge.util.encodeUtf8(
+        clearText,
+      ),
+      "RSAES-PKCS1-V1_5",
+    );
+
+  const encoded =
+    btoa(
+      encrypted,
+    );
+
+  const qr =
+    await QRCode.toDataURL(
+      encoded,
+      {
+        errorCorrectionLevel:
+          "M",
+        margin: 1,
+        width: 320,
+      },
+    );
+
+  return {
+    data: encoded,
+    qr,
+  };
+}
+
+Deno.serve(async (request) => {
+  if (
+    request.method ===
+    "OPTIONS"
+  ) {
+    return new Response("ok", {
+      headers: cors,
+    });
+  }
+
+  let stage = "start";
+  let adminDb: ReturnType<typeof createClient> | null = null;
+  let attemptId: string | null = null;
+  let activeInvoiceId: string | null = null;
+  let signingStarted = false;
+
+  try {
+    /* -----------------------------------------------
+       1. Authenticate application user
+    ------------------------------------------------ */
+
+    stage = "authenticate";
+
+    const authorization =
+      request.headers.get(
+        "Authorization",
+      ) ?? "";
+
+    if (
+      !authorization.startsWith(
+        "Bearer ",
+      )
+    ) {
+      return json(
+        {
+          ok: false,
+          stage,
+          error:
+            "Unauthorized",
+        },
+        401,
+      );
     }
 
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
+    const userClient =
+      createClient(
+        Deno.env.get(
+          "SUPABASE_URL",
+        )!,
+        Deno.env.get(
+          "SUPABASE_ANON_KEY",
+        )!,
+        {
+          global: {
+            headers: {
+              Authorization:
+                authorization,
+            },
+          },
+        },
+      );
 
-    // Verify user
-    const userClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr || !userData?.user) return json({ error: "Unauthorized" }, 401);
+    const {
+      data: {
+        user,
+      },
+      error:
+        userError,
+    } =
+      await userClient.auth.getUser(
+        authorization.slice(7),
+      );
 
-    const body = await req.json().catch(() => ({}));
-    const invoiceId: string | undefined = body.invoice_id;
-    const forceFail: boolean = body.force_fail === true;
-    if (!invoiceId) return json({ error: "invoice_id is required" }, 400);
+    if (
+      userError ||
+      !user
+    ) {
+      return json(
+        {
+          ok: false,
+          stage,
+          error:
+            "Unauthorized",
+        },
+        401,
+      );
+    }
 
-    // Fetch invoice + related (service role bypasses RLS, so we re-check membership below)
-    const { data: invoice, error: invErr } = await supabase
-      .from("invoices").select("*").eq("id", invoiceId).maybeSingle();
-    if (invErr) throw invErr;
-    if (!invoice) return json({ error: "Invoice not found" }, 404);
+    /* -----------------------------------------------
+       2. Server-side service role
+    ------------------------------------------------ */
 
-    // Authorization: caller must be able to manage invoices for this company
-    const { data: canManage, error: rpcErr } = await supabase.rpc("can_manage_invoices", {
-      _user_id: userData.user.id,
-      _company_id: invoice.company_id,
-    });
-    if (rpcErr) throw rpcErr;
-    if (!canManage) return json({ error: "Forbidden" }, 403);
+    const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    adminDb = db;
 
-    const [{ data: lines }, { data: company }, customerRes] = await Promise.all([
-      supabase.from("invoice_lines").select("*").eq("invoice_id", invoiceId).order("position"),
-      supabase.from("companies").select("*").eq("id", invoice.company_id).maybeSingle(),
-      invoice.customer_id
-        ? supabase.from("customers").select("*").eq("id", invoice.customer_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
-    const customer = (customerRes as any).data ?? null;
+    const body =
+      await request
+        .json()
+        .catch(() => ({}));
 
-    const environment: string = (company as any)?.nrs_environment ?? "mock";
-    const serviceId: string | null = (company as any)?.nrs_service_id ?? null;
+    const invoiceId =
+      body.invoice_id;
+    activeInvoiceId = invoiceId ? String(invoiceId) : null;
+
+    if (!invoiceId) {
+      return json(
+        {
+          ok: false,
+          stage: "input",
+          error:
+            "invoice_id is required",
+        },
+        400,
+      );
+    }
+
+    /* -----------------------------------------------
+       3. Load invoice
+    ------------------------------------------------ */
+
+    stage =
+      "load_invoice";
+
+    const {
+      data: invoice,
+      error:
+        invoiceError,
+    } =
+      await db
+        .from("invoices")
+        .select("*")
+        .eq("id", invoiceId)
+        .maybeSingle();
+
+    if (invoiceError) {
+      throw invoiceError;
+    }
+
+    if (!invoice) {
+      return json(
+        {
+          ok: false,
+          stage,
+          error:
+            "Invoice not found",
+        },
+        404,
+      );
+    }
+
+    /* -----------------------------------------------
+       4. Authorize company
+    ------------------------------------------------ */
+
+    stage =
+      "authorize_company";
+
+    const {
+      data: allowed,
+      error:
+        authorizationError,
+    } =
+      await db.rpc(
+        "can_manage_invoices",
+        {
+          _user_id:
+            user.id,
+
+          _company_id:
+            invoice.company_id,
+        },
+      );
+
+    if (
+      authorizationError
+    ) {
+      throw authorizationError;
+    }
+
+    if (!allowed) {
+      return json(
+        {
+          ok: false,
+          stage,
+          error:
+            "Forbidden",
+        },
+        403,
+      );
+    }
+
+    /* -----------------------------------------------
+       5. Load invoice context
+    ------------------------------------------------ */
+
+    stage =
+      "load_invoice_context";
+
+    const [
+      {
+        data: lines,
+      },
+      {
+        data: company,
+      },
+      {
+        data: customer,
+      },
+    ] =
+      await Promise.all([
+        db
+          .from(
+            "invoice_lines",
+          )
+          .select("*")
+          .eq(
+            "invoice_id",
+            invoiceId,
+          )
+          .order(
+            "position",
+          ),
+
+        db
+          .from("companies")
+          .select("*")
+          .eq(
+            "id",
+            invoice.company_id,
+          )
+          .maybeSingle(),
+
+        invoice.customer_id
+          ? db
+              .from(
+                "customers",
+              )
+              .select("*")
+              .eq(
+                "id",
+                invoice.customer_id,
+              )
+              .maybeSingle()
+          : Promise.resolve({
+              data: null,
+            }),
+      ]);
+
+    const environment = String(company?.nrs_environment ?? "").trim().toLowerCase();
+
+    // Never silently treat a real tenant as a mock invoice flow.
+    if (environment !== "sandbox" && environment !== "production") {
+      return json({ ok: false, stage: "resolve_environment", error: "Company NRS environment must be explicitly set to sandbox or production. Mock signing is disabled in this endpoint." }, 422);
+    }
 
     const normalizedInvoiceType = normalizeInvoiceTypeCode(invoice.invoice_type);
-    if ("reason" in normalizedInvoiceType) {
-      const validationErrors = [{
-        field: "invoice.invoice_type",
-        code: normalizedInvoiceType.reason === "missing" ? "INVOICE_TYPE_REQUIRED" : "INVOICE_TYPE_UNSUPPORTED",
-        message: normalizedInvoiceType.reason === "missing"
-          ? "Invoice type is required."
-          : "Invoice type is not supported by the NRS resource.",
-      }];
-      const { error: logErr } = await supabase.from("nrs_submissions").insert({
-        company_id: invoice.company_id,
-        invoice_id: invoiceId,
-        payload: null,
-        validation_errors: validationErrors,
-        result: "rejected",
-        scenario: environment,
-        mock: environment === "mock",
-        created_by: userData.user.id,
-      });
-      if (logErr) {
-        console.error("nrs_submissions insert failed", logErr.message);
-      }
-      return json({ error: validationErrors[0].message, errors: validationErrors }, 400);
+    if (!normalizedInvoiceType.valid) {
+      const missing = normalizedInvoiceType.reason === "missing";
+      return json({
+        ok: false,
+        stage: "invoice_type_validation",
+        error: missing ? "Invoice type is required." : "Invoice type is not supported by the NRS invoice-type resource.",
+        code: missing ? "INVOICE_TYPE_REQUIRED" : "INVOICE_TYPE_UNSUPPORTED",
+        retry_safe: true,
+      }, 422);
     }
 
-    // IRN: reuse existing if already persisted, otherwise build & persist
-    const irn = invoice.irn ?? buildIrn(invoice.number, serviceId, invoice.issue_date);
-    const payload = buildPayload(invoice, lines ?? [], company, customer, irn, normalizedInvoiceType.code);
+    /* -----------------------------------------------
+       6. Generate IRN
+    ------------------------------------------------ */
 
-    let response: any;
-    let httpStatus = 200;
-    let submissionStatus = "signed";
-    let nextInvoiceStatus: string | null = "Signed";
+    stage =
+      "generate_irn";
 
-    if (environment === "mock") {
-      if (forceFail) {
-        response = {
-          status: false,
-          message: "Mock submission rejected",
-          errors: [{ field: "mock", code: "MOCK_FAIL", message: "Forced failure for testing" }],
-        };
-        submissionStatus = "rejected";
-        nextInvoiceStatus = "Rejected";
-        httpStatus = 422;
-      } else {
-        const signed = JSON.stringify(payload);
-        response = {
-          status: true,
-          message: "Mock submission successful",
-          data: {
+    let irn: string;
+
+    try {
+      irn =
+        invoice.irn ??
+        strictIrn(
+          String(
+            invoice.number ?? "",
+          ),
+          String(
+            company?.nrs_service_id ??
+              "",
+          ),
+          String(
+            invoice.issue_date ??
+              "",
+          ),
+        );
+    } catch (error) {
+      return json(
+        {
+          ok: false,
+          stage,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unable to generate NRS IRN",
+        },
+        422,
+      );
+    }
+
+    console.log(
+      "NRS_STAGE",
+      {
+        stage,
+        invoice_id:
+          invoiceId,
+        environment,
+        irn,
+      },
+    );
+
+    /* -----------------------------------------------
+       7. Local validation
+    ------------------------------------------------ */
+
+    stage =
+      "local_validation";
+
+    const localErrors =
+      validateInput(
+        invoice,
+        lines ?? [],
+        company,
+        customer,
+      );
+
+    if (
+      localErrors.length
+    ) {
+      await db
+        .from("invoices")
+        .update({
+          status:
+            "Rejected",
+
+          submission_status:
+            "rejected",
+
+          submission_response: {
+            stage,
+
+            errors:
+              localErrors,
+
             irn,
-            qrCode: b64encode(signed),
-            signedInvoice: signed,
           },
-        };
+        })
+        .eq(
+          "id",
+          invoiceId,
+        );
+
+      console.error(
+        "NRS_STAGE",
+        {
+          stage,
+          invoice_id:
+            invoiceId,
+          errors:
+            localErrors,
+        },
+      );
+
+      return json(
+        {
+          ok: false,
+          stage,
+          error:
+            "Invoice failed local NRS validation",
+          errors:
+            localErrors,
+          irn,
+        },
+        422,
+      );
+    }
+
+    /* -----------------------------------------------
+       8. Build payload
+    ------------------------------------------------ */
+
+    stage =
+      "build_payload";
+
+    const payload =
+      buildPayload(
+        invoice,
+        lines ?? [],
+        company,
+        customer,
+        irn,
+        normalizedInvoiceType.code,
+      );
+
+    /* -----------------------------------------------
+       9. Load taxpayer crypto
+    ------------------------------------------------ */
+
+    stage =
+      "load_taxpayer_crypto";
+
+    const {
+      data: taxpayerCrypto,
+      error:
+        cryptoError,
+    } =
+      await db
+        .from(
+          "nrs_taxpayer_crypto",
+        )
+        .select(
+          "public_key,certificate",
+        )
+        .eq(
+          "company_id",
+          invoice.company_id,
+        )
+        .eq(
+          "environment",
+          environment,
+        )
+        .eq(
+          "active",
+          true,
+        )
+        .maybeSingle();
+
+    if (
+      cryptoError ||
+      !taxpayerCrypto
+    ) {
+      console.error(
+        "NRS_STAGE",
+        {
+          stage,
+          invoice_id:
+            invoiceId,
+          error:
+            "Taxpayer cryptographic configuration missing",
+        },
+      );
+
+      return json(
+        {
+          ok: false,
+          stage,
+          error:
+            "Taxpayer cryptographic configuration is required",
+        },
+        422,
+      );
+    }
+
+    console.log(
+      "NRS_STAGE",
+      {
+        stage,
+        invoice_id:
+          invoiceId,
+        crypto_configured:
+          true,
+      },
+    );
+
+    /* -----------------------------------------------
+       10. Persist pending
+    ------------------------------------------------ */
+
+    stage =
+      "persist_pending";
+
+    const {
+      error:
+        pendingError,
+    } =
+      await db
+        .from("invoices")
+        .update({
+          irn,
+
+          submission_status:
+            "pending",
+        })
+        .eq(
+          "id",
+          invoiceId,
+        );
+
+    if (pendingError) {
+      throw pendingError;
+    }
+
+    /* Mock signing is disabled: only real sandbox/production NRS calls may succeed. */
+
+    /* -----------------------------------------------
+       12. Resolve NRS base URL
+    ------------------------------------------------ */
+
+    stage =
+      "resolve_base_url";
+
+    const baseUrl =
+      String(
+        (
+          environment ===
+          "production"
+            ? company?.nrs_production_base_url
+            : company?.nrs_sandbox_base_url
+        ) ?? "",
+      )
+        .trim()
+        .replace(
+          /\/+$/,
+          "",
+        );
+
+    if (!baseUrl) {
+      return json(
+        {
+          ok: false,
+          stage,
+          error:
+            `NRS ${environment} base URL is required`,
+        },
+        422,
+      );
+    }
+
+    console.log(
+      "NRS_STAGE",
+      {
+        stage,
+        invoice_id:
+          invoiceId,
+        environment,
+        base_url:
+          baseUrl,
+      },
+    );
+
+    /* -----------------------------------------------
+       13. Load taxpayer credentials
+    ------------------------------------------------ */
+
+    stage =
+      "load_taxpayer_credentials";
+
+    const {
+      data:
+        taxpayerSecrets,
+      error:
+        taxpayerSecretError,
+    } =
+      await db.rpc(
+        "nrs_read_taxpayer_secrets",
+        {
+          _company_id:
+            invoice.company_id,
+
+          _environment:
+            environment,
+        },
+      );
+
+    if (
+      taxpayerSecretError
+    ) {
+      console.error(
+        "NRS_STAGE",
+        {
+          stage,
+          invoice_id:
+            invoiceId,
+          error:
+            "Unable to read taxpayer credentials",
+        },
+      );
+
+      return json(
+        {
+          ok: false,
+          stage,
+          error:
+            "Unable to load taxpayer NRS credentials",
+        },
+        500,
+      );
+    }
+
+    const secret =
+      Array.isArray(
+        taxpayerSecrets,
+      )
+        ? taxpayerSecrets[0]
+        : taxpayerSecrets;
+
+    const apiKey =
+      String(
+        secret?.api_key ?? "",
+      ).trim();
+
+    const apiSecret =
+      String(
+        secret?.api_secret ?? "",
+      ).trim();
+
+    if (
+      !apiKey ||
+      !apiSecret
+    ) {
+      console.error(
+        "NRS_STAGE",
+        {
+          stage,
+          invoice_id:
+            invoiceId,
+          error:
+            "Taxpayer credentials missing",
+        },
+      );
+
+      return json(
+        {
+          ok: false,
+          stage,
+          error:
+            "Taxpayer NRS API credentials are not configured for this company/environment",
+        },
+        422,
+      );
+    }
+
+    /*
+     * SECURITY:
+     * Do NOT log apiKey or apiSecret.
+     */
+    console.log("NRS_STAGE", { stage, invoice_id: invoiceId, taxpayer_credentials_loaded: true });
+    const { data: claimedAttempt, error: claimError } = await db.rpc("nrs_claim_submission_attempt", {
+      _invoice_id: invoiceId, _company_id: invoice.company_id, _environment: environment, _created_by: user.id,
+    });
+    if (claimError || !claimedAttempt) {
+      const message = claimError?.message ?? "Unable to create submission attempt";
+      const duplicate = /already (completed|processing)/i.test(message);
+      return json({ ok: false, stage: "claim_attempt", error: duplicate ? message : "Unable to safely start submission" }, duplicate ? 409 : 500);
+    }
+    attemptId = String(claimedAttempt);
+
+    /* -----------------------------------------------
+       14. Build NRS headers
+    ------------------------------------------------ */
+
+    const headers = {
+      "Content-Type":
+        "application/json",
+
+      Accept:
+        "application/json",
+
+      "x-api-key":
+        apiKey,
+
+      "x-api-secret":
+        apiSecret,
+    };
+
+    /* -----------------------------------------------
+       15. NRS Validate
+    ------------------------------------------------ */
+
+    stage =
+      "nrs_validate_request";
+
+    console.log(
+      "NRS_VALIDATE_REQUEST",
+      {
+        invoice_id:
+          invoiceId,
+
+        business_id:
+          company?.nrs_business_id,
+
+        irn,
+
+        environment,
+
+        endpoint:
+          `${baseUrl}/api/v1/invoice/validate`,
+      },
+    );
+
+    let validateResponse: Response;
+
+    try {
+      validateResponse =
+        await fetch(
+          `${baseUrl}/api/v1/invoice/validate`,
+          {
+            method:
+              "POST",
+
+            headers,
+
+            body:
+              JSON.stringify(
+                payload,
+              ),
+            signal: AbortSignal.timeout(20000),
+          },
+        );
+    } catch (error) {
+      console.error(
+        "NRS_VALIDATE_NETWORK_ERROR",
+        {
+          stage,
+          invoice_id:
+            invoiceId,
+          message:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        },
+      );
+
+      await db.rpc("nrs_finish_submission_attempt", {
+        _attempt_id: attemptId, _status: "failed", _stage: stage, _irn: irn,
+        _error_code: "NRS_VALIDATE_NETWORK_ERROR",
+        _error_message: "Network failure before signing; review before retrying",
+      });
+      return json({ ok: false, stage, error: "Unable to reach NRS validate endpoint", details: error instanceof Error ? error.message : String(error) }, 502);
+    }
+
+    stage =
+      "nrs_validate_response";
+
+    const validateData =
+      await readBody(
+        validateResponse,
+      );
+
+    console.log(
+      "NRS_VALIDATE_RESPONSE",
+      {
+        invoice_id:
+          invoiceId,
+
+        http_status:
+          validateResponse.status,
+
+        response_received:
+          true,
+      },
+    );
+
+    if (
+      !validateResponse.ok ||
+      validateData?.status ===
+        false
+    ) {
+      const message =
+        getMessage(
+          validateData,
+          `NRS validation failed (HTTP ${validateResponse.status})`,
+        );
+
+      await db.from("invoices").update({
+        status: "Rejected", submission_status: "rejected",
+        submission_response: { stage: "nrs_validate", http_status: validateResponse.status, response: validateData },
+      }).eq("id", invoiceId);
+      await db.rpc("nrs_finish_submission_attempt", {
+        _attempt_id: attemptId, _status: "failed", _stage: "nrs_validate", _irn: irn,
+        _http_status: validateResponse.status, _response_summary: validateData,
+        _error_code: "NRS_VALIDATE_REJECTED", _error_message: message,
+      });
+
+      return json(
+        {
+          ok: false,
+          stage:
+            "nrs_validate",
+          error:
+            message,
+          details:
+            validateData,
+        },
+        422,
+      );
+    }
+
+    /* -----------------------------------------------
+       16. Persist validation success
+    ------------------------------------------------ */
+
+    const validatedAt =
+      new Date().toISOString();
+
+    await db
+      .from("invoices")
+      .update({
+        status:
+          "Validated",
+
+        submission_status:
+          "validated",
+
+        validated_at:
+          validatedAt,
+
+        nrs_validated_at:
+          validatedAt,
+
+        submission_response: {
+          stage:
+            "nrs_validate",
+
+          response:
+            validateData,
+        },
+      })
+      .eq(
+        "id",
+        invoiceId,
+      );
+
+    /* -----------------------------------------------
+       17. NRS Sign
+    ------------------------------------------------ */
+
+    stage = "nrs_sign_request";
+    signingStarted = true;
+
+    console.log(
+      "NRS_SIGN_REQUEST",
+      {
+        invoice_id:
+          invoiceId,
+
+        business_id:
+          company?.nrs_business_id,
+
+        irn,
+
+        environment,
+
+        endpoint:
+          `${baseUrl}/api/v1/invoice/sign`,
+      },
+    );
+
+    let signResponse: Response;
+
+    try {
+      signResponse =
+        await fetch(
+          `${baseUrl}/api/v1/invoice/sign`,
+          {
+            method:
+              "POST",
+
+            headers,
+
+            body:
+              JSON.stringify(
+                payload,
+              ),
+            signal: AbortSignal.timeout(20000),
+          },
+        );
+    } catch (error) {
+      console.error(
+        "NRS_SIGN_NETWORK_ERROR",
+        {
+          stage,
+          invoice_id:
+            invoiceId,
+          message:
+            error instanceof Error
+              ? error.message
+              : String(error),
+        },
+      );
+
+      await db.rpc("nrs_finish_submission_attempt", {
+        _attempt_id: attemptId, _status: "unknown", _stage: stage, _irn: irn,
+        _error_code: "NRS_SIGN_OUTCOME_UNKNOWN",
+        _error_message: "Signing outcome unknown; reconcile before retrying",
+      });
+      await db.from("invoices").update({
+        submission_status: "timeout",
+        submission_response: { stage, outcome: "unknown", message: "Signing outcome unknown; reconcile before retrying" },
+      }).eq("id", invoiceId);
+      return json({ ok: false, stage, error: "Signing outcome unknown; reconcile before retrying", details: error instanceof Error ? error.message : String(error) }, 502);
+    }
+
+    stage =
+      "nrs_sign_response";
+
+    const signData =
+      await readBody(
+        signResponse,
+      );
+
+    console.log(
+      "NRS_SIGN_RESPONSE",
+      {
+        invoice_id:
+          invoiceId,
+
+        http_status:
+          signResponse.status,
+
+        response_received:
+          true,
+      },
+    );
+
+    if (
+      !signResponse.ok ||
+      signData?.status === false
+    ) {
+      const message = getMessage(
+        signData,
+        `NRS signing failed (HTTP ${signResponse.status})`,
+      );
+      // NRS public_message is generic and often mentions duplicate requests even
+      // for ordinary validation errors, so classify using specific details/message only.
+      const detailText = [
+        signData?.error?.details,
+        signData?.message,
+      ].filter(Boolean).join(" ");
+      // Generic/transient signing errors do not prove the invoice was not signed.
+      // Preserve the validated state and require reconciliation before any retry.
+      const outcomeUnknown =
+        signResponse.status >= 500 ||
+        /try again later|unable to complete this operation|temporar|timed? ?out|duplicate request/i.test(detailText);
+
+      if (outcomeUnknown) {
+        await db.from("invoices").update({
+          status: "Validated",
+          submission_status: "timeout",
+          submission_response: {
+            stage: "nrs_sign",
+            outcome: "unknown",
+            http_status: signResponse.status,
+            message: "Signing outcome requires reconciliation before retrying",
+            response: signData,
+          },
+        }).eq("id", invoiceId);
+
+        await db.rpc("nrs_finish_submission_attempt", {
+          _attempt_id: attemptId, _status: "unknown", _stage: "nrs_sign",
+          _irn: irn, _http_status: signResponse.status,
+          _response_summary: signData,
+          _error_code: "NRS_SIGN_OUTCOME_UNKNOWN",
+          _error_message: "NRS returned an ambiguous signing response; reconcile before retrying",
+        });
+
+        return json({
+          ok: false,
+          stage: "nrs_sign",
+          outcome: "unknown",
+          retry_safe: false,
+          error: "NRS did not confirm whether signing completed. Reconcile this IRN before retrying.",
+          details: signData,
+        }, 502);
       }
-    } else {
-      const baseUrl = getNrsBaseUrl(company, environment);
-      const credentials = await loadNrsCredentials(supabase, invoice.company_id, company);
 
-      // Step 0: Session Authentication
-      await authenticateNrsTaxpayer(baseUrl, credentials);
+      await db.from("invoices").update({
+        status: "Rejected",
+        submission_status: "rejected",
+        submission_response: {
+          stage: "nrs_sign",
+          outcome: "rejected",
+          http_status: signResponse.status,
+          response: signData,
+        },
+      }).eq("id", invoiceId);
 
-      // Step 1: Validate
-      const validateResult = await validateNrsInvoice(baseUrl, credentials, payload);
-      response = validateResult.response;
-      httpStatus = validateResult.httpStatus;
+      await db.rpc("nrs_finish_submission_attempt", {
+        _attempt_id: attemptId, _status: "failed", _stage: "nrs_sign", _irn: irn,
+        _http_status: signResponse.status, _response_summary: signData,
+        _error_code: "NRS_SIGN_REJECTED", _error_message: message,
+      });
 
-      if (validateResult.response.status === false) {
-        submissionStatus = "rejected";
-        nextInvoiceStatus = "Rejected";
-      } else {
-        // Step 2: Sign
-        const signResult = await signNrsInvoice(baseUrl, credentials, payload);
-        if (!signResult.ok) {
-          response = signResult.response ?? { status: false, message: signResult.message };
-          httpStatus = signResult.status;
-          submissionStatus = "rejected";
-          nextInvoiceStatus = "Rejected";
-        } else {
-          // Stashing the signed payload
-          const signedPayload = signResult.data;
+      return json({
+        ok: false,
+        stage: "nrs_sign",
+        outcome: "rejected",
+        retry_safe: false,
+        error: message,
+        details: signData,
+      }, 422);
+    }
 
-          // Step 3: Transmit to Ledger
-          const transmitResult = await transmitNrsInvoice(baseUrl, credentials, irn, signedPayload);
-          if (!transmitResult.ok) {
-            // Validate & Sign succeeded, but transmission failed.
-            // Mark invoice as Signed so we can recover later.
-            response = transmitResult.response ?? { status: false, message: transmitResult.message };
-            httpStatus = transmitResult.status;
-            submissionStatus = "failed";
-            nextInvoiceStatus = "Signed";
-          } else {
-            response = transmitResult.data ?? { status: true, message: "Invoice cleared and ledger transmitted" };
-            httpStatus = 200;
-            submissionStatus = "validated";
-            nextInvoiceStatus = "Validated";
-          }
+    /* -----------------------------------------------
+       18. Extract NRS signing result
+    ------------------------------------------------ */
+
+    stage =
+      "read_sign_result";
+
+    const returnedIrn =
+      signData?.irn ??
+      signData?.data?.irn ??
+      irn;
+
+    const csid =
+      signData?.csid ??
+      signData?.data?.csid ??
+      null;
+
+    /* -----------------------------------------------
+       19. Generate taxpayer QR
+    ------------------------------------------------ */
+
+    stage =
+      "generate_qr";
+
+    const qr =
+      await generateQr(
+        returnedIrn,
+        taxpayerCrypto,
+      );
+
+    /* -----------------------------------------------
+       20. Persist complete result
+    ------------------------------------------------ */
+
+    stage =
+      "persist_success";
+
+    const {
+      error:
+        persistError,
+    } =
+      await db
+        .from("invoices")
+        .update({
+          irn:
+            returnedIrn,
+
+          csid,
+
+          qr_code_data:
+            qr.data,
+
+          qr_code:
+            qr.qr,
+
+          status:
+            "Signed",
+
+          submission_status:
+            "signed",
+
+          nrs_signed_at:
+            new Date().toISOString(),
+
+          submitted_at:
+            new Date().toISOString(),
+
+          submission_response: {
+            stage:
+              "nrs_sign",
+
+            response:
+              signData,
+          },
+        })
+        .eq(
+          "id",
+          invoiceId,
+        );
+
+    if (persistError) {
+      await db.rpc("nrs_finish_submission_attempt", {
+        _attempt_id: attemptId, _status: "unknown", _stage: "persist_success",
+        _irn: returnedIrn, _error_code: "LOCAL_PERSIST_FAILED_AFTER_SIGN",
+        _error_message: "NRS signing succeeded but local persistence failed; reconcile before retrying",
+      });
+      throw persistError;
+    }
+    await db.rpc("nrs_finish_submission_attempt", {
+      _attempt_id: attemptId, _status: "succeeded", _stage: "complete",
+      _irn: returnedIrn, _http_status: signResponse.status,
+      _response_summary: { validated: true, signed: true, qr_generated: true },
+    });
+
+    return json({
+      ok: true,
+
+      environment,
+
+      irn:
+        returnedIrn,
+
+      csid,
+
+      status:
+        "Signed",
+
+      qr_generated:
+        true,
+
+      message:
+        "Invoice validated and signed by NRS. APP transmission/clearance is not performed by the SI flow.",
+    });
+  } catch (error) {
+    if (adminDb && attemptId) {
+      try {
+        await adminDb.rpc("nrs_finish_submission_attempt", {
+          _attempt_id: attemptId, _status: signingStarted ? "unknown" : "failed",
+          _stage: stage,
+          _error_code: signingStarted ? "SIGNING_OUTCOME_UNKNOWN" : "SUBMISSION_FAILED",
+          _error_message: signingStarted ? "Error after signing started; reconcile before retrying" : "Submission failed before signing",
+        });
+      } catch (finalizeError) {
+        console.error("NRS_ATTEMPT_FINALIZE_FAILED", { stage, message: finalizeError instanceof Error ? finalizeError.message : String(finalizeError) });
+      }
+      if (signingStarted && activeInvoiceId) {
+        try {
+          await adminDb.from("invoices").update({
+            submission_status: "timeout",
+            submission_response: {
+              stage,
+              outcome: "unknown",
+              message: "An error occurred after signing started; reconcile with NRS before retrying",
+            },
+          }).eq("id", activeInvoiceId);
+        } catch (invoiceStateError) {
+          console.error("NRS_INVOICE_RECONCILIATION_STATE_FAILED", {
+            stage,
+            message: invoiceStateError instanceof Error ? invoiceStateError.message : String(invoiceStateError),
+          });
         }
       }
     }
+    console.error(
+      "NRS_SUBMIT_UNHANDLED",
+      {
+        stage,
 
-    // Log submission against actual nrs_submissions schema
-    // Columns: payload (jsonb), validation_errors (jsonb), result (enum), scenario (text),
-    //          mock (bool), created_by (uuid), company_id, invoice_id
-    const isMock = environment === "mock";
-    const result = response.status === false
-      ? (nextInvoiceStatus === "Signed" ? "failed" : "rejected")
-      : "validated";
-    const scenario = isMock
-      ? response.status === false ? "mock_failure" : "mock_success"
-      : environment;
-    const validationErrors = response.status === false
-      ? response.errors ?? [{ message: response.message }]
-      : null;
+        message:
+          error instanceof Error
+            ? error.message
+            : String(error),
+      },
+    );
 
-    const { error: logErr } = await supabase.from("nrs_submissions").insert({
-      company_id: invoice.company_id,
-      invoice_id: invoiceId,
-      payload,
-      validation_errors: validationErrors,
-      result,
-      scenario,
-      mock: isMock,
-      created_by: userData.user.id,
-    });
-    if (logErr) {
-      console.error("nrs_submissions insert failed", logErr.message);
-    }
+    return json(
+      {
+        ok: false,
 
-    // Update invoice: persist IRN and walk status
-    const updates: Record<string, any> = { irn };
-    if (nextInvoiceStatus) updates.status = nextInvoiceStatus;
-    await supabase.from("invoices").update(updates).eq("id", invoiceId);
+        stage,
 
-    // For successful mock submissions, simulate the Submitted -> Signed -> Confirmed walk
-    // by leaving the invoice at "Signed". The UI can advance to "Confirmed" via the
-    // existing manual workflow button. (Do not auto-jump silently to Confirmed.)
-
-    return json({
-      ok: response.status !== false,
-      environment,
-      irn,
-      response,
-    }, httpStatus === 422 ? 200 : 200);
-  } catch (e) {
-    console.error("nrs-submit error", (e as Error).message);
-    return json({ error: (e as Error).message }, 500);
+        error:
+          error instanceof Error
+            ? error.message
+            : "Internal server error",
+      },
+      500,
+    );
   }
 });
-
-function json(data: unknown, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-}
