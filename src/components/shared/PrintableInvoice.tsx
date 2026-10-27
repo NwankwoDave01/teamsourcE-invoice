@@ -1,5 +1,6 @@
 import React from "react";
 import { formatCurrency } from "@/lib/format";
+import { resolveQrImageSource } from "@/lib/nrs/qrDisplay";
 
 export interface PrintableInvoiceData {
   id: string;
@@ -48,7 +49,7 @@ export const PrintableInvoice: React.FC<PrintableInvoiceProps> = ({ invoices, co
     <div className="printable-container print:w-full">
       {invoices.map((inv, idx) => {
         const currency = inv.currency || "NGN";
-        const qrImg = inv.qr_code_data || inv.qr_code;
+        const qrImg = resolveQrImageSource(inv.qr_code, inv.qr_code_data);
 
         return (
           <div
