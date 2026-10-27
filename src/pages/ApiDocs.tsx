@@ -5,20 +5,23 @@ const endpoints = [
   {
     method: "POST",
     path: "/functions/v1/nrs-submit",
+    owner: "TeamSource",
     description:
-      "TeamSource SI endpoint. Prepares invoice data, submits it for NRS validation and signing, and processes the QR-generation workflow.",
+      "Prepares invoice data, constructs the NRS payload, submits it for validation and signing, and processes the signed result and QR generation.",
   },
   {
     method: "POST",
     path: "/api/v1/invoice/validate",
+    owner: "NRS",
     description:
-      "NRS endpoint used to validate the invoice JSON before signing.",
+      "Validates the invoice payload before the signing request.",
   },
   {
     method: "POST",
     path: "/api/v1/invoice/sign",
+    owner: "NRS",
     description:
-      "NRS endpoint used to sign the invoice after successful validation.",
+      "Signs the invoice after successful validation.",
   },
 ];
 
@@ -156,8 +159,8 @@ export default function ApiDocs() {
           <p className="mt-4 max-w-4xl leading-7 text-slate-300">
             TeamSource integrates with the NRS e-invoicing service as a
             System Integrator (SI). The integration prepares invoice data,
-            submits the payload for validation, requests signing, and
-            processes the signing response and QR-generation workflow.
+            submits it for validation, requests signing, and processes the
+            signed result and QR-generation workflow.
           </p>
         </header>
 
@@ -165,15 +168,15 @@ export default function ApiDocs() {
           <h2 className="text-2xl font-bold">Integration workflow</h2>
           <ol className="mt-4 list-decimal space-y-3 pl-6 leading-7 text-slate-300">
             <li>An authorized user initiates invoice submission in TeamSource.</li>
-            <li>The server-side function reads the invoice, supplier, customer, line-item, tax, and monetary records.</li>
-            <li>TeamSource constructs the NRS invoice JSON and sends it for validation.</li>
+            <li>The server-side function reads invoice, supplier, customer, line-item, tax, and monetary records.</li>
+            <li>TeamSource constructs the NRS invoice payload and submits it for validation.</li>
             <li>Following successful validation, TeamSource requests NRS signing.</li>
-            <li>The integration processes the signing result and QR-generation workflow.</li>
+            <li>The signing result is processed and the invoice QR-generation workflow runs.</li>
           </ol>
         </section>
 
         <section className="mt-10">
-          <h2 className="text-2xl font-bold">API endpoints</h2>
+          <h2 className="text-2xl font-bold">API endpoints and methods</h2>
           <div className="mt-5 space-y-4">
             {endpoints.map((endpoint) => (
               <article
@@ -187,6 +190,9 @@ export default function ApiDocs() {
                   <code className="break-all text-sm">
                     {endpoint.path}
                   </code>
+                  <span className="text-xs text-slate-400">
+                    {endpoint.owner}
+                  </span>
                 </div>
                 <p className="mt-3 leading-7 text-slate-300">
                   {endpoint.description}
@@ -195,8 +201,8 @@ export default function ApiDocs() {
             ))}
           </div>
           <p className="mt-4 text-sm leading-6 text-slate-400">
-            The NRS endpoint paths are relative to the configured NRS
-            service base URL. Requests to NRS are made server-side.
+            NRS endpoint paths are relative to the configured NRS service
+            base URL. NRS requests are made server-side.
           </p>
         </section>
 
@@ -205,26 +211,21 @@ export default function ApiDocs() {
           <ul className="mt-4 list-disc space-y-2 pl-6 leading-7 text-slate-300">
             <li>TeamSource submission requests use the application's configured authentication flow.</li>
             <li>NRS credentials and signing secrets remain server-side.</li>
-            <li>Credentials, access tokens, and private keys must not be exposed in public documentation.</li>
+            <li>Access tokens, API secrets, and private keys must not be exposed in public documentation.</li>
           </ul>
         </section>
 
         <section className="mt-10">
-          <h2 className="text-2xl font-bold">
-            Example NRS invoice payload
-          </h2>
+          <h2 className="text-2xl font-bold">Example NRS invoice payload</h2>
           <p className="mt-3 leading-7 text-slate-300">
-            The following example uses the recorded TeamSource sandbox
-            invoice values, including supplier and customer details,
-            invoice references, dates, payment means, tax calculations,
-            monetary totals, and invoice-line details.
+            This sandbox invoice payload includes the invoice references,
+            dates, currency, supplier and customer details, payment means,
+            tax calculations, monetary totals, and invoice-line details.
           </p>
 
           <div className="mt-5 border border-white/10 bg-slate-900 p-4">
             <div className="mb-4 flex items-center justify-between gap-3">
-              <span className="text-sm text-slate-300">
-                JSON request body
-              </span>
+              <span className="text-sm text-slate-300">JSON request body</span>
               <button
                 type="button"
                 onClick={() => {
@@ -244,7 +245,23 @@ export default function ApiDocs() {
         </section>
 
         <section className="mt-10">
-          <h2 className="text-2xl font-bold">Sandbox test results</h2>
+          <h2 className="text-2xl font-bold">IRN and QR Code processing</h2>
+          <p className="mt-3 leading-7 text-slate-300">
+            TeamSource generates the Invoice Reference Number (IRN) using
+            the invoice number, NRS service ID, and invoice issue date.
+            Following successful NRS signing, the integration processes
+            the signing result and QR-generation workflow for the invoice.
+          </p>
+          <ul className="mt-4 list-disc space-y-2 pl-6 leading-7 text-slate-300">
+            <li>The IRN follows the configured NRS reference format.</li>
+            <li>The IRN is associated with the invoice submitted for signing.</li>
+            <li>The signed invoice workflow processes QR generation.</li>
+            <li>The rendered invoice should display the corresponding IRN and QR Code.</li>
+          </ul>
+        </section>
+
+        <section className="mt-10">
+          <h2 className="text-2xl font-bold">Successful sandbox test results</h2>
           <div className="mt-5 overflow-hidden border border-white/10">
             {testResults.map(([label, value]) => (
               <div
@@ -261,23 +278,21 @@ export default function ApiDocs() {
         <section className="mt-10 border border-white/10 p-5">
           <h2 className="text-2xl font-bold">Payload field coverage</h2>
           <p className="mt-3 leading-7 text-slate-300">
-            The documented payload covers business and invoice references,
-            issue and due dates, invoice type, currencies, supplier and
-            customer parties, delivery date, payment means, tax totals and
-            subtotals, legal monetary totals, and invoice lines containing
+            The payload documents business and invoice references, issue
+            and due dates, invoice type, currencies, supplier and customer
+            parties, delivery date, payment means, tax totals and subtotals,
+            legal monetary totals, and invoice lines containing
             classification, quantity, price, discount, and line amount.
           </p>
           <p className="mt-3 leading-7 text-slate-300">
-            Optional fields such as notes, order references, document
-            references, delivery periods, and allowances or charges should
-            be included when applicable to the invoice and required by the
-            NRS schema. Invoice dates, identifiers, tax values, and totals
-            must match the submitted transaction.
+            Optional NRS fields such as notes, order and document references,
+            delivery periods, and allowances or charges are supplied when
+            applicable to the invoice and supported by the NRS schema.
           </p>
         </section>
 
         <footer className="mt-10 border-t border-white/10 pt-6 text-sm text-slate-400">
-          TeamSource SI integration documentation · NRS sandbox validation and signing
+          TeamSource SI integration · NRS sandbox validation and signing
         </footer>
       </div>
     </main>
