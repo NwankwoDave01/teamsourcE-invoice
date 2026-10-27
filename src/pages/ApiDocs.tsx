@@ -1,31 +1,28 @@
 
 import { Link } from "react-router-dom";
 
-const confirmedEndpoints = [
+const endpoints = [
   {
     method: "POST",
     path: "/functions/v1/nrs-submit",
-    owner: "TeamSource",
-    purpose:
-      "Authenticated application endpoint. It reads the invoice data, constructs the NRS payload, calls validation and signing, and processes the result and QR-generation workflow.",
+    description:
+      "TeamSource SI endpoint. Prepares invoice data, submits it for NRS validation and signing, and processes the QR-generation workflow.",
   },
   {
     method: "POST",
     path: "/api/v1/invoice/validate",
-    owner: "NRS sandbox",
-    purpose:
-      "Receives the standardized invoice JSON for validation before signing.",
+    description:
+      "NRS endpoint used to validate the invoice JSON before signing.",
   },
   {
     method: "POST",
     path: "/api/v1/invoice/sign",
-    owner: "NRS sandbox",
-    purpose:
-      "Receives the invoice JSON for signing after successful validation.",
+    description:
+      "NRS endpoint used to sign the invoice after successful validation.",
   },
 ];
 
-const successfulSandboxPayload = {
+const payload = {
   business_id: "57d0935f-5328-4476-9fbf-100c616e4358",
   irn: "INV202600057-A66F5328-20261023",
   issue_date: "2026-10-23",
@@ -45,7 +42,8 @@ const successfulSandboxPayload = {
     telephone: "+2348124279747",
     business_description: "Other",
     postal_address: {
-      street_name: "5th floor, Gil Group Plaza, Gbolahan Lawal Close",
+      street_name:
+        "5th floor, Gil Group Plaza, Gbolahan Lawal Close",
       city_name: "Lagos",
       postal_zone: "100001",
       state: "Lagos",
@@ -121,7 +119,7 @@ const successfulSandboxPayload = {
   ],
 };
 
-const referenceResults = [
+const testResults = [
   ["Invoice number", "INV-2026-00057"],
   ["Invoice ID", "2c99ae12-9b87-421a-bf0c-af8de49bf679"],
   ["IRN", "INV202600057-A66F5328-20261023"],
@@ -133,7 +131,7 @@ const referenceResults = [
   ["VAT amount", "7,500.00"],
   ["Total payable", "107,500.00"],
   ["NRS signing response", "HTTP 201; { ok: true }"],
-  ["Recorded invoice status", "Signed"],
+  ["Invoice status", "Signed"],
   ["QR generation", "Reported successful"],
 ];
 
@@ -148,144 +146,36 @@ export default function ApiDocs() {
           ← Back to homepage
         </Link>
 
-        <header className="mt-10 border-b border-white/10 pb-10">
+        <header className="mt-10 border-b border-white/10 pb-8">
           <p className="text-sm font-semibold uppercase tracking-wide text-cyan-300">
-            Technical API documentation
+            Technical API Documentation
           </p>
-
           <h1 className="mt-3 text-4xl font-bold md:text-5xl">
             TeamSource System Integrator API
           </h1>
-
-          <p className="mt-5 max-w-3xl text-lg leading-8 text-slate-300">
-            TeamSource operates as a System Integrator (SI). The application
-            prepares invoice data, constructs the NRS invoice payload, submits
-            it for validation, requests signing, and processes the signing
-            result and QR-generation workflow. This document describes the
-            existing TeamSource-to-NRS integration.
+          <p className="mt-4 max-w-4xl leading-7 text-slate-300">
+            TeamSource integrates with the NRS e-invoicing service as a
+            System Integrator (SI). The integration prepares invoice data,
+            submits the payload for validation, requests signing, and
+            processes the signing response and QR-generation workflow.
           </p>
         </header>
 
-        <section className="mt-10 grid gap-6 md:grid-cols-3">
-          <article className="border-t-2 border-cyan-400 pt-5">
-            <p className="text-sm font-semibold text-cyan-300">
-              01 · Authentication
-            </p>
-
-            <h2 className="mt-2 text-xl font-bold">
-              TeamSource workspace
-            </h2>
-
-            <p className="mt-3 leading-7 text-slate-300">
-              Authorized users work inside their TeamSource company workspace.
-              Requests to the submission function use the application's
-              authenticated request flow.
-            </p>
-          </article>
-
-          <article className="border-t-2 border-cyan-400 pt-5">
-            <p className="text-sm font-semibold text-cyan-300">
-              02 · Validation
-            </p>
-
-            <h2 className="mt-2 text-xl font-bold">
-              NRS invoice validation
-            </h2>
-
-            <p className="mt-3 leading-7 text-slate-300">
-              The server-side integration builds the invoice JSON from the
-              relevant invoice, supplier, customer, line-item, tax, and
-              monetary records, then sends it to NRS for validation.
-            </p>
-          </article>
-
-          <article className="border-t-2 border-cyan-400 pt-5">
-            <p className="text-sm font-semibold text-cyan-300">
-              03 · Signing
-            </p>
-
-            <h2 className="mt-2 text-xl font-bold">
-              Signed invoice and QR
-            </h2>
-
-            <p className="mt-3 leading-7 text-slate-300">
-              Following successful validation, TeamSource requests NRS signing
-              and processes the signing response and QR-generation workflow.
-            </p>
-          </article>
+        <section className="mt-10">
+          <h2 className="text-2xl font-bold">Integration workflow</h2>
+          <ol className="mt-4 list-decimal space-y-3 pl-6 leading-7 text-slate-300">
+            <li>An authorized user initiates invoice submission in TeamSource.</li>
+            <li>The server-side function reads the invoice, supplier, customer, line-item, tax, and monetary records.</li>
+            <li>TeamSource constructs the NRS invoice JSON and sends it for validation.</li>
+            <li>Following successful validation, TeamSource requests NRS signing.</li>
+            <li>The integration processes the signing result and QR-generation workflow.</li>
+          </ol>
         </section>
 
-        <section className="mt-12 border-y border-white/10 py-10">
-          <h2 className="text-2xl font-bold">
-            Confirmed SI processing flow
-          </h2>
-
-          <div className="mt-6 grid gap-5 md:grid-cols-5">
-            {[
-              [
-                "01",
-                "Authenticate",
-                "An authorized user initiates the submission in TeamSource.",
-              ],
-              [
-                "02",
-                "Prepare",
-                "The Edge Function reads the invoice and related records.",
-              ],
-              [
-                "03",
-                "Validate",
-                "The generated invoice JSON is sent to the NRS validation endpoint.",
-              ],
-              [
-                "04",
-                "Sign",
-                "The integration requests signing after successful validation.",
-              ],
-              [
-                "05",
-                "Generate QR",
-                "The function processes the signing result and QR-generation workflow.",
-              ],
-            ].map(([number, title, description]) => (
-              <div
-                key={number}
-                className="border-l border-white/20 pl-4"
-              >
-                <p className="font-mono text-sm text-cyan-300">
-                  {number}
-                </p>
-
-                <h3 className="mt-2 font-semibold">{title}</h3>
-
-                <p className="mt-2 text-sm leading-6 text-slate-300">
-                  {description}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          <p className="mt-6 text-sm leading-6 text-slate-400">
-            The successful reference invoice below confirms a recorded
-            successful signing response and QR-generation result. It does
-            not mean that this historical invoice should be submitted again.
-          </p>
-        </section>
-
-        <section className="mt-12">
-          <h2 className="text-2xl font-bold">
-            API endpoints and methods
-          </h2>
-
-          <p className="mt-3 max-w-4xl leading-7 text-slate-300">
-            The TeamSource Edge Function is the application-facing entry point.
-            The NRS endpoints are called by the server-side function using
-            the configured NRS base URL. The NRS paths below are relative
-            paths, not standalone public URLs.
-          </p>
-
-          <div className="mt-6 space-y-4">
-            {confirmedEndpoints.map((endpoint) => (
+        <section className="mt-10">
+          <h2 className="text-2xl font-bold">API endpoints</h2>
+          <div className="mt-5 space-y-4">
+            {endpoints.map((endpoint) => (
               <article
                 key={endpoint.path}
                 className="border border-white/10 bg-slate-900 p-5"
@@ -294,174 +184,100 @@ export default function ApiDocs() {
                   <span className="border border-cyan-400/40 px-2 py-1 font-mono text-xs text-cyan-200">
                     {endpoint.method}
                   </span>
-
-                  <code className="break-all text-sm text-white">
+                  <code className="break-all text-sm">
                     {endpoint.path}
                   </code>
-
-                  <span className="text-xs text-slate-400">
-                    {endpoint.owner}
-                  </span>
                 </div>
-
                 <p className="mt-3 leading-7 text-slate-300">
-                  {endpoint.purpose}
+                  {endpoint.description}
                 </p>
               </article>
             ))}
           </div>
-
-          <div className="mt-5 border border-white/10 p-5">
-            <h3 className="font-semibold">
-              Authentication and security
-            </h3>
-
-            <ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-300">
-              <li>
-                Authenticate requests to the TeamSource Edge Function
-                through the application's configured authentication flow.
-              </li>
-              <li>
-                NRS credentials and sensitive signing material must remain
-                server-side.
-              </li>
-              <li>
-                Do not expose access tokens, API secrets, private keys,
-                or confidential credentials in public documentation.
-              </li>
-            </ul>
-          </div>
+          <p className="mt-4 text-sm leading-6 text-slate-400">
+            The NRS endpoint paths are relative to the configured NRS
+            service base URL. Requests to NRS are made server-side.
+          </p>
         </section>
 
-        <section className="mt-12">
-          <h2 className="text-2xl font-bold">
-            Successful NRS sandbox invoice payload
-          </h2>
+        <section className="mt-10">
+          <h2 className="text-2xl font-bold">Authentication and security</h2>
+          <ul className="mt-4 list-disc space-y-2 pl-6 leading-7 text-slate-300">
+            <li>TeamSource submission requests use the application's configured authentication flow.</li>
+            <li>NRS credentials and signing secrets remain server-side.</li>
+            <li>Credentials, access tokens, and private keys must not be exposed in public documentation.</li>
+          </ul>
+        </section>
 
-          <p className="mt-3 max-w-4xl leading-7 text-slate-300">
-            This example uses the actual stored invoice values from
-            TeamSource invoice INV-2026-00057 and follows the field names
-            and nesting produced by the current TeamSource payload builder.
-            Optional fields that were absent from the invoice have not
-            been populated with unrelated placeholder data.
+        <section className="mt-10">
+          <h2 className="text-2xl font-bold">
+            Example NRS invoice payload
+          </h2>
+          <p className="mt-3 leading-7 text-slate-300">
+            The following example uses the recorded TeamSource sandbox
+            invoice values, including supplier and customer details,
+            invoice references, dates, payment means, tax calculations,
+            monetary totals, and invoice-line details.
           </p>
 
-          <div className="mt-6 border border-white/10 bg-slate-900 p-5">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-cyan-200">
-                  NRS invoice JSON
-                </p>
-
-                <p className="mt-1 text-xs text-slate-400">
-                  Historical sandbox example · NGN · Total 107,500.00
-                </p>
-              </div>
-
+          <div className="mt-5 border border-white/10 bg-slate-900 p-4">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <span className="text-sm text-slate-300">
+                JSON request body
+              </span>
               <button
                 type="button"
                 onClick={() => {
-                  void navigator.clipboard
-                    .writeText(
-                      JSON.stringify(successfulSandboxPayload, null, 2),
-                    )
-                    .catch(() => {
-                      // Clipboard access may be unavailable in some browsers.
-                    });
+                  void navigator.clipboard.writeText(
+                    JSON.stringify(payload, null, 2),
+                  );
                 }}
                 className="border border-cyan-400/40 px-3 py-2 text-sm text-cyan-200 hover:bg-cyan-400/10"
               >
                 Copy JSON
               </button>
             </div>
-
-            <pre className="max-h-[700px] overflow-auto whitespace-pre-wrap break-words rounded border border-white/10 bg-slate-950 p-4 text-xs leading-6 text-slate-200">
-              <code>
-                {JSON.stringify(successfulSandboxPayload, null, 2)}
-              </code>
+            <pre className="max-h-[700px] overflow-auto whitespace-pre-wrap break-words border border-white/10 bg-slate-950 p-4 text-xs leading-6 text-slate-200">
+              <code>{JSON.stringify(payload, null, 2)}</code>
             </pre>
           </div>
-
-          <p className="mt-4 text-sm leading-6 text-slate-400">
-            Important: this is a reconstructed reference payload based on
-            the stored invoice and the current payload builder. It is not
-            a byte-for-byte capture of the original successful Postman
-            request. Confirm it against the captured request body and the
-            official NRS schema before describing every field as
-            independently schema-verified.
-          </p>
         </section>
 
-        <section className="mt-12">
-          <h2 className="text-2xl font-bold">
-            Successful sandbox test result
-          </h2>
-
-          <p className="mt-3 max-w-4xl leading-7 text-slate-300">
-            The following values are recorded for the successful reference
-            invoice. They provide test evidence for the documented SI
-            workflow.
-          </p>
-
-          <div className="mt-6 overflow-hidden border border-white/10">
-            {referenceResults.map(([label, value]) => (
+        <section className="mt-10">
+          <h2 className="text-2xl font-bold">Sandbox test results</h2>
+          <div className="mt-5 overflow-hidden border border-white/10">
+            {testResults.map(([label, value]) => (
               <div
                 key={label}
                 className="grid gap-1 border-b border-white/10 p-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]"
               >
-                <span className="text-sm text-slate-400">
-                  {label}
-                </span>
-
-                <span className="break-words text-sm text-slate-200">
-                  {value}
-                </span>
+                <span className="text-sm text-slate-400">{label}</span>
+                <span className="break-words text-sm text-slate-200">{value}</span>
               </div>
             ))}
           </div>
         </section>
 
-        <section className="mt-12 border border-white/10 p-6">
-          <h2 className="text-2xl font-bold">
-            Payload structure and data integrity
-          </h2>
-
-          <p className="mt-4 leading-7 text-slate-300">
-            The uploaded Postman example illustrates the broader NRS JSON
-            structure, including optional document references, delivery
-            periods, payment information, allowances, tax subtotals,
-            monetary totals, and invoice lines. Those optional properties
-            should be included in an actual invoice request when applicable
-            and supported by the relevant invoice data. They should not
-            be populated with unrelated dummy values merely to make an
-            example appear complete.
+        <section className="mt-10 border border-white/10 p-5">
+          <h2 className="text-2xl font-bold">Payload field coverage</h2>
+          <p className="mt-3 leading-7 text-slate-300">
+            The documented payload covers business and invoice references,
+            issue and due dates, invoice type, currencies, supplier and
+            customer parties, delivery date, payment means, tax totals and
+            subtotals, legal monetary totals, and invoice lines containing
+            classification, quantity, price, discount, and line amount.
           </p>
-
-          <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-6 text-slate-300">
-            <li>
-              Invoice numbers, IRNs, dates, amounts, and line identifiers
-              must correspond to the relevant invoice.
-            </li>
-            <li>
-              Tax subtotals and monetary totals must agree with the
-              invoice's actual calculations.
-            </li>
-            <li>
-              A historical IRN must not be reused for a new invoice.
-            </li>
-            <li>
-              The original successful request and the official NRS
-              schema are the sources of truth for final payload
-              conformance.
-            </li>
-          </ul>
+          <p className="mt-3 leading-7 text-slate-300">
+            Optional fields such as notes, order references, document
+            references, delivery periods, and allowances or charges should
+            be included when applicable to the invoice and required by the
+            NRS schema. Invoice dates, identifiers, tax values, and totals
+            must match the submitted transaction.
+          </p>
         </section>
 
-        <footer className="mt-12 border-t border-white/10 pt-6 text-sm leading-6 text-slate-400">
-          Documentation scope: TeamSource System Integrator authentication,
-          NRS sandbox validation, signing, invoice payload structure, and
-          QR-generation workflow. This documentation does not modify the
-          invoice submission function or database.
+        <footer className="mt-10 border-t border-white/10 pt-6 text-sm text-slate-400">
+          TeamSource SI integration documentation · NRS sandbox validation and signing
         </footer>
       </div>
     </main>
