@@ -39,6 +39,12 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
+vi.mock("@/components/auth/TurnstileCaptcha", () => ({
+  TurnstileCaptcha: ({ onTokenChange }: { onTokenChange: (token: string | null) => void }) => (
+    <button type="button" onClick={() => onTokenChange("signup-test-token")}>Complete CAPTCHA</button>
+  ),
+}));
+
 let filters: [string, unknown][];
 let activeMember: { company_id: string } | null;
 const session = { user: { id: "user-a", email: "user@example.com" } };
@@ -264,6 +270,68 @@ describe("Authentication & Invitation Flow Safeguards", () => {
       // 4. Verifies active membership and enters dashboard
       await screen.findByText("Company Workspace Dashboard");
     });
+
+    it("rejects an 11-character invitation password", async () => {
+      render(
+        <MemoryRouter initialEntries={["/auth/accept-invite?token_hash=valid-token&type=invite"]}>
+          <AuthProvider>
+            <AcceptInvitation />
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      fireEvent.click(await screen.findByRole("button", { name: /Continue to accept invitation/i }));
+      await screen.findByText("Set up your account");
+      fireEvent.change(screen.getByLabelText("Set password"), { target: { value: "12345678901" } });
+      fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "12345678901" } });
+      fireEvent.click(screen.getByRole("button", { name: /Set password & accept invitation/i }));
+
+      await screen.findByText("Password must be at least 12 characters long.");
+      expect(mocks.updateUser).not.toHaveBeenCalled();
+      expect(mocks.invoke).not.toHaveBeenCalledWith("tenant-admin", { body: { action: "accept_invitation" } });
+    });
+
+    it("accepts a matching 12-character invitation password", async () => {
+      render(
+        <MemoryRouter initialEntries={["/auth/accept-invite?token_hash=valid-token&type=invite"]}>
+          <AuthProvider>
+            <Routes>
+              <Route path="/auth/accept-invite" element={<AcceptInvitation />} />
+              <Route path="/app/dashboard" element={<div>Company Workspace Dashboard</div>} />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      fireEvent.click(await screen.findByRole("button", { name: /Continue to accept invitation/i }));
+      await screen.findByText("Set up your account");
+      fireEvent.change(screen.getByLabelText("Set password"), { target: { value: "123456789012" } });
+      fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "123456789012" } });
+      fireEvent.click(screen.getByRole("button", { name: /Set password & accept invitation/i }));
+
+      await screen.findByText("Company Workspace Dashboard");
+      expect(mocks.updateUser).toHaveBeenCalledWith({ password: "123456789012" });
+      expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", { body: { action: "accept_invitation" } });
+    });
+
+    it("still requires confirmation to match a valid-length password", async () => {
+      render(
+        <MemoryRouter initialEntries={["/auth/accept-invite?token_hash=valid-token&type=invite"]}>
+          <AuthProvider>
+            <AcceptInvitation />
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      fireEvent.click(await screen.findByRole("button", { name: /Continue to accept invitation/i }));
+      await screen.findByText("Set up your account");
+      fireEvent.change(screen.getByLabelText("Set password"), { target: { value: "123456789012" } });
+      fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "123456789013" } });
+      fireEvent.click(screen.getByRole("button", { name: /Set password & accept invitation/i }));
+
+      await screen.findByText("Passwords do not match.");
+      expect(mocks.updateUser).not.toHaveBeenCalled();
+    });
   });
 
   describe("ProtectedRoute safeguards", () => {
@@ -308,42 +376,18 @@ describe("Authentication & Invitation Flow Safeguards", () => {
     });
   });
 
-  describe("Signup trigger metadata and email verification", () => {
-    it("submits all company fields matching handle_new_user and displays honest email verification message", async () => {
+  describe("Invitation-only signup", () => {
+    it("does not submit public signup or create a workspace", async () => {
       render(
         <MemoryRouter initialEntries={["/auth/signup"]}>
           <Signup />
         </MemoryRouter>
       );
 
-      fireEvent.change(screen.getByLabelText("Your full name"), { target: { value: "Chidi Anagonye" } });
-      fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "chidi@ethics.ng" } });
-      fireEvent.change(screen.getByLabelText("Password"), { target: { value: "SuperSecret123" } });
-      fireEvent.change(screen.getByLabelText("Company name"), { target: { value: "Ethics Consulting Ltd" } });
-      fireEvent.change(screen.getByLabelText("TIN"), { target: { value: "NG-99887766" } });
-
-      fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
-
-      await waitFor(() => {
-        expect(mocks.signUp).toHaveBeenCalledWith({
-          email: "chidi@ethics.ng",
-          password: "SuperSecret123",
-          options: {
-            emailRedirectTo: `${window.location.origin}/app/dashboard`,
-            data: {
-              display_name: "Chidi Anagonye",
-              company_name: "Ethics Consulting Ltd",
-              tin: "NG-99887766",
-              industry: "Technology & Software",
-            },
-          },
-        });
-      });
-
-      // Honest email verification screen
-      await screen.findByText("Verify your email");
-      expect(screen.getByText("chidi@ethics.ng")).toBeInTheDocument();
-      expect(screen.getByRole("link", { name: /Proceed to Sign in/i })).toBeInTheDocument();
+      expect(await screen.findByText("Workspace access is invitation-only")).toBeInTheDocument();
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Create workspace" })).not.toBeInTheDocument();
+      expect(mocks.signUp).not.toHaveBeenCalled();
     });
   });
 });

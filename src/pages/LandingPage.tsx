@@ -113,10 +113,10 @@ export default function LandingPage() {
             </Link>
 
             <Link
-              to="/auth/signup"
+              to="/auth/login"
               className="rounded-xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
             >
-              Start Free
+              Sign in
             </Link>
           </div>
         </div>
@@ -156,10 +156,10 @@ export default function LandingPage() {
 
             <div className="mt-10 flex flex-wrap gap-4">
               <Link
-                to="/auth/signup"
+                to="/auth/login"
                 className="rounded-2xl bg-cyan-400 px-7 py-4 font-semibold text-slate-950 transition hover:bg-cyan-300"
               >
-                Start Free
+                Sign in
               </Link>
 
               <a
@@ -462,21 +462,14 @@ export default function LandingPage() {
             </h2>
 
             <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-slate-600">
-              Start with compliance-ready invoicing today and scale into
-              operational automation, reporting, integrations, and enterprise finance workflows.
+              Workspace access is invitation-only. Ask your company administrator to invite your
+              work email, then use the invitation link to set up your account.
             </p>
 
             <div className="mt-10 flex flex-wrap justify-center gap-4">
               <Link
-                to="/auth/signup"
-                className="rounded-2xl bg-slate-950 px-7 py-4 font-semibold text-white transition hover:bg-slate-800"
-              >
-                Get Started
-              </Link>
-
-              <Link
                 to="/auth/login"
-                className="rounded-2xl border border-slate-200 px-7 py-4 font-semibold transition hover:bg-slate-100"
+                className="rounded-2xl bg-slate-950 px-7 py-4 font-semibold text-white transition hover:bg-slate-800"
               >
                 Sign In
               </Link>

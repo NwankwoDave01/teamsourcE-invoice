@@ -11,6 +11,7 @@ import { BrandMark } from "@/components/shared/BrandMark";
 import { BRAND } from "@/lib/brand";
 
 import { useAuth } from "@/contexts/AuthContext";
+import { TurnstileCaptcha } from "@/components/auth/TurnstileCaptcha";
 
 export default function Login() {
   const navigate = useNavigate();
@@ -22,17 +23,40 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const [captchaError, setCaptchaError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    setLoading(false);
-    if (error) {
-      toast({ title: "Sign-in failed", description: error.message, variant: "destructive" });
+    if (!captchaToken) {
+      setCaptchaError("Complete the CAPTCHA before signing in.");
       return;
     }
-    navigate(from, { replace: true });
+
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+        options: { captchaToken },
+      });
+      if (error) {
+        toast({ title: "Sign-in failed", description: error.message, variant: "destructive" });
+        return;
+      }
+      navigate(from, { replace: true });
+    } catch (error) {
+      toast({
+        title: "Sign-in failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+      setCaptchaToken(null);
+      setCaptchaResetKey((key) => key + 1);
+    }
   };
 
   return (
@@ -85,6 +109,14 @@ export default function Login() {
               <Input id="password" type="password" required autoComplete="current-password"
                 value={password} onChange={(e) => setPassword(e.target.value)} />
             </div>
+            <TurnstileCaptcha
+              resetKey={captchaResetKey}
+              onTokenChange={setCaptchaToken}
+              onError={setCaptchaError}
+            />
+            {captchaError && (
+              <p role="alert" className="text-sm text-destructive">{captchaError}</p>
+            )}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Sign in
@@ -92,10 +124,7 @@ export default function Login() {
           </form>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            New to {BRAND.name}?{" "}
-            <Link to="/auth/signup" className="font-medium text-primary hover:underline">
-              Create a workspace
-            </Link>
+            Access to {BRAND.name} is invitation-only. Ask your company administrator to invite you.
           </p>
         </Card>
 

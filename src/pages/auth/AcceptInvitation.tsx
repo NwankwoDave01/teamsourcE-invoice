@@ -164,8 +164,8 @@ export default function AcceptInvitation() {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters long.");
+    if (password.length < 12) {
+      setError("Password must be at least 12 characters long.");
       return;
     }
 
@@ -311,11 +311,11 @@ export default function AcceptInvitation() {
                     id="password"
                     type="password"
                     required
-                    minLength={8}
+                    minLength={12}
                     autoComplete="new-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 8 characters"
+                    placeholder="At least 12 characters"
                   />
                 </div>
 
@@ -325,7 +325,7 @@ export default function AcceptInvitation() {
                     id="confirmPassword"
                     type="password"
                     required
-                    minLength={8}
+                    minLength={12}
                     autoComplete="new-password"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
