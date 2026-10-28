@@ -16,6 +16,7 @@ import {
 import { toast } from "@/hooks/use-toast";
 import { BrandMark } from "@/components/shared/BrandMark";
 import { BRAND } from "@/lib/brand";
+import { TurnstileCaptcha } from "@/components/auth/TurnstileCaptcha";
 
 const INDUSTRIES = [
   "Technology & Software",
@@ -41,6 +42,9 @@ export default function Signup() {
   });
   const [loading, setLoading] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null);
+  const [captchaResetKey, setCaptchaResetKey] = useState(0);
+  const [captchaError, setCaptchaError] = useState("");
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm({ ...form, [k]: e.target.value });
@@ -51,32 +55,48 @@ export default function Signup() {
       toast({ title: "Weak password", description: "Use at least 8 characters.", variant: "destructive" });
       return;
     }
-    setLoading(true);
-    const { data, error } = await supabase.auth.signUp({
-      email: form.email.trim(),
-      password: form.password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/app/dashboard`,
-        data: {
-          display_name: form.displayName.trim(),
-          company_name: form.companyName.trim(),
-          tin: form.tin.trim(),
-          industry: form.industry.trim() || "Other",
-        },
-      },
-    });
-    setLoading(false);
-    if (error) {
-      toast({ title: "Sign-up failed", description: error.message, variant: "destructive" });
+    if (!captchaToken) {
+      setCaptchaError("Complete the CAPTCHA before creating an account.");
       return;
     }
 
-    // Handle email verification honestly
-    if (data?.session) {
-      toast({ title: "Workspace created", description: `Welcome to ${BRAND.name}.` });
-      navigate("/app/dashboard", { replace: true });
-    } else {
-      setSubmittedEmail(form.email.trim());
+    setLoading(true);
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: form.email.trim(),
+        password: form.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/app/dashboard`,
+          captchaToken,
+          data: {
+            display_name: form.displayName.trim(),
+            company_name: form.companyName.trim(),
+            tin: form.tin.trim(),
+            industry: form.industry.trim() || "Other",
+          },
+        },
+      });
+      if (error) {
+        toast({ title: "Sign-up failed", description: error.message, variant: "destructive" });
+        return;
+      }
+
+      if (data?.session) {
+        toast({ title: "Workspace created", description: `Welcome to ${BRAND.name}.` });
+        navigate("/app/dashboard", { replace: true });
+      } else {
+        setSubmittedEmail(form.email.trim());
+      }
+    } catch (error) {
+      toast({
+        title: "Sign-up failed",
+        description: error instanceof Error ? error.message : "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+      setCaptchaToken(null);
+      setCaptchaResetKey((key) => key + 1);
     }
   };
 
@@ -213,6 +233,14 @@ export default function Signup() {
               </div>
             </div>
 
+            <TurnstileCaptcha
+              resetKey={captchaResetKey}
+              onTokenChange={setCaptchaToken}
+              onError={setCaptchaError}
+            />
+            {captchaError && (
+              <p role="alert" className="text-sm text-destructive">{captchaError}</p>
+            )}
             <Button type="submit" className="w-full" disabled={loading}>
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               Create workspace

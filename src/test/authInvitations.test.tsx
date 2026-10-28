@@ -39,6 +39,12 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
+vi.mock("@/components/auth/TurnstileCaptcha", () => ({
+  TurnstileCaptcha: ({ onTokenChange }: { onTokenChange: (token: string | null) => void }) => (
+    <button type="button" onClick={() => onTokenChange("signup-test-token")}>Complete CAPTCHA</button>
+  ),
+}));
+
 let filters: [string, unknown][];
 let activeMember: { company_id: string } | null;
 const session = { user: { id: "user-a", email: "user@example.com" } };
@@ -322,6 +328,7 @@ describe("Authentication & Invitation Flow Safeguards", () => {
       fireEvent.change(screen.getByLabelText("Company name"), { target: { value: "Ethics Consulting Ltd" } });
       fireEvent.change(screen.getByLabelText("TIN"), { target: { value: "NG-99887766" } });
 
+      fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
       fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
 
       await waitFor(() => {
@@ -330,6 +337,7 @@ describe("Authentication & Invitation Flow Safeguards", () => {
           password: "SuperSecret123",
           options: {
             emailRedirectTo: `${window.location.origin}/app/dashboard`,
+            captchaToken: "signup-test-token",
             data: {
               display_name: "Chidi Anagonye",
               company_name: "Ethics Consulting Ltd",
