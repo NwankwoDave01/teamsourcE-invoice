@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Login from "@/pages/auth/Login";
 import Signup from "@/pages/auth/Signup";
+import LandingPage from "@/pages/LandingPage";
 
 const mocks = vi.hoisted(() => ({
   signInWithPassword: vi.fn(),
@@ -128,35 +129,32 @@ describe("Turnstile authentication", () => {
     expect(mocks.signInWithPassword).toHaveBeenCalledTimes(1);
   });
 
-  it("submits the CAPTCHA token with the existing signup request", async () => {
+  it("does not expose public workspace signup", async () => {
     render(
       <MemoryRouter initialEntries={["/auth/signup"]}>
         <Signup />
       </MemoryRouter>,
     );
 
-    fireEvent.change(screen.getByLabelText("Your full name"), { target: { value: "Chidi Anagonye" } });
-    fireEvent.change(screen.getByLabelText("Work email"), { target: { value: "chidi@ethics.ng" } });
-    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "SuperSecret123" } });
-    fireEvent.change(screen.getByLabelText("Company name"), { target: { value: "Ethics Consulting Ltd" } });
-    fireEvent.change(screen.getByLabelText("TIN"), { target: { value: "NG-99887766" } });
-    fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
-    fireEvent.click(screen.getByRole("button", { name: "Create workspace" }));
+    expect(await screen.findByText("Workspace access is invitation-only")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Create workspace" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Go to sign in" })).toHaveAttribute("href", "/auth/login");
+    expect(mocks.signUp).not.toHaveBeenCalled();
+  });
 
-    await screen.findByText("Verify your email");
-    expect(mocks.signUp).toHaveBeenCalledWith({
-      email: "chidi@ethics.ng",
-      password: "SuperSecret123",
-      options: {
-        emailRedirectTo: `${window.location.origin}/app/dashboard`,
-        captchaToken: "turnstile-test-token",
-        data: {
-          display_name: "Chidi Anagonye",
-          company_name: "Ethics Consulting Ltd",
-          tin: "NG-99887766",
-          industry: "Technology & Software",
-        },
-      },
-    });
+  it("uses invitation-only guidance instead of signup links on login and landing pages", async () => {
+    const { container } = renderLogin();
+    expect(screen.getByText(/Access to .* is invitation-only/)).toBeInTheDocument();
+    expect(container.querySelector('a[href="/auth/signup"]')).not.toBeInTheDocument();
+
+    cleanup();
+    const { container: landingContainer } = render(
+      <MemoryRouter>
+        <LandingPage />
+      </MemoryRouter>,
+    );
+    expect(landingContainer.querySelector('a[href="/auth/signup"]')).not.toBeInTheDocument();
+    expect(screen.getByText(/Workspace access is invitation-only/)).toBeInTheDocument();
   });
 });

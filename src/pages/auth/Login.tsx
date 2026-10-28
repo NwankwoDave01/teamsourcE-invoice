@@ -124,10 +124,7 @@ export default function Login() {
           </form>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            New to {BRAND.name}?{" "}
-            <Link to="/auth/signup" className="font-medium text-primary hover:underline">
-              Create a workspace
-            </Link>
+            Access to {BRAND.name} is invitation-only. Ask your company administrator to invite you.
           </p>
         </Card>
 
