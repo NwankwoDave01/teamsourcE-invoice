@@ -6,6 +6,7 @@ import { invokeTenantAdmin, parseTeam, tenantRoles, type TeamChange } from "@/li
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AppDatabase } from "@/integrations/supabase/appSchema";
 import type { Json } from "@/integrations/supabase/types";
+import { recordAuditEvent } from "@/lib/auditLog";
 
 export type DBInvoiceStatus = Database["public"]["Enums"]["invoice_status"];
 
@@ -707,8 +708,7 @@ export async function seedDemoData(companyId: string, userId: string) {
     .eq("company_id", companyId);
 
   if (error) {
-    console.error("Failed to check existing customers count:", error);
-    return;
+    throw new Error("Unable to check existing demo data.");
   }
 
   // If any customers exist, skip
@@ -722,10 +722,13 @@ export async function seedDemoData(companyId: string, userId: string) {
     { name: "MTN Nigeria", email: "vendors@mtn.com.ng", phone: "+234 803 000 0001", tin: "NG-99001122", city: "Lagos" },
     { name: "Dangote Cement", email: "ap@dangote.com", phone: "+234 802 991 4400", tin: "NG-88112233", city: "Obajana" },
   ];
-  const { data: insertedCustomers } = await supabase
+  const { data: insertedCustomers, error: customersError } = await supabase
     .from("customers")
     .insert(customers.map((c) => ({ ...c, company_id: companyId, status: "Active" as const })))
     .select();
+  if (customersError || !insertedCustomers?.length) {
+    throw new Error("Unable to create demo customers.");
+  }
 
   const products = [
     { sku: "SF-RICE-50", name: "Premium Parboiled Rice 50kg", category: "Grains", unit: "Bag", price: 78500, tax_rate: 7.5 },
@@ -735,12 +738,13 @@ export async function seedDemoData(companyId: string, userId: string) {
     { sku: "SVC-DELIV", name: "Logistics & Delivery Service", category: "Service", unit: "Trip", price: 35000, tax_rate: 7.5 },
     { sku: "SVC-CONSULT", name: "Compliance Consulting", category: "Service", unit: "Hour", price: 25000, tax_rate: 7.5 },
   ];
-  const { data: insertedProducts } = await supabase
+  const { data: insertedProducts, error: productsError } = await supabase
     .from("products")
     .insert(products.map((p) => ({ ...p, company_id: companyId, active: true })))
     .select();
-
-  if (!insertedCustomers || !insertedProducts) return;
+  if (productsError || !insertedProducts?.length) {
+    throw new Error("Unable to create demo products.");
+  }
 
   const statuses: DBInvoiceStatus[] = [
     "Confirmed", "Confirmed", "Signed", "Validated", "Submitted",
@@ -759,7 +763,7 @@ export async function seedDemoData(companyId: string, userId: string) {
     const due = new Date(issue);
     due.setDate(due.getDate() + 30);
 
-    const { data: inv } = await supabase
+    const { data: inv, error: invoiceError } = await supabase
       .from("invoices")
       .insert({
         company_id: companyId,
@@ -780,26 +784,28 @@ export async function seedDemoData(companyId: string, userId: string) {
       .select()
       .single();
 
-    if (inv) {
-      await supabase.from("invoice_lines").insert([
-        {
-          invoice_id: inv.id,
-          product_id: product.id,
-          description: product.name,
-          qty,
-          unit_price: product.price,
-          tax_rate: 7.5,
-          line_total: subtotal + tax,
-          position: 0,
-        },
-      ]);
+    if (invoiceError || !inv) {
+      throw new Error("Unable to create demo invoices.");
     }
+
+    const { error: invoiceLinesError } = await supabase.from("invoice_lines").insert([
+      {
+        invoice_id: inv.id,
+        product_id: product.id,
+        description: product.name,
+        qty,
+        unit_price: product.price,
+        tax_rate: 7.5,
+        line_total: subtotal + tax,
+        position: 0,
+      },
+    ]);
+    if (invoiceLinesError) throw new Error("Unable to create demo invoice lines.");
   }
 
-  // A few audit log seed entries
-  await supabase.from("audit_logs").insert([
-    { company_id: companyId, actor_id: userId, action: "created workspace", target: "—", category: "Settings", ip: "102.89.10.1" },
-    { company_id: companyId, actor_id: userId, action: "imported demo data", target: "—", category: "Settings", ip: "102.89.10.1" },
-  ]);
+  await recordAuditEvent({
+    company_id: companyId,
+    action: "imported demo data",
+    category: "Settings",
+  });
 }
-
