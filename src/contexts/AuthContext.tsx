@@ -1,33 +1,35 @@
-import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
-import { Session, User } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
+import { getCurrentUser, signOutFromSession, type SessionUser } from "@/lib/authSession";
 import { acceptTenantInvitation, loadActiveMembership } from "@/lib/tenantAdmin";
 
 type Role = "super_admin" | "company_admin" | "finance_officer" | "staff_user";
 
 interface AuthCtx {
-  user: User | null;
-  session: Session | null;
+  user: SessionUser | null;
   loading: boolean;
+  authError: string | null;
   companyId: string | null;
   roles: Role[];
   isSuperAdmin: boolean;
   signOut: () => Promise<void>;
+  refreshSession: (forceReload?: boolean) => Promise<SessionUser | null>;
   refreshMembership: () => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const currentUid = useRef<string | null>(null);
   const membershipRequest = useRef(0);
+  const sessionRequest = useRef(0);
+  const loadedUid = useRef<string | null>(null);
 
-  const loadMembership = async (uid: string) => {
+  const loadMembership = useCallback(async (uid: string) => {
     const request = ++membershipRequest.current;
     try {
       const membership = await loadActiveMembership(uid);
@@ -39,64 +41,89 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setCompanyId(null);
       setRoles([]);
     }
-  };
+  }, []);
 
-  useEffect(() => {
-    let disposed = false;
-    let loadedUid: string | null = null;
-    let generation = 0;
-    let receivedAuthEvent = false;
-    const applySession = (sess: Session | null) => {
-      if (disposed) return;
-      setSession(sess);
-      setUser(sess?.user ?? null);
-      const uid = sess?.user.id ?? null;
+  const refreshSession = useCallback(async (forceReload = false): Promise<SessionUser | null> => {
+    const request = ++sessionRequest.current;
+    setAuthError(null);
+    setLoading(true);
+    try {
+      const currentUser = await getCurrentUser();
+      if (request !== sessionRequest.current) return null;
+      const uid = currentUser?.id ?? null;
       currentUid.current = uid;
-      if (uid && loadedUid === uid) return;
-      loadedUid = uid;
-      const run = ++generation;
+      setUser(currentUser);
+      if (!uid) {
+        loadedUid.current = null;
+        ++membershipRequest.current;
+        setCompanyId(null);
+        setRoles([]);
+        setLoading(false);
+        return null;
+      }
+
+      if (loadedUid.current === uid && !forceReload) {
+        setLoading(false);
+        return currentUser;
+      }
+      loadedUid.current = uid;
       ++membershipRequest.current;
       setCompanyId(null);
       setRoles([]);
-      setLoading(!!uid);
-      if (!uid) return;
-      // Defer authenticated requests outside the auth callback. Initial-session
-      // and getSession duplicates share this run; token refresh does not trigger duplicate loads.
-      setTimeout(async () => {
-        if (disposed || run !== generation) return;
-        // The invite-link page owns password setup and explicit acceptance.
-        // Other session loads reconcile eligible invitations once; refresh events
-        // for the same user must not repeat this request.
-        if (window.location.pathname.replace(/\/$/, "") !== "/auth/accept-invite") {
-          try {
-            await acceptTenantInvitation();
-          } catch {
-            // No eligible invitation is normal. Access still requires the
-            // subsequent server-owned Active membership read to succeed.
-          }
-        }
-        if (disposed || run !== generation || currentUid.current !== uid) return;
-        await loadMembership(uid);
-        if (!disposed && run === generation) setLoading(false);
-      }, 0);
-    };
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, sess) => {
-      receivedAuthEvent = true;
-      applySession(sess);
-    });
-    supabase.auth.getSession().then(({ data: { session: sess } }) => {
-      // An auth event that already loaded a user wins over the initial read.
-      if (!receivedAuthEvent) applySession(sess);
-    }).catch(() => {
-      if (!disposed && !loadedUid) {
-        applySession(null);
+
+      if (window.location.pathname.replace(/\/$/, "") === "/auth/accept-invite") {
+        setLoading(false);
+        return currentUser;
       }
-    });
-    return () => { disposed = true; ++generation; ++membershipRequest.current; subscription.unsubscribe(); };
-  }, []);
+
+      await acceptTenantInvitation();
+      if (request !== sessionRequest.current || currentUid.current !== uid) return null;
+      await loadMembership(uid);
+      if (request === sessionRequest.current) setLoading(false);
+      return currentUser;
+    } catch (error) {
+      if (request === sessionRequest.current) {
+        currentUid.current = null;
+        loadedUid.current = null;
+        ++membershipRequest.current;
+        setUser(null);
+        setCompanyId(null);
+        setRoles([]);
+        setAuthError(error instanceof Error ? error.message : "Session validation failed.");
+        setLoading(false);
+      }
+      return null;
+    }
+  }, [loadMembership]);
+
+  useEffect(() => {
+    let disposed = false;
+    const activeSessionRequest = sessionRequest;
+    const activeMembershipRequest = membershipRequest;
+    const loadOnFocus = () => {
+      if (!disposed) void refreshSession();
+    };
+    void refreshSession();
+    window.addEventListener("focus", loadOnFocus);
+    return () => {
+      disposed = true;
+      ++activeSessionRequest.current;
+      ++activeMembershipRequest.current;
+      window.removeEventListener("focus", loadOnFocus);
+    };
+  }, [refreshSession]);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await signOutFromSession();
+    ++sessionRequest.current;
+    ++membershipRequest.current;
+    currentUid.current = null;
+    loadedUid.current = null;
+    setUser(null);
+    setCompanyId(null);
+    setRoles([]);
+    setAuthError(null);
+    setLoading(false);
   };
 
   const refreshMembership = async () => {
@@ -108,12 +135,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <Ctx.Provider
       value={{
         user,
-        session,
         loading,
+        authError,
         companyId,
         roles,
         isSuperAdmin: roles.includes("super_admin"),
         signOut,
+        refreshSession,
         refreshMembership,
       }}
     >

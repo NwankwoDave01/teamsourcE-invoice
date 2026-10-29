@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { signInWithPassword } from "@/lib/authSession";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -16,7 +16,7 @@ import { TurnstileCaptcha } from "@/components/auth/TurnstileCaptcha";
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, signOut } = useAuth();
+  const { user, signOut, refreshSession } = useAuth();
   const noMembership = (location.state as { reason?: string } | null)?.reason === "no_active_membership";
   const from = (location.state as { from?: string } | null)?.from ?? "/app/dashboard";
 
@@ -36,15 +36,10 @@ export default function Login() {
 
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-        options: { captchaToken },
-      });
-      if (error) {
-        toast({ title: "Sign-in failed", description: error.message, variant: "destructive" });
-        return;
-      }
+      const signedInUser = await signInWithPassword(email, password, captchaToken);
+      if (!signedInUser) throw new Error("Sign-in did not establish a session.");
+      const verifiedSession = await refreshSession(true);
+      if (!verifiedSession) throw new Error("The new session could not be verified.");
       navigate(from, { replace: true });
     } catch (error) {
       toast({

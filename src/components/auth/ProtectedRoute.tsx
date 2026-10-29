@@ -3,8 +3,17 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Loader2 } from "lucide-react";
 
 export function ProtectedRoute({ requireSuperAdmin = false }: { requireSuperAdmin?: boolean }) {
-  const { user, loading, isSuperAdmin, companyId } = useAuth();
+  const { user, loading, authError, refreshSession, isSuperAdmin, companyId } = useAuth();
   const location = useLocation();
+
+  if (authError) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-3 bg-background px-4 text-center">
+        <p role="alert" className="text-sm text-destructive">{authError}</p>
+        <button className="text-sm underline" onClick={() => void refreshSession()}>Retry session check</button>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

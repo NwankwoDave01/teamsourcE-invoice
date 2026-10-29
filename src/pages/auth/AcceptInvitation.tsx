@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { ArrowRight, CheckCircle2, KeyRound, Loader2, MailCheck, ShieldAlert } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { getCurrentUser, updateAccountPassword, verifyInvitation } from "@/lib/authSession";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   fetchInvitationStatus,
@@ -21,7 +21,7 @@ import { BrandMark } from "@/components/shared/BrandMark";
 export default function AcceptInvitation() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { refreshMembership } = useAuth();
+  const { refreshMembership, refreshSession } = useAuth();
 
   const [loading, setLoading] = useState(true);
   const [awaitingVerification, setAwaitingVerification] = useState(false);
@@ -83,15 +83,24 @@ export default function AcceptInvitation() {
       }
 
       // If no token_hash is present, check if a session already exists
-      const session = (await supabase.auth.getSession()).data.session;
-      if (session?.user) {
+      let user;
+      try {
+        user = await getCurrentUser();
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Session validation failed.");
+          setLoading(false);
+        }
+        return;
+      }
+      if (user) {
         try {
           const details = await fetchInvitationStatus();
           if (!cancelled) {
             setInvitation({
               companyName: details.companyName,
               role: details.role,
-              email: details.email || session.user.email,
+              email: details.email || user.email || undefined,
             });
             setLoading(false);
           }
@@ -117,7 +126,7 @@ export default function AcceptInvitation() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [location.hash, location.search]);
 
   // Called only when the user explicitly clicks "Continue to accept invitation"
   const handleVerifyOtp = async () => {
@@ -127,23 +136,17 @@ export default function AcceptInvitation() {
     setError(null);
 
     try {
-      const { data, error: otpError } = await supabase.auth.verifyOtp({
-        token_hash: pendingTokenHash,
-        type: "invite",
-      });
-
-      if (otpError) throw otpError;
-
-      if (!data.session?.user) {
-        throw new Error("Invitation session could not be established. The link may have expired.");
-      }
+      const user = await verifyInvitation(pendingTokenHash);
+      if (!user) throw new Error("Invitation session could not be established. The link may have expired.");
+      const verifiedSession = await refreshSession(true);
+      if (!verifiedSession) throw new Error("Invitation session could not be verified. Please reopen the invitation link.");
 
       // Session established; now fetch company and role
       const details = await fetchInvitationStatus();
       setInvitation({
         companyName: details.companyName,
         role: details.role,
-        email: details.email || data.session.user.email,
+        email: details.email || user.email || undefined,
       });
       setAwaitingVerification(false);
     } catch (err: unknown) {
@@ -177,8 +180,7 @@ export default function AcceptInvitation() {
     setSubmitting(true);
     try {
       // 1. Update user password
-      const { error: pwdErr } = await supabase.auth.updateUser({ password });
-      if (pwdErr) throw pwdErr;
+      await updateAccountPassword(password);
 
       // 2. Call accept_invitation via tenant-admin contract
       await acceptTenantInvitation();
@@ -187,7 +189,7 @@ export default function AcceptInvitation() {
       await refreshMembership();
 
       // 4. Verify active membership before entering dashboard
-      const user = (await supabase.auth.getUser()).data.user;
+      const user = await getCurrentUser();
       if (user) {
         const membership = await loadActiveMembership(user.id);
         if (!membership.companyId) {
