@@ -277,6 +277,72 @@ describe("Vercel-managed Supabase sessions", () => {
     expect([...new Headers(init.headers).values()].join(" ")).not.toContain("service_role");
   });
 
+  it.each(["GET", "HEAD"])("rejects %s requests to Edge Functions", async (method) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { response, result } = makeResponse();
+
+    await supabaseHandler(
+      makeRequest(method, "/api/supabase/functions/v1/nrs-credentials", {}, {
+        origin: "https://attacker.example",
+        "sec-fetch-site": "cross-site",
+      }),
+      response,
+    );
+
+    expect(result.statusCode).toBe(405);
+    expect(result.getHeader("allow")).toBe("POST");
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("allows same-origin PostgREST reads when browser Fetch Metadata is present", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("[]", { status: 200 })));
+    const req = makeRequest("GET", "/api/supabase/rest/v1/invoices");
+    delete req.headers.origin;
+    req.headers["sec-fetch-site"] = "same-origin";
+    const { response, result } = makeResponse();
+
+    await supabaseHandler(req, response);
+
+    expect(result.statusCode).toBe(200);
+  });
+
+  it("rejects cross-site read-only proxy requests and requests without browser origin metadata", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const crossSite = makeResponse();
+    await supabaseHandler(
+      makeRequest("GET", "/api/supabase/rest/v1/invoices", {}, {
+        origin: "https://attacker.example",
+        "sec-fetch-site": "cross-site",
+      }),
+      crossSite.response,
+    );
+    expect(crossSite.result.statusCode).toBe(403);
+
+    const missingMetadataRequest = makeRequest("GET", "/api/supabase/rest/v1/invoices");
+    delete missingMetadataRequest.headers.origin;
+    const missingMetadata = makeResponse();
+    await supabaseHandler(missingMetadataRequest, missingMetadata.response);
+    expect(missingMetadata.result.statusCode).toBe(403);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects percent-encoded proxy paths before forwarding upstream", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const { response, result } = makeResponse();
+
+    await supabaseHandler(
+      makeRequest("GET", "/api/supabase/rest/v1/%252e%252e/invoices"),
+      response,
+    );
+
+    expect(result.statusCode).toBe(404);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("preserves backend authorization failures instead of returning success-shaped responses", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(
       JSON.stringify({ ok: false, error: "Forbidden" }),
@@ -301,7 +367,7 @@ describe("Vercel-managed Supabase sessions", () => {
         "POST",
         "/api/supabase/functions/v1/tenant-admin",
         {},
-        { origin: "https://attacker.example" },
+        { origin: "https://attacker.example", "sec-fetch-site": "cross-site" },
       ),
       csrfResponse.response,
     );

@@ -68,11 +68,14 @@ Use Vercel Functions as a same-origin Backend-for-Frontend and
    session server-side when needed, and forwards only the authenticated user's
    JWT to Supabase REST/RPC and Edge Function endpoints. It never trusts a
    browser-supplied Authorization header.
-3. Mutating auth and proxy requests require a same-origin `Origin`; the cookie
-   uses `SameSite=Lax`. The proxy forwards the user's JWT rather than using a
-   service-role credential, preserving existing RLS, active-membership checks,
-   tenant-admin authorization, role rules, invoice behavior, and NRS function
-   contracts.
+3. Mutating auth requests require a same-origin `Origin`. Proxy requests require
+   a same-origin `Origin` or `Sec-Fetch-Site` value; cross-site and same-site
+   cross-origin requests are rejected. Edge Function routes accept POST only,
+   while same-origin read-only PostgREST GET/HEAD requests remain supported.
+   The cookie uses `SameSite=Lax`. The proxy forwards the user's JWT rather
+   than using a service-role credential, preserving existing RLS,
+   active-membership checks, tenant-admin authorization, role rules, invoice
+   behavior, and NRS function contracts.
 4. The invitation page retains explicit user confirmation before OTP
    verification, then password setup, `accept_invitation`, and Active-membership
    verification. Normal sign-in remains separate from explicit invite
@@ -93,10 +96,12 @@ The design above was recorded before implementation. This branch now implements
 the BFF in `api/auth/[action].ts` and `api/supabase/[...path].ts`, with cookie
 and session handling in `api/_lib/session.ts`. In production, the cookie uses a
 `__Host-` name and is host-only, Secure, HttpOnly, SameSite=Lax, and Path=/.
-Unsafe requests require an exact same-origin `Origin`. Each protected proxy
-request validates the cookie with Supabase Auth, refreshes near-expiry tokens
-server-side, and sends the verified user's JWT (not the browser's
-Authorization header) upstream.
+Mutating auth requests require an exact same-origin `Origin`. Proxy requests
+require an exact same-origin `Origin` or same-origin Fetch Metadata, and Edge
+Function requests are restricted to POST; same-origin PostgREST GET/HEAD
+remains available. Each protected proxy request validates the cookie with
+Supabase Auth, refreshes near-expiry tokens server-side, and sends the verified
+user's JWT (not the browser's Authorization header) upstream.
 
 The browser client now has persistence, automatic refresh, and URL session
 detection disabled. Auth UI uses the Vercel auth routes, and existing

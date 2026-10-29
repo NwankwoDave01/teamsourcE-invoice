@@ -38,7 +38,8 @@ function getTarget(req: ApiRequest, supabaseUrl: string): URL | null {
   if (
     decodedResource.includes("\\") ||
     decodedResource.split("/").some((part) => part === "." || part === "..") ||
-    !/^(?:rest\/v1|functions\/v1)\/[A-Za-z0-9._~!$&'()*+,;=:@%/-]+$/.test(resource)
+    resource !== decodedResource ||
+    !/^(?:rest\/v1|functions\/v1)\/[A-Za-z0-9._~!$&'()*+,;=:@/-]+$/.test(resource)
   ) {
     return null;
   }
@@ -54,6 +55,16 @@ function requestPayload(req: ApiRequest): string | Buffer | undefined {
   if (typeof req.body === "string" || Buffer.isBuffer(req.body)) return req.body;
   if (req.body === undefined) return undefined;
   return JSON.stringify(req.body);
+}
+
+function isSameOriginBrowserRequest(req: ApiRequest): boolean {
+  const origin = req.headers.origin;
+  const fetchSiteHeader = req.headers["sec-fetch-site"];
+  if (Array.isArray(fetchSiteHeader) && fetchSiteHeader.length !== 1) return false;
+  const fetchSite = (Array.isArray(fetchSiteHeader) ? fetchSiteHeader[0] : fetchSiteHeader)?.toLowerCase();
+  if (fetchSite !== undefined && fetchSite !== "same-origin") return false;
+  if (origin !== undefined) return typeof origin === "string" && hasSameOrigin(req);
+  return fetchSite === "same-origin";
 }
 
 const handler: ApiHandler = async (req, res) => {
@@ -73,7 +84,13 @@ const handler: ApiHandler = async (req, res) => {
     respondJson(res, 404, { error: "Supabase resource not found" });
     return;
   }
-  if (!["GET", "HEAD"].includes(method) && !hasSameOrigin(req)) {
+  const requestUrl = new URL(req.url ?? "/", `https://${req.headers.host ?? "localhost"}`);
+  const isEdgeFunction = requestUrl.pathname.startsWith("/api/supabase/functions/v1/");
+  if (isEdgeFunction && method !== "POST") {
+    methodNotAllowed(res, "POST");
+    return;
+  }
+  if (!isSameOriginBrowserRequest(req)) {
     respondJson(res, 403, { error: "Cross-origin request rejected" });
     return;
   }
