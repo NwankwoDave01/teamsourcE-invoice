@@ -2,18 +2,47 @@
  * Utilities for escaping and generating CSV data for exports.
  */
 
+
 /**
- * Escapes a single CSV field value according to RFC 4180.
- * If the value contains commas, double quotes, or newlines, it is enclosed
- * in double quotes and existing double quotes are doubled.
+ * Escapes CSV fields and neutralises spreadsheet formula injection.
  */
 export function escapeCsvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
+
   const str = String(value);
-  if (/[",\r\n]/.test(str)) {
-    return `"${str.replace(/"/g, '""')}"`;
+
+  let formulaAfterIgnorablePrefix = false;
+  for (const character of str) {
+    if (character.trim() === "" || character.charCodeAt(0) <= 0x1f) continue;
+    formulaAfterIgnorablePrefix = ["=", "+", "-", "@"].includes(character);
+    break;
   }
-  return str;
+
+  // Prefix risky text with an apostrophe so spreadsheet apps
+  // treat it as text rather than evaluating it as a formula.
+  // Preserve numeric values, including legitimate negative numbers.
+  const formulaRisk =
+    typeof value === "string" &&
+    (/^[\t\r\n]/.test(str) || formulaAfterIgnorablePrefix);
+
+  const safeValue = formulaRisk ? `'${str}` : str;
+
+  // Standard CSV quoting: double embedded quotes and quote fields
+  // containing commas, quotes, or line breaks.
+  if (/[",\r\n]/.test(safeValue)) {
+    return `"${safeValue.replace(/"/g, '""')}"`;
+  }
+
+  return safeValue;
+}
+
+export function generateCsv(
+  headers: readonly string[],
+  rows: readonly (readonly unknown[])[],
+): string {
+  return [headers, ...rows]
+    .map((row) => row.map(escapeCsvCell).join(","))
+    .join("\r\n");
 }
 
 export interface InvoiceCsvExportRow {
@@ -50,22 +79,22 @@ export function generateInvoicesCsv(invoices: InvoiceCsvExportRow[]): string {
   ];
 
   const rows = invoices.map((inv) => [
-    escapeCsvCell(inv.number),
-    escapeCsvCell(inv.customer_name),
-    escapeCsvCell(inv.issue_date),
-    escapeCsvCell(inv.due_date),
-    escapeCsvCell(inv.currency ?? "NGN"),
-    escapeCsvCell(inv.subtotal ?? ""),
-    escapeCsvCell(inv.tax ?? ""),
-    escapeCsvCell(inv.total),
-    escapeCsvCell(inv.status),
-    escapeCsvCell(inv.irn ?? ""),
-    escapeCsvCell(inv.invoice_type ?? ""),
-    escapeCsvCell(inv.po_reference ?? ""),
-    escapeCsvCell(inv.notes ?? ""),
+    inv.number,
+    inv.customer_name,
+    inv.issue_date,
+    inv.due_date,
+    inv.currency ?? "NGN",
+    inv.subtotal ?? "",
+    inv.tax ?? "",
+    inv.total,
+    inv.status,
+    inv.irn ?? "",
+    inv.invoice_type ?? "",
+    inv.po_reference ?? "",
+    inv.notes ?? "",
   ]);
 
-  return [headers.join(","), ...rows.map((r) => r.join(","))].join("\r\n");
+  return generateCsv(headers, rows);
 }
 
 export function downloadCsv(csvContent: string, filename: string): void {

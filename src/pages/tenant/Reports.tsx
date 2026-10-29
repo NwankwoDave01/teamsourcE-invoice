@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { useInvoices } from "@/hooks/useCompanyData";
 import { formatNGN } from "@/lib/format";
+import { downloadCsv, generateCsv } from "@/lib/csvExport";
 
 export default function Reports() {
   const { data: invoices = [], isLoading } = useInvoices();
@@ -11,10 +12,12 @@ export default function Reports() {
   // Last 6 months revenue trend (Confirmed/Signed only)
   const now = new Date();
   const months: string[] = [];
+  const monthPeriods: string[] = [];
   const series: number[] = [];
   for (let i = 5; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
     months.push(d.toLocaleString("en-GB", { month: "short" }));
+    monthPeriods.push(d.toLocaleString("en-GB", { month: "short", year: "numeric" }));
     const total = invoices
       .filter((inv) => {
         const issue = new Date(inv.issue_date);
@@ -40,6 +43,13 @@ export default function Reports() {
   const total = invoices.length || 1;
   const pct = (statuses: string[]) =>
     Math.round((invoices.filter((i) => statuses.includes(i.status)).length / total) * 100);
+  const statusMix = [
+    { label: "Confirmed", statuses: ["Confirmed"], tone: "success" as const },
+    { label: "Signed / Validated", statuses: ["Signed", "Validated"], tone: "info" as const },
+    { label: "Submitted", statuses: ["Submitted", "Ready"], tone: "info" as const },
+    { label: "In Review / Approved", statuses: ["In Review", "Approved"], tone: "warning" as const },
+    { label: "Draft", statuses: ["Draft"], tone: "muted" as const },
+  ].map(({ label, statuses, tone }) => ({ label, pct: pct(statuses), tone }));
 
   // VAT summary (current month)
   const monthInvoices = invoices.filter((i) => {
@@ -49,6 +59,36 @@ export default function Reports() {
   const taxableSales = monthInvoices.reduce((s, i) => s + Number(i.subtotal), 0);
   const vat = monthInvoices.reduce((s, i) => s + Number(i.tax), 0);
 
+  const handleExport = () => {
+    const reportRows: unknown[][] = [
+      ...series.map((value, index) => [
+        "Revenue trend",
+        "Confirmed/Signed revenue",
+        monthPeriods[index],
+        value,
+        "NGN",
+      ]),
+      ...statusMix.map(({ label, pct: percentage }) => [
+        "Status mix",
+        label,
+        "All invoices",
+        percentage,
+        "%",
+      ]),
+      ...top.map(([name, amount]) => ["Top customers", name, "All invoices", amount, "NGN"]),
+      ["Tax summary", "Taxable sales", monthPeriods[5], taxableSales, "NGN"],
+      ["Tax summary", "VAT (7.5%)", monthPeriods[5], vat, "NGN"],
+      ["Tax summary", "Withholding tax", monthPeriods[5], 0, "NGN"],
+      ["Tax summary", "Net remit", monthPeriods[5], vat, "NGN"],
+    ];
+    const csv = generateCsv(
+      ["Report section", "Item", "Period", "Value", "Unit"],
+      reportRows,
+    );
+    const dateStr = new Date().toISOString().slice(0, 10);
+    downloadCsv(csv, `reports-${dateStr}.csv`);
+  };
+
   return (
     <div>
       <PageHeader
@@ -57,7 +97,15 @@ export default function Reports() {
         actions={
           <>
             <Button variant="outline" size="sm" className="gap-1.5"><Filter className="h-4 w-4" />Last 6 months</Button>
-            <Button variant="outline" size="sm" className="gap-1.5"><Download className="h-4 w-4" />Export</Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1.5"
+              onClick={handleExport}
+              disabled={isLoading}
+            >
+              <Download className="h-4 w-4" />Export
+            </Button>
           </>
         }
       />
@@ -91,11 +139,9 @@ export default function Reports() {
           <h3 className="text-base font-semibold">Status mix</h3>
           <p className="mb-4 text-xs text-muted-foreground">Current pipeline</p>
           <div className="space-y-3 text-sm">
-            <Mix label="Confirmed" pct={pct(["Confirmed"])} tone="success" />
-            <Mix label="Signed / Validated" pct={pct(["Signed", "Validated"])} tone="info" />
-            <Mix label="Submitted" pct={pct(["Submitted", "Ready"])} tone="info" />
-            <Mix label="In Review / Approved" pct={pct(["In Review", "Approved"])} tone="warning" />
-            <Mix label="Draft" pct={pct(["Draft"])} tone="muted" />
+            {statusMix.map(({ label, pct: percentage, tone }) => (
+              <Mix key={label} label={label} pct={percentage} tone={tone} />
+            ))}
           </div>
         </Card>
 

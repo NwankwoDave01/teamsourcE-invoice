@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { escapeCsvCell, generateInvoicesCsv, downloadCsv } from "@/lib/csvExport";
+import { escapeCsvCell, generateCsv, generateInvoicesCsv, downloadCsv } from "@/lib/csvExport";
 
 describe("CSV Export Utilities", () => {
   describe("escapeCsvCell", () => {
@@ -12,6 +12,25 @@ describe("CSV Export Utilities", () => {
       expect(escapeCsvCell("INV-001")).toBe("INV-001");
       expect(escapeCsvCell(12500)).toBe("12500");
       expect(escapeCsvCell("Acme Corp")).toBe("Acme Corp");
+    });
+
+    it("neutralises spreadsheet formula prefixes", () => {
+      expect(escapeCsvCell("=1+1")).toBe("'=1+1");
+      expect(escapeCsvCell("+SUM(A1:A2)")).toBe("'+SUM(A1:A2)");
+      expect(escapeCsvCell("-1+2")).toBe("'-1+2");
+      expect(escapeCsvCell("@SUM(A1:A2)")).toBe("'@SUM(A1:A2)");
+    });
+
+    it("neutralises leading control characters and whitespace before formulas", () => {
+      expect(escapeCsvCell("\t=1+1")).toBe("'\t=1+1");
+      expect(escapeCsvCell("\r=1+1")).toBe("\"'\r=1+1\"");
+      expect(escapeCsvCell("  =1+1")).toBe("'  =1+1");
+      expect(escapeCsvCell("\u0000=1+1")).toBe("'\u0000=1+1");
+    });
+
+    it("preserves numeric values", () => {
+      expect(escapeCsvCell(-125)).toBe("-125");
+      expect(escapeCsvCell(125)).toBe("125");
     });
 
     it("escapes fields containing commas", () => {
@@ -98,6 +117,16 @@ describe("CSV Export Utilities", () => {
 
       const csv = generateInvoicesCsv(rows);
       expect(csv).toContain("INV-100,Customer,2026-10-01,2026-10-10,NGN");
+    });
+  });
+
+  describe("generateCsv", () => {
+    it("escapes report values and preserves numeric values", () => {
+      expect(
+        generateCsv(["Report section", "Item", "Value"], [
+          ["Top customers", "=2+2, Acme", -125],
+        ]),
+      ).toBe('Report section,Item,Value\r\nTop customers,"\'=2+2, Acme",-125');
     });
   });
 
