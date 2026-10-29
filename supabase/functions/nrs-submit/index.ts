@@ -1,11 +1,18 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import forge from "npm:node-forge@1.3.1";
 import QRCode from "npm:qrcode@1.5.4";
+import { resolveNrsBaseUrl } from "../_shared/nrsBaseUrl.ts";
+import {
+  createNrsMonetaryTotals,
+  validateNrsInvoiceAmounts,
+} from "../_shared/invoiceMonetaryTotals.ts";
 
 const cors = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://e-invoicing.teamsource.net",
   "Access-Control-Allow-Headers":
     "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Vary": "Origin",
   "Content-Type": "application/json",
 };
 
@@ -226,11 +233,6 @@ function validateInput(
   if (!customer?.email) errors.push("Customer email is required");
   if (!lines.length) errors.push("At least one invoice line is required");
 
-  const invoiceDiscount = Number(invoice.discount_total ?? 0);
-  if (!Number.isFinite(invoiceDiscount) || invoiceDiscount < 0) {
-    errors.push("Invoice discount must be a finite, non-negative amount");
-  }
-
   for (const [index, line] of lines.entries()) {
     const category = String(line.tax_category ?? "S").toUpperCase();
     const quantity = Number(line.qty);
@@ -261,17 +263,7 @@ function validateInput(
     }
   }
 
-  const netSubtotal = lines.reduce((sum, line) => {
-    const qty = Number(line.qty);
-    const price = Number(line.unit_price);
-    const discount = Number(line.discount_amount ?? 0);
-    if (!Number.isFinite(qty) || !Number.isFinite(price) || !Number.isFinite(discount)) return sum;
-    return sum + qty * price - discount;
-  }, 0);
-
-  if (Number.isFinite(invoiceDiscount) && invoiceDiscount > round(netSubtotal) + 0.001) {
-    errors.push("Invoice discount cannot exceed the net invoice line subtotal");
-  }
+  errors.push(...validateNrsInvoiceAmounts(invoice, lines));
 
   return errors;
 }
@@ -484,11 +476,6 @@ function buildPayload(
       );
   }
 
-  const invoiceDiscount =
-    Number(
-      invoice.discount_total || 0,
-    );
-
   return omit({
     business_id:
       company.nrs_business_id,
@@ -578,19 +565,6 @@ function buildPayload(
     payment_terms_note:
       invoice.payment_terms,
 
-    allowance_charge:
-      invoiceDiscount > 0
-        ? [
-            {
-              charge_indicator:
-                false,
-
-              amount:
-                invoiceDiscount,
-            },
-          ]
-        : undefined,
-
     tax_total: [
       {
         tax_amount:
@@ -603,25 +577,11 @@ function buildPayload(
       },
     ],
 
-    legal_monetary_total: {
-      line_extension_amount:
+    legal_monetary_total:
+      createNrsMonetaryTotals(
         subtotal,
-
-      tax_exclusive_amount:
-        subtotal,
-
-      tax_inclusive_amount:
-        round(
-          subtotal + taxTotal,
-        ),
-
-      payable_amount:
-        round(
-          subtotal +
-            taxTotal -
-            invoiceDiscount,
-        ),
-    },
+        taxTotal,
+      ),
 
     invoice_line:
       builtLines,
@@ -893,9 +853,8 @@ Deno.serve(async (request) => {
       return json(
         {
           ok: false,
-          stage,
-          error:
-            "Invoice not found",
+          stage: "authorize_invoice",
+          error: "Invoice not found or unavailable",
         },
         404,
       );
@@ -927,18 +886,27 @@ Deno.serve(async (request) => {
     if (
       authorizationError
     ) {
-      throw authorizationError;
+      console.error("NRS_SUBMIT_INVOICE_AUTHORIZATION_CHECK_FAILED", {
+        error_code: authorizationError.code ?? "unknown",
+      });
+      return json(
+        {
+          ok: false,
+          stage: "authorize_invoice",
+          error: "Invoice not found or unavailable",
+        },
+        404,
+      );
     }
 
     if (!allowed) {
       return json(
         {
           ok: false,
-          stage,
-          error:
-            "Forbidden",
+          stage: "authorize_invoice",
+          error: "Invoice not found or unavailable",
         },
-        403,
+        404,
       );
     }
 
@@ -1258,28 +1226,17 @@ Deno.serve(async (request) => {
     stage =
       "resolve_base_url";
 
-    const baseUrl =
-      String(
-        (
-          environment ===
-          "production"
-            ? company?.nrs_production_base_url
-            : company?.nrs_sandbox_base_url
-        ) ?? "",
-      )
-        .trim()
-        .replace(
-          /\/+$/,
-          "",
-        );
+    const configuredBaseUrl = environment === "production"
+      ? company?.nrs_production_base_url
+      : company?.nrs_sandbox_base_url;
+    const baseUrl = resolveNrsBaseUrl(configuredBaseUrl, environment);
 
     if (!baseUrl) {
       return json(
         {
           ok: false,
           stage,
-          error:
-            `NRS ${environment} base URL is required`,
+          error: `NRS ${environment} base URL must use the approved HTTPS origin`,
         },
         422,
       );
@@ -1463,6 +1420,7 @@ Deno.serve(async (request) => {
               JSON.stringify(
                 payload,
               ),
+            redirect: "error",
             signal: AbortSignal.timeout(20000),
           },
         );
@@ -1621,6 +1579,7 @@ Deno.serve(async (request) => {
               JSON.stringify(
                 payload,
               ),
+            redirect: "error",
             signal: AbortSignal.timeout(20000),
           },
         );

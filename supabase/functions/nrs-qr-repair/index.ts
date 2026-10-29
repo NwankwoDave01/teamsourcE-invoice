@@ -3,8 +3,10 @@ import forge from "npm:node-forge@1.3.1";
 import QRCode from "npm:qrcode@1.5.4";
 
 const headers = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://e-invoicing.teamsource.net",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Vary": "Origin",
   "Content-Type": "application/json",
 };
 
@@ -74,14 +76,19 @@ Deno.serve(async (request: Request) => {
       .eq("id", invoiceId)
       .maybeSingle();
     if (invoiceError) throw new Error("Unable to load invoice");
-    if (!invoice) return json({ ok: false, error: "Invoice not found" }, 404);
+    if (!invoice) return json({ ok: false, error: "Invoice not found or unavailable" }, 404);
 
     const { data: allowed, error: permissionError } = await db.rpc("can_manage_invoices", {
       _user_id: user.id,
       _company_id: invoice.company_id,
     });
-    if (permissionError) throw new Error("Unable to verify invoice permissions");
-    if (!allowed) return json({ ok: false, error: "Forbidden" }, 403);
+    if (permissionError) {
+      console.error("NRS_QR_REPAIR_AUTHORIZATION_CHECK_FAILED", {
+        error_code: permissionError.code ?? "unknown",
+      });
+      return json({ ok: false, error: "Invoice not found or unavailable" }, 404);
+    }
+    if (!allowed) return json({ ok: false, error: "Invoice not found or unavailable" }, 404);
 
     // This repair endpoint is deliberately sandbox-only and never submits/signs/contacts NRS.
     const { data: company, error: companyError } = await db

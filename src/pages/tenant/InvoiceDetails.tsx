@@ -60,6 +60,13 @@ const NEXT_LABEL: Partial<Record<DBInvoiceStatus, string>> = {
   Ready: "Validate & sign (NRS sandbox)",
 };
 
+const MANUAL_REJECTION_STATUSES: readonly DBInvoiceStatus[] = [
+  "Draft",
+  "In Review",
+  "Approved",
+  "Ready",
+];
+
 export default function InvoiceDetails() {
   const { id } = useParams();
   const { data: invoice, isLoading, refetch: refetchInvoice } = useInvoice(id);
@@ -151,8 +158,8 @@ export default function InvoiceDetails() {
   };
 
   const performReject = async () => {
-    if (!canManage) {
-      toast.error("Staff users cannot elevate or reject invoice status.");
+    if (!canManage || !MANUAL_REJECTION_STATUSES.includes(invoice.status)) {
+      toast.error("Only managers can reject invoices before NRS submission.");
       return;
     }
     try {
@@ -419,7 +426,7 @@ export default function InvoiceDetails() {
                 <p className="mt-3 text-xs text-muted-foreground">Shown from the recorded submission status only. APP handoff is planned and not live.</p>
               </div>
             )}
-            {canManage && invoice.status !== "Confirmed" && invoice.status !== "Rejected" && (
+            {canManage && MANUAL_REJECTION_STATUSES.includes(invoice.status) && (
               <Button
                 variant="outline"
                 size="sm"

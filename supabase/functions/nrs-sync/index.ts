@@ -1,9 +1,12 @@
 // supabase/functions/nrs-sync/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { resolveNrsBaseUrl } from "../_shared/nrsBaseUrl.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://e-invoicing.teamsource.net",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Vary": "Origin",
 };
 
 declare const Deno: any;
@@ -33,17 +36,7 @@ Deno.serve(async (req: Request) => {
     const body = await req.json().catch(() => ({}));
     let companyId = typeof body?.company_id === "string" ? body.company_id : "";
 
-    if (companyId) {
-      const { data: allowed, error } = await admin.rpc("can_manage_company", {
-        _user_id: authData.user.id,
-        _company_id: companyId,
-      });
-      if (error) {
-        console.error("[NRS-SYNC] Company authorization check failed");
-        return json({ error: "Unable to verify company permissions" }, 500);
-      }
-      if (allowed !== true) return json({ error: "Forbidden" }, 403);
-    } else {
+    if (!companyId) {
       const { data: memberships, error } = await admin
         .from("company_members")
         .select("company_id")
@@ -54,6 +47,16 @@ Deno.serve(async (req: Request) => {
       if (memberships.length !== 1) return json({ error: "company_id is required for users in multiple companies" }, 400);
       companyId = memberships[0].company_id;
     }
+
+    const { data: allowed, error: authorizationError } = await admin.rpc("can_manage_invoices", {
+      _user_id: authData.user.id,
+      _company_id: companyId,
+    });
+    if (authorizationError) {
+      console.error("[NRS-SYNC] Invoice authorization check failed");
+      return json({ error: "Unable to verify invoice permissions" }, 500);
+    }
+    if (allowed !== true) return json({ error: "Forbidden" }, 403);
 
     const { data: company, error: companyError } = await admin
       .from("companies")
@@ -66,9 +69,10 @@ Deno.serve(async (req: Request) => {
     if (environment !== "sandbox" && environment !== "production") {
       return json({ error: "Company NRS environment must be sandbox or production" }, 400);
     }
-    const baseUrl = String(environment === "production"
+    const configuredBaseUrl = environment === "production"
       ? company.nrs_production_base_url ?? ""
-      : company.nrs_sandbox_base_url ?? "").trim().replace(/\/+$/, "");
+      : company.nrs_sandbox_base_url ?? "";
+    const baseUrl = resolveNrsBaseUrl(configuredBaseUrl, environment);
     if (!baseUrl) return json({ error: "NRS base URL is not configured for this environment" }, 400);
 
     const { data: credentialConfig, error: credentialError } = await admin
@@ -114,6 +118,7 @@ Deno.serve(async (req: Request) => {
         response = await fetch(baseUrl + ep.path, {
           method: "GET",
           headers,
+          redirect: "error",
           signal: AbortSignal.timeout(15000),
         });
       } catch {
