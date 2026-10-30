@@ -1,12 +1,18 @@
 // supabase/functions/nrs-sync/index.ts
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { resolveNrsBaseUrl } from "../_shared/nrsBaseUrl.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://e-invoicing.teamsource.net",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Vary": "Origin",
 };
 
-declare const Deno: any;
+declare const Deno: {
+  env: { get(name: string): string | undefined };
+  serve(handler: (request: Request) => Promise<Response>): void;
+};
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -30,20 +36,13 @@ Deno.serve(async (req: Request) => {
     if (authError || !authData.user) return json({ error: "Unauthorized" }, 401);
 
     const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const body = await req.json().catch(() => ({}));
-    let companyId = typeof body?.company_id === "string" ? body.company_id : "";
+    const body: unknown = await req.json().catch(() => ({}));
+    const bodyRecord = body && typeof body === "object" && !Array.isArray(body)
+      ? body as Record<string, unknown>
+      : null;
+    let companyId = typeof bodyRecord?.company_id === "string" ? bodyRecord.company_id : "";
 
-    if (companyId) {
-      const { data: allowed, error } = await admin.rpc("can_manage_company", {
-        _user_id: authData.user.id,
-        _company_id: companyId,
-      });
-      if (error) {
-        console.error("[NRS-SYNC] Company authorization check failed");
-        return json({ error: "Unable to verify company permissions" }, 500);
-      }
-      if (allowed !== true) return json({ error: "Forbidden" }, 403);
-    } else {
+    if (!companyId) {
       const { data: memberships, error } = await admin
         .from("company_members")
         .select("company_id")
@@ -54,6 +53,16 @@ Deno.serve(async (req: Request) => {
       if (memberships.length !== 1) return json({ error: "company_id is required for users in multiple companies" }, 400);
       companyId = memberships[0].company_id;
     }
+
+    const { data: allowed, error: authorizationError } = await admin.rpc("can_manage_invoices", {
+      _user_id: authData.user.id,
+      _company_id: companyId,
+    });
+    if (authorizationError) {
+      console.error("[NRS-SYNC] Invoice authorization check failed");
+      return json({ error: "Unable to verify invoice permissions" }, 500);
+    }
+    if (allowed !== true) return json({ error: "Forbidden" }, 403);
 
     const { data: company, error: companyError } = await admin
       .from("companies")
@@ -66,9 +75,10 @@ Deno.serve(async (req: Request) => {
     if (environment !== "sandbox" && environment !== "production") {
       return json({ error: "Company NRS environment must be sandbox or production" }, 400);
     }
-    const baseUrl = String(environment === "production"
+    const configuredBaseUrl = environment === "production"
       ? company.nrs_production_base_url ?? ""
-      : company.nrs_sandbox_base_url ?? "").trim().replace(/\/+$/, "");
+      : company.nrs_sandbox_base_url ?? "";
+    const baseUrl = resolveNrsBaseUrl(configuredBaseUrl, environment);
     if (!baseUrl) return json({ error: "NRS base URL is not configured for this environment" }, 400);
 
     const { data: credentialConfig, error: credentialError } = await admin
@@ -114,6 +124,7 @@ Deno.serve(async (req: Request) => {
         response = await fetch(baseUrl + ep.path, {
           method: "GET",
           headers,
+          redirect: "error",
           signal: AbortSignal.timeout(15000),
         });
       } catch {
@@ -133,11 +144,10 @@ Deno.serve(async (req: Request) => {
         results.push({ type: ep.type, status: "failed", error: "NRS returned invalid JSON" });
         continue;
       }
-      const items = Array.isArray(payload)
-        ? payload
-        : (payload && typeof payload === "object" && Array.isArray((payload as any).data))
-          ? (payload as any).data
-          : null;
+      const payloadData = payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>).data
+        : null;
+      const items = Array.isArray(payload) ? payload : Array.isArray(payloadData) ? payloadData : null;
       if (!items) {
         results.push({ type: ep.type, status: "failed", error: "Unexpected NRS response structure" });
         continue;

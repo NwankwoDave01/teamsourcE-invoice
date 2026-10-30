@@ -19,7 +19,7 @@ export function TopBar({ variant = "tenant" }: { variant?: "tenant" | "admin" })
   const { user, roles, isSuperAdmin, signOut } = useAuth();
   const { data: company } = useCurrentCompany();
 
-  const displayName = (user?.user_metadata?.display_name as string) || user?.email?.split("@")[0] || "User";
+  const displayName = user?.display_name || user?.email?.split("@")[0] || "User";
   const initials = displayName.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
 
   const handleSignOut = async () => {

@@ -8,21 +8,23 @@ import LandingPage from "@/pages/LandingPage";
 
 const mocks = vi.hoisted(() => ({
   signInWithPassword: vi.fn(),
-  signUp: vi.fn(),
+  refreshSession: vi.fn(),
   toast: vi.fn(),
+  membershipError: null as string | null,
 }));
 
-vi.mock("@/integrations/supabase/client", () => ({
-  supabase: {
-    auth: {
-      signInWithPassword: mocks.signInWithPassword,
-      signUp: mocks.signUp,
-    },
-  },
+vi.mock("@/lib/authSession", () => ({
+  signInWithPassword: mocks.signInWithPassword,
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({ user: null, signOut: vi.fn() }),
+  useAuth: () => ({
+    user: null,
+    signOut: vi.fn(),
+    refreshSession: mocks.refreshSession,
+    authError: null,
+    membershipError: mocks.membershipError,
+  }),
 }));
 
 vi.mock("@/hooks/use-toast", () => ({ toast: mocks.toast }));
@@ -52,9 +54,10 @@ vi.mock("@marsidev/react-turnstile", () => ({
 
 beforeEach(() => {
   vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "turnstile-test-site-key");
-  mocks.signInWithPassword.mockReset().mockResolvedValue({ error: null });
-  mocks.signUp.mockReset().mockResolvedValue({ data: { session: null }, error: null });
+  mocks.signInWithPassword.mockReset().mockResolvedValue({ id: "user-a", email: "user@example.com" });
+  mocks.refreshSession.mockReset().mockResolvedValue({ id: "user-a", email: "user@example.com" });
   mocks.toast.mockReset();
+  mocks.membershipError = null;
 });
 
 afterEach(() => {
@@ -86,11 +89,11 @@ describe("Turnstile authentication", () => {
     fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
 
     await screen.findByText("Workspace dashboard");
-    expect(mocks.signInWithPassword).toHaveBeenCalledWith({
-      email: "user@example.com",
-      password: "valid-password",
-      options: { captchaToken: "turnstile-test-token" },
-    });
+    expect(mocks.signInWithPassword).toHaveBeenCalledWith(
+      "user@example.com",
+      "valid-password",
+      "turnstile-test-token",
+    );
   });
 
   it("blocks sign-in when the CAPTCHA token is missing or expired", async () => {
@@ -114,9 +117,7 @@ describe("Turnstile authentication", () => {
   });
 
   it("requires a fresh CAPTCHA after a failed sign-in", async () => {
-    mocks.signInWithPassword.mockResolvedValueOnce({
-      error: { message: "Invalid login credentials" },
-    });
+    mocks.signInWithPassword.mockRejectedValueOnce(new Error("Invalid login credentials"));
     renderLogin();
     fillLoginForm();
     fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
@@ -127,6 +128,64 @@ describe("Turnstile authentication", () => {
 
     expect(await screen.findByText("Complete the CAPTCHA before signing in.")).toBeInTheDocument();
     expect(mocks.signInWithPassword).toHaveBeenCalledTimes(1);
+  });
+
+  it("reports credential rejection separately from CAPTCHA failures", async () => {
+    mocks.signInWithPassword.mockRejectedValueOnce(new Error("Invalid login credentials"));
+    renderLogin();
+    fillLoginForm();
+    fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Invalid credentials",
+    })));
+
+    mocks.toast.mockClear();
+    mocks.signInWithPassword.mockRejectedValueOnce(new Error("CAPTCHA verification failed"));
+    fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({
+      title: "CAPTCHA verification failed",
+    })));
+  });
+
+  it("reports a session-verification failure separately from invalid credentials", async () => {
+    mocks.refreshSession.mockRejectedValueOnce(new Error("Session validation is temporarily unavailable"));
+    renderLogin();
+    fillLoginForm();
+    fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Session verification failed",
+      description: "Session validation is temporarily unavailable",
+    })));
+  });
+
+  it("reports a missing verified session as a session-verification failure", async () => {
+    mocks.refreshSession.mockResolvedValueOnce(null);
+    renderLogin();
+    fillLoginForm();
+    fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => expect(mocks.toast).toHaveBeenCalledWith(expect.objectContaining({
+      title: "Session verification failed",
+      description: "The new session could not be verified.",
+    })));
+  });
+
+  it("completes login when membership retrieval reports an error", async () => {
+    mocks.membershipError = "Company membership could not be loaded.";
+    renderLogin();
+    fillLoginForm();
+    fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await screen.findByText("Workspace dashboard");
+    expect(mocks.toast).not.toHaveBeenCalled();
   });
 
   it("does not expose public workspace signup", async () => {
@@ -140,7 +199,6 @@ describe("Turnstile authentication", () => {
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Create workspace" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Go to sign in" })).toHaveAttribute("href", "/auth/login");
-    expect(mocks.signUp).not.toHaveBeenCalled();
   });
 
   it("uses invitation-only guidance instead of signup links on login and landing pages", async () => {

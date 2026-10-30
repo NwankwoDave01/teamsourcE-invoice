@@ -4,7 +4,7 @@ import type { Database, Json } from "./types";
 // remain untouched and the existing authenticated client is reused unchanged.
 export type AppDatabase = Omit<Database, "public"> & {
   public: Omit<Database["public"], "Functions" | "Tables"> & {
-    Tables: Omit<Database["public"]["Tables"], "customers" | "products"> & {
+    Tables: Omit<Database["public"]["Tables"], "customers" | "products" | "invoices" | "invoice_lines"> & {
       customers: Database["public"]["Tables"]["customers"] & {
         Row: Database["public"]["Tables"]["customers"]["Row"] & {
           notes: string | null;
@@ -25,6 +25,34 @@ export type AppDatabase = Omit<Database, "public"> & {
         };
         Update: Database["public"]["Tables"]["products"]["Update"] & {
           description?: string | null;
+        };
+      };
+      invoices: Database["public"]["Tables"]["invoices"] & {
+        Row: Database["public"]["Tables"]["invoices"]["Row"] & {
+          discount_total: number;
+          document_uuid: string | null;
+          original_invoice_id: string | null;
+        };
+        Insert: Database["public"]["Tables"]["invoices"]["Insert"] & {
+          discount_total?: number;
+          document_uuid?: string | null;
+          original_invoice_id?: string | null;
+        };
+        Update: Database["public"]["Tables"]["invoices"]["Update"] & {
+          discount_total?: number;
+          document_uuid?: string | null;
+          original_invoice_id?: string | null;
+        };
+      };
+      invoice_lines: Database["public"]["Tables"]["invoice_lines"] & {
+        Row: Database["public"]["Tables"]["invoice_lines"]["Row"] & {
+          line_uuid: string | null;
+        };
+        Insert: Database["public"]["Tables"]["invoice_lines"]["Insert"] & {
+          line_uuid?: string | null;
+        };
+        Update: Database["public"]["Tables"]["invoice_lines"]["Update"] & {
+          line_uuid?: string | null;
         };
       };
     };

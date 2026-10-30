@@ -50,8 +50,10 @@ export default function Products() {
     try {
       await del.mutateAsync(toDelete.id);
       toast.success(`Item "${toDelete.name}" deleted`);
-    } catch (e: any) {
-      toast.error("Failed to delete", { description: e.message });
+    } catch (error) {
+      toast.error("Failed to delete", {
+        description: error instanceof Error ? error.message : "An unexpected error occurred.",
+      });
     } finally {
       setToDelete(null);
     }

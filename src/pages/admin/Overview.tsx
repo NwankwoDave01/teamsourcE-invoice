@@ -47,7 +47,7 @@ export default function AdminOverview() {
               <p className="py-6 text-center text-sm text-muted-foreground">No companies yet.</p>
             ) : (
               <div className="space-y-3">
-                {companies.slice(0, 6).map((c: any) => (
+                {companies.slice(0, 6).map((c) => (
                   <div key={c.id} className="flex items-center justify-between border-b border-border pb-3 last:border-0 last:pb-0">
                     <div>
                       <p className="font-medium">{c.name}</p>

@@ -18,8 +18,10 @@ export const INVOICE_STATUSES: DBInvoiceStatus[] = [
 export type DBCompany = Database["public"]["Tables"]["companies"]["Row"];
 export type DBCustomer = Database["public"]["Tables"]["customers"]["Row"] & { notes?: string | null };
 export type DBProduct = Database["public"]["Tables"]["products"]["Row"] & { description?: string | null };
-export type DBInvoice = Database["public"]["Tables"]["invoices"]["Row"];
-export type DBInvoiceLine = Database["public"]["Tables"]["invoice_lines"]["Row"];
+export type DBInvoice = AppDatabase["public"]["Tables"]["invoices"]["Row"];
+export type DBInvoiceLine = AppDatabase["public"]["Tables"]["invoice_lines"]["Row"];
+
+const appSupabase = supabase as SupabaseClient<AppDatabase>;
 
 /* ----------------------------- Company ----------------------------- */
 export function useCurrentCompany() {
@@ -54,9 +56,9 @@ export function useCreateCustomer() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: Partial<DBCustomer> & { name: string }) => {
-      const { data, error } = await supabase
+      const { data, error } = await appSupabase
         .from("customers")
-        .insert({ ...input, company_id: companyId! } as any)
+        .insert({ ...input, company_id: companyId! })
         .select()
         .single();
       if (error) throw error;
@@ -123,9 +125,9 @@ export function useCreateProduct() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: Partial<DBProduct> & { name: string; sku: string }) => {
-      const { data, error } = await supabase
+      const { data, error } = await appSupabase
         .from("products")
-        .insert({ ...input, company_id: companyId! } as any)
+        .insert({ ...input, company_id: companyId! })
         .select()
         .single();
       if (error) throw error;
@@ -308,7 +310,7 @@ export function useCreateInvoice() {
           ...(input.payment_means_code ? { payment_means_code: input.payment_means_code } : {}),
           ...(input.exchange_rate != null ? { exchange_rate: input.exchange_rate } : {}),
           ...(input.currency ? { currency: input.currency } : {}),
-        } as any)
+        })
         .select()
         .single();
       if (error) throw error;
@@ -338,7 +340,7 @@ export function useCreateInvoice() {
             hsn_code: l.hsn_code ?? null,
             product_category: l.product_category ?? null,
           };
-        }) as any,
+        }),
       );
       if (linesError) throw linesError;
       return inv;
@@ -498,7 +500,7 @@ export function useUpdateInvoice() {
       });
 
       // Atomic update via PostgreSQL RPC in a single transaction
-      const { data, error } = await (supabase as SupabaseClient<AppDatabase>).rpc("update_invoice_atomic", {
+      const { data, error } = await appSupabase.rpc("update_invoice_atomic", {
         p_invoice_id: input.id,
         p_company_id: companyId,
         p_header: headerPayload as Json,

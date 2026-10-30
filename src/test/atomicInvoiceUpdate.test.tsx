@@ -8,7 +8,7 @@ import { supabase } from "@/integrations/supabase/client";
 const authMock = vi.hoisted(() => ({
   user: { id: "user-test-1" } as { id: string } | null,
   companyId: "company-test-1" as string | null,
-  roles: ["company_admin"] as ("super_admin" | "company_admin" | "finance_officer" | "staff_user")[],
+  roles: ["company_admin"] as string[],
   isSuperAdmin: false,
 }));
 
@@ -21,10 +21,29 @@ vi.mock("@/contexts/AuthContext", () => ({
   }),
 }));
 
+interface MockInvoice extends Record<string, unknown> {
+  id: string;
+  company_id: string;
+  status: DBInvoiceStatus;
+  customer_name: string;
+  total: number;
+}
+
+interface MockInvoiceLine extends Record<string, unknown> {
+  invoice_id?: string;
+}
+
+interface RpcArgs extends Record<string, unknown> {
+  p_invoice_id: string;
+  p_company_id: string;
+  p_header: Record<string, unknown>;
+  p_lines: Array<Record<string, unknown>>;
+}
+
 const dbMock = vi.hoisted(() => ({
-  invoices: [] as any[],
-  invoiceLines: [] as any[],
-  rpcCalls: [] as any[],
+  invoices: [] as MockInvoice[],
+  invoiceLines: [] as MockInvoiceLine[],
+  rpcCalls: [] as Array<{ fnName: string; args: RpcArgs }>,
   rpcHandler: vi.fn(),
   directLineDeleteSpy: vi.fn(),
   directLineInsertSpy: vi.fn(),
@@ -46,7 +65,7 @@ vi.mock("@/integrations/supabase/client", () => {
               if (!inv) return { data: null, error: new Error("Invoice not found or access denied.") };
               return { data: { status: inv.status, company_id: inv.company_id }, error: null };
             }),
-            update: vi.fn((payload: any) => {
+            update: vi.fn((payload: Record<string, unknown>) => {
               dbMock.directInvoiceUpdateSpy(payload);
               return {
                 eq: vi.fn().mockImplementation(() => Promise.resolve({ data: payload, error: null })),
@@ -67,7 +86,7 @@ vi.mock("@/integrations/supabase/client", () => {
                 eq: vi.fn().mockResolvedValue({ error: null }),
               };
             }),
-            insert: vi.fn((lines: any[]) => {
+            insert: vi.fn((lines: MockInvoiceLine[]) => {
               dbMock.directLineInsertSpy(lines);
               return Promise.resolve({ error: null });
             }),
@@ -79,7 +98,7 @@ vi.mock("@/integrations/supabase/client", () => {
           order: vi.fn().mockResolvedValue({ data: [], error: null }),
         };
       }),
-      rpc: vi.fn(async (fnName: string, args: any) => {
+      rpc: vi.fn(async (fnName: string, args: RpcArgs) => {
         dbMock.rpcCalls.push({ fnName, args });
         const res = await dbMock.rpcHandler(fnName, args);
         return res ?? { data: null, error: null };
@@ -380,15 +399,15 @@ describe("Atomic Invoice and Invoice Lines Update", () => {
 
   it("demonstrates transactional rollback: RPC transaction semantics guarantee no partial updates when line insertion fails", () => {
     // In-memory relational database state
-    let invoiceTable = [{ ...sampleInitialInvoice }];
-    let invoiceLinesTable = [...sampleInitialLines];
+    let invoiceTable: MockInvoice[] = [{ ...sampleInitialInvoice }];
+    let invoiceLinesTable: MockInvoiceLine[] = [...sampleInitialLines];
 
     // Transactional simulation of the update_invoice_atomic RPC
     function executeRpcTransaction(
       invoiceId: string,
       companyId: string,
-      header: any,
-      lines: any[],
+      header: Pick<MockInvoice, "customer_name">,
+      lines: MockInvoiceLine[],
       simulateLineInsertFailure = false,
     ) {
       // Snapshot state for transaction rollback
@@ -500,7 +519,7 @@ describe("Atomic Invoice and Invoice Lines Update", () => {
   });
 
   it("rejects unauthorized users lacking any invoice edit role", async () => {
-    authMock.roles = ["other_role" as any];
+    authMock.roles = ["other_role"];
     authMock.isSuperAdmin = false;
 
     const { result } = renderHook(() => useUpdateInvoice(), { wrapper: createWrapper() });

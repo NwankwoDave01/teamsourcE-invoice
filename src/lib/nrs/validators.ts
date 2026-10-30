@@ -1,4 +1,5 @@
 import type { NrsValidationIssue } from "./types";
+import type { AppDatabase } from "@/integrations/supabase/appSchema";
 import {
   ALLOWED_CURRENCIES,
   ALLOWED_TAX_CATEGORIES,
@@ -8,13 +9,11 @@ import {
   round2,
 } from "./codes";
 
-type AnyRow = Record<string, any>;
-
 interface ValidateInput {
-  invoice: AnyRow;
-  lines: AnyRow[];
-  company: AnyRow | null;
-  customer: AnyRow | null;
+  invoice: AppDatabase["public"]["Tables"]["invoices"]["Row"];
+  lines: AppDatabase["public"]["Tables"]["invoice_lines"]["Row"][];
+  company: AppDatabase["public"]["Tables"]["companies"]["Row"] | null;
+  customer: AppDatabase["public"]["Tables"]["customers"]["Row"] | null;
 }
 
 function err(field: string, code: string, message: string): NrsValidationIssue {

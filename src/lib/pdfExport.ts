@@ -40,6 +40,8 @@ export interface PdfInvoice {
   lines?: PdfLineItem[];
 }
 
+type JsPdfWithAutoTable = jsPDF & { lastAutoTable?: { finalY: number } };
+
 export function generateInvoicePdf(invoice: PdfInvoice, company?: PdfCompany | null): jsPDF {
   const doc = new jsPDF({
     orientation: "portrait",
@@ -161,7 +163,7 @@ export function generateInvoicePdf(invoice: PdfInvoice, company?: PdfCompany | n
   });
 
   // 5. Totals Block
-  const finalY = (doc as any).lastAutoTable?.finalY || 120;
+  const finalY = (doc as JsPdfWithAutoTable).lastAutoTable?.finalY || 120;
   let totalsY = finalY + 8;
 
   const totalsBoxX = 120;
@@ -224,7 +226,7 @@ export function generateInvoicePdf(invoice: PdfInvoice, company?: PdfCompany | n
   }
 
   // 8. Footer on all pages
-  const pageCount = (doc as any).internal.getNumberOfPages();
+  const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
     doc.setFont("helvetica", "normal");

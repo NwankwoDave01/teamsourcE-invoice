@@ -28,7 +28,11 @@
   ],
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/supabase/(.*)",
+      "destination": "/api/supabase-proxy?path=$1"
+    },
+    {
+      "source": "/:path((?!api(?:/|$)).*)",
       "destination": "/"
     }
   ]

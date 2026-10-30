@@ -1,5 +1,12 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { canAdministerCredentials, isSigningReady, credentialSaveBody, parseCredentialStatus } from "@/lib/nrs/credentialContract";
+
+const credentialFunction = readFileSync(
+  resolve(process.cwd(), "supabase/functions/nrs-credentials/index.ts"),
+  "utf8",
+);
 
 const metadata = {
   environment: "sandbox", api_key_configured: true, api_secret_configured: true,
@@ -28,6 +35,12 @@ describe("tenant credential contract", () => {
     const input = { api_key: " test-key ", api_secret: " test-secret ", company_id: "wrong-tenant", environment: "production" };
     expect(credentialSaveBody(input)).toEqual({ action: "save", api_key: "test-key", api_secret: "test-secret" });
   });
+  it("resolves the credential tenant from the authenticated user's Active membership", () => {
+    expect(credentialFunction).toMatch(/getCompanyId\(admin, user\.id\)/);
+    expect(credentialFunction).not.toMatch(/body\??\.company_id/);
+    expect(credentialFunction).not.toMatch(/body\??\.environment/);
+    expect(credentialFunction).toMatch(/\.eq\("user_id", userId\)[\s\S]*\.eq\("status", "Active"\)/);
+  });
   it("does not send a taxpayer portal password", () => {
     const input = { api_key: "test-key", api_secret: "test-secret", taxpayer_password: "test-password" };
     expect(credentialSaveBody(input)).not.toHaveProperty("taxpayer_password");
@@ -44,6 +57,8 @@ describe("tenant credential contract", () => {
     expect(canAdministerCredentials(["super_admin"], "company-a")).toBe(true);
     expect(canAdministerCredentials(["finance_officer"], "company-a")).toBe(false);
     expect(canAdministerCredentials(["staff_user"], "company-a")).toBe(false);
+    expect(credentialFunction).toMatch(/rpc\("can_manage_company"/);
+    expect(credentialFunction).not.toMatch(/rpc\("can_manage_invoices"/);
   });
   it("requires active membership even for a super admin", () => {
     expect(canAdministerCredentials(["super_admin"], null)).toBe(false);

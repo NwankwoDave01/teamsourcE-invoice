@@ -54,11 +54,17 @@ export async function loadActiveMembership(uid: string) {
   const { data: membership, error } = await supabase.from("company_members")
     .select("company_id").eq("user_id", uid).eq("status", "Active").maybeSingle();
   if (error) throw error;
-  const { data: roleRows, error: roleError } = await supabase.from("user_roles")
+  return { companyId: membership?.company_id ?? null };
+}
+
+export async function loadUserRoles(uid: string) {
+  const { data: roleRows, error } = await supabase.from("user_roles")
     .select("role, company_id").eq("user_id", uid);
-  if (roleError) throw roleError;
-  const companyId = membership?.company_id ?? null;
-  return { companyId, roles: (roleRows ?? []).filter((r) => r.role === "super_admin" || (companyId && r.company_id === companyId)).map((r) => r.role) };
+  if (error) throw error;
+  return (roleRows ?? []).map((role) => ({
+    role: role.role,
+    companyId: role.company_id,
+  }));
 }
 
 export interface InvitationDetails {

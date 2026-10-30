@@ -16,7 +16,7 @@ describe("invoice type correction migration safeguards", () => {
   });
 
   it("uses the same supported numeric invoice type codes as the frontend", () => {
-    const guard = migration.match(/WHERE invoice_type IS NULL([\s\S]*?)\n    \);/)?.[1];
+    const guard = migration.match(/WHERE invoice_type IS NULL([\s\S]*?)\n {4}\);/)?.[1];
     expect(guard).toBeDefined();
 
     const guardedCodes = [...guard!.matchAll(/'(\d+)'/g)].map((match) => match[1]).sort();

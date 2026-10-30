@@ -54,6 +54,7 @@ import {
   useCurrentCompany,
   INVOICE_STATUSES,
   type DBInvoiceStatus,
+  type DBInvoiceLine,
 } from "@/hooks/useCompanyData";
 import { toast } from "sonner";
 import { formatNGN } from "@/lib/format";
@@ -97,7 +98,7 @@ export default function Invoices() {
   const updateStatus = useUpdateInvoiceStatus();
   const deleteMut = useDeleteInvoice();
   const submitToNrs = useNrsSubmit();
-  let user: any = null;
+  let user: ReturnType<typeof useAuth>["user"] = null;
   let companyId: string | null = null;
   let roles: string[] = [];
   let isSuperAdmin = false;
@@ -265,7 +266,7 @@ export default function Invoices() {
   };
 
   const handlePrintSingle = async (inv: (typeof invoices)[number]) => {
-    let lines: any[] = [];
+    let lines: DBInvoiceLine[] = [];
     try {
       const { data: dbLines } = await supabase
         .from("invoice_lines")
@@ -291,7 +292,7 @@ export default function Invoices() {
       return;
     }
     const ids = selectedInvoices.map((i) => i.id);
-    let linesByInvoice: Record<string, any[]> = {};
+    const linesByInvoice: Record<string, DBInvoiceLine[]> = {};
     try {
       const { data: dbLines } = await supabase
         .from("invoice_lines")
@@ -320,7 +321,7 @@ export default function Invoices() {
   };
 
   const handleDownloadPdfSingle = async (inv: (typeof invoices)[number]) => {
-    let lines: any[] = [];
+    let lines: DBInvoiceLine[] = [];
     try {
       const { data: dbLines } = await supabase
         .from("invoice_lines")

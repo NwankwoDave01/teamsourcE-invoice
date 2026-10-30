@@ -29,6 +29,29 @@ describe("Vercel browser security headers", () => {
     expect(header("X-Content-Type-Options")).toBe("nosniff");
     expect(header("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
     expect(header("Permissions-Policy")).toBe("camera=(), microphone=(), geolocation=()");
-    expect(config.rewrites).toEqual([{ source: "/(.*)", destination: "/" }]);
+    expect(config.rewrites).toEqual([
+      { source: "/api/supabase/(.*)", destination: "/api/supabase-proxy?path=$1" },
+      { source: "/:path((?!api(?:/|$)).*)", destination: "/" },
+    ]);
+  });
+
+  it("keeps auth and Supabase API paths out of the SPA rewrite", () => {
+    const spaPath = /^\/(?!api(?:\/|$)).*$/;
+
+    for (const path of [
+      "/api/auth/login",
+      "/api/auth/session",
+      "/api/auth/logout",
+      "/api/auth/verify-invite",
+      "/api/auth/update-password",
+      "/api/supabase/rest/v1/invoices",
+      "/api/supabase/functions/v1/tenant-admin",
+    ]) {
+      expect(spaPath.test(path), `${path} must not match the SPA rewrite`).toBe(false);
+    }
+
+    for (const path of ["/", "/login", "/tenant/invoices"]) {
+      expect(spaPath.test(path), `${path} must continue to use SPA routing`).toBe(true);
+    }
   });
 });
