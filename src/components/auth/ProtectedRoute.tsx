@@ -49,9 +49,5 @@ export function ProtectedRoute({ requireSuperAdmin = false }: { requireSuperAdmi
     return <Navigate to={companyId ? "/app/dashboard" : "/auth/login"} replace />;
   }
 
-  if (!requireSuperAdmin && !companyId && !isSuperAdmin) {
-    return <Navigate to="/auth/login" state={{ reason: "no_active_membership" }} replace />;
-  }
-
   return <Outlet />;
 }

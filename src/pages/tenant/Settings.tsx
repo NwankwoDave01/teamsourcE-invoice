@@ -41,7 +41,7 @@ export default function Settings() {
   const update = useUpdateCompany();
   const { roles, user, companyId } = useAuth();
   const [searchParams] = useSearchParams();
-  const isCompanyAdmin = roles.includes("company_admin") || roles.includes("super_admin");
+  const isCompanyAdmin = roles.includes("company_owner") || roles.includes("company_admin") || roles.includes("super_admin");
   const nrsCompany = company as (typeof company & Partial<NrsCompanyExtra>) | null | undefined;
   const [form, setForm] = useState({
     name: "", tin: "", industry: "",

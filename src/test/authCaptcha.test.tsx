@@ -8,6 +8,8 @@ import LandingPage from "@/pages/LandingPage";
 
 const mocks = vi.hoisted(() => ({
   signInWithPassword: vi.fn(),
+  registerAccount: vi.fn(),
+  verifySignup: vi.fn(),
   refreshSession: vi.fn(),
   toast: vi.fn(),
   membershipError: null as string | null,
@@ -15,6 +17,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/authSession", () => ({
   signInWithPassword: mocks.signInWithPassword,
+  registerAccount: mocks.registerAccount,
+  verifySignup: mocks.verifySignup,
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -55,6 +59,8 @@ vi.mock("@marsidev/react-turnstile", () => ({
 beforeEach(() => {
   vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "turnstile-test-site-key");
   mocks.signInWithPassword.mockReset().mockResolvedValue({ id: "user-a", email: "user@example.com" });
+  mocks.registerAccount.mockReset().mockResolvedValue(null);
+  mocks.verifySignup.mockReset().mockResolvedValue({ id: "user-a", email: "user@example.com" });
   mocks.refreshSession.mockReset().mockResolvedValue({ id: "user-a", email: "user@example.com" });
   mocks.toast.mockReset();
   mocks.membershipError = null;
@@ -188,23 +194,32 @@ describe("Turnstile authentication", () => {
     expect(mocks.toast).not.toHaveBeenCalled();
   });
 
-  it("does not expose public workspace signup", async () => {
+  it("supports public account registration with a verified-email step", async () => {
     render(
       <MemoryRouter initialEntries={["/auth/signup"]}>
         <Signup />
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText("Workspace access is invitation-only")).toBeInTheDocument();
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Create workspace" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Go to sign in" })).toHaveAttribute("href", "/auth/login");
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "new@example.com" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "a-secure-password" } });
+    fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "a-secure-password" } });
+    fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(await screen.findByText("Check your email")).toBeInTheDocument();
+    expect(mocks.registerAccount).toHaveBeenCalledWith(
+      "new@example.com",
+      "a-secure-password",
+      "",
+      "turnstile-test-token",
+    );
   });
 
-  it("uses invitation-only guidance instead of signup links on login and landing pages", async () => {
+  it("links public users to signup from login and landing pages", async () => {
     const { container } = renderLogin();
-    expect(screen.getByText(/Access to .* is invitation-only/)).toBeInTheDocument();
-    expect(container.querySelector('a[href="/auth/signup"]')).not.toBeInTheDocument();
+    expect(screen.getByText(/Create an account/)).toHaveAttribute("href", "/auth/signup");
+    expect(container.querySelector('a[href="/auth/signup"]')).toBeInTheDocument();
 
     cleanup();
     const { container: landingContainer } = render(
@@ -212,7 +227,6 @@ describe("Turnstile authentication", () => {
         <LandingPage />
       </MemoryRouter>,
     );
-    expect(landingContainer.querySelector('a[href="/auth/signup"]')).not.toBeInTheDocument();
-    expect(screen.getByText(/Workspace access is invitation-only/)).toBeInTheDocument();
+    expect(landingContainer.querySelector('a[href="/auth/signup"]')).toBeInTheDocument();
   });
 });

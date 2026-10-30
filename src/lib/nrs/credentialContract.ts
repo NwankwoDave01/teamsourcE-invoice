@@ -39,7 +39,7 @@ export function isSigningReady(s: NrsCredentialStatus | undefined): boolean {
 }
 
 export function canAdministerCredentials(roles: readonly string[], companyId: string | null): boolean {
-  return Boolean(companyId) && (roles.includes("company_admin") || roles.includes("super_admin"));
+  return Boolean(companyId) && (roles.includes("company_owner") || roles.includes("company_admin") || roles.includes("super_admin"));
 }
 
 export function credentialSaveBody(input: { api_key: string; api_secret: string }) {

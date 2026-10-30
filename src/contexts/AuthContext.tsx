@@ -1,8 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from "react";
 import { getCurrentUser, signOutFromSession, type SessionUser } from "@/lib/authSession";
-import { loadActiveMembership, loadUserRoles } from "@/lib/tenantAdmin";
+import { loadActiveMemberships, loadUserRoles, type ActiveCompanyMembership } from "@/lib/tenantAdmin";
 
-type Role = "super_admin" | "company_admin" | "finance_officer" | "staff_user";
+type Role = "super_admin" | "company_owner" | "company_admin" | "finance_officer" | "staff_user";
+const validRoles = new Set<Role>(["super_admin", "company_owner", "company_admin", "finance_officer", "staff_user"]);
 
 interface AuthCtx {
   user: SessionUser | null;
@@ -10,11 +11,13 @@ interface AuthCtx {
   authError: string | null;
   membershipError: string | null;
   companyId: string | null;
+  memberships: ActiveCompanyMembership[];
   roles: Role[];
   isSuperAdmin: boolean;
+  selectCompany: (companyId: string) => Promise<void>;
   signOut: () => Promise<void>;
   refreshSession: (forceReload?: boolean) => Promise<SessionUser | null>;
-  refreshMembership: () => Promise<void>;
+  refreshMembership: (preferredCompanyId?: string) => Promise<void>;
 }
 
 const Ctx = createContext<AuthCtx | undefined>(undefined);
@@ -24,35 +27,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
   const [membershipError, setMembershipError] = useState<string | null>(null);
-  const [companyId, setCompanyId] = useState<string | null>(null);
-  const [roles, setRoles] = useState<Role[]>([]);
+  const [memberships, setMemberships] = useState<ActiveCompanyMembership[]>([]);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string | null>(null);
+  const [roleRows, setRoleRows] = useState<{ role: string; companyId: string | null }[]>([]);
   const currentUid = useRef<string | null>(null);
+  const selectedCompanyRef = useRef<string | null>(null);
   const membershipRequest = useRef(0);
   const sessionRequest = useRef(0);
   const loadedUid = useRef<string | null>(null);
 
-  const loadMembership = useCallback(async (uid: string) => {
+  const loadMembership = useCallback(async (uid: string, preferredCompanyId?: string) => {
     const request = ++membershipRequest.current;
     setMembershipError(null);
     const [membershipResult, rolesResult] = await Promise.allSettled([
-      loadActiveMembership(uid),
+      loadActiveMemberships(uid),
       loadUserRoles(uid),
     ]);
     if (currentUid.current !== uid || request !== membershipRequest.current) return;
 
-    const activeCompanyId = membershipResult.status === "fulfilled"
-      ? membershipResult.value.companyId
-      : null;
-    setCompanyId(activeCompanyId);
-
-    const validRoles = new Set<Role>(["super_admin", "company_admin", "finance_officer", "staff_user"]);
-    const loadedRoles = rolesResult.status === "fulfilled"
-      ? rolesResult.value
-        .filter((role) => validRoles.has(role.role as Role)
-          && (role.role === "super_admin" || (activeCompanyId && role.companyId === activeCompanyId)))
-        .map((role) => role.role as Role)
-      : [];
-    setRoles(loadedRoles);
+    const activeMemberships = membershipResult.status === "fulfilled" ? membershipResult.value : [];
+    setMemberships(activeMemberships);
+    setRoleRows(rolesResult.status === "fulfilled" ? rolesResult.value : []);
+    const wantedCompanyId = preferredCompanyId ?? selectedCompanyRef.current;
+    const activeCompanyId = activeMemberships.some(({ companyId }) => companyId === wantedCompanyId)
+      ? wantedCompanyId
+      : activeMemberships[0]?.companyId ?? null;
+    selectedCompanyRef.current = activeCompanyId;
+    setSelectedCompanyId(activeCompanyId);
 
     const errors = [
       membershipResult.status === "rejected" ? "Company membership could not be loaded." : null,
@@ -69,14 +70,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const currentUser = await getCurrentUser();
       if (request !== sessionRequest.current) return null;
       const uid = currentUser?.id ?? null;
+      if (currentUid.current !== uid) {
+        loadedUid.current = null;
+        selectedCompanyRef.current = null;
+        setSelectedCompanyId(null);
+        setMemberships([]);
+        setRoleRows([]);
+      }
       currentUid.current = uid;
       setUser(currentUser);
       if (!uid) {
         loadedUid.current = null;
         ++membershipRequest.current;
         setMembershipError(null);
-        setCompanyId(null);
-        setRoles([]);
+        selectedCompanyRef.current = null;
+        setSelectedCompanyId(null);
+        setMemberships([]);
+        setRoleRows([]);
         setLoading(false);
         return null;
       }
@@ -88,8 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loadedUid.current = uid;
       ++membershipRequest.current;
       setMembershipError(null);
-      setCompanyId(null);
-      setRoles([]);
+      setSelectedCompanyId(null);
+      setMemberships([]);
+      setRoleRows([]);
 
       if (window.location.pathname.replace(/\/$/, "") === "/auth/accept-invite") {
         setLoading(false);
@@ -126,23 +137,59 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshSession]);
 
   const signOut = async () => {
-    await signOutFromSession();
-    ++sessionRequest.current;
-    ++membershipRequest.current;
-    currentUid.current = null;
-    loadedUid.current = null;
-    setUser(null);
-    setCompanyId(null);
-    setRoles([]);
-    setAuthError(null);
-    setMembershipError(null);
-    setLoading(false);
+    try {
+      await signOutFromSession();
+    } finally {
+      ++sessionRequest.current;
+      ++membershipRequest.current;
+      currentUid.current = null;
+      loadedUid.current = null;
+      selectedCompanyRef.current = null;
+      setUser(null);
+      setSelectedCompanyId(null);
+      setMemberships([]);
+      setRoleRows([]);
+      setAuthError(null);
+      setMembershipError(null);
+      setLoading(false);
+    }
   };
 
-  const refreshMembership = async () => {
+  const refreshMembership = async (preferredCompanyId?: string) => {
     const uid = currentUid.current;
-    if (uid) await loadMembership(uid);
+    if (uid) await loadMembership(uid, preferredCompanyId);
   };
+
+  const selectCompany = useCallback(async (nextCompanyId: string) => {
+    const uid = currentUid.current;
+    if (!uid) throw new Error("Sign in before selecting a company.");
+    const request = ++membershipRequest.current;
+    const [membershipResult, rolesResult] = await Promise.all([
+      loadActiveMemberships(uid),
+      loadUserRoles(uid),
+    ]);
+    if (currentUid.current !== uid || request !== membershipRequest.current) {
+      throw new Error("Company access changed while the selection was being checked. Try again.");
+    }
+    if (!membershipResult.some(({ companyId }) => companyId === nextCompanyId)) {
+      selectedCompanyRef.current = null;
+      setSelectedCompanyId(null);
+      setMemberships(membershipResult);
+      setRoleRows(rolesResult);
+      throw new Error("You do not have active access to that company.");
+    }
+    setMemberships(membershipResult);
+    setRoleRows(rolesResult);
+    selectedCompanyRef.current = nextCompanyId;
+    setSelectedCompanyId(nextCompanyId);
+  }, []);
+  const companyId = memberships.some(({ companyId: id }) => id === selectedCompanyId)
+    ? selectedCompanyId
+    : null;
+  const roles = useMemo(() => roleRows
+    .filter((row) => validRoles.has(row.role as Role)
+      && (row.role === "super_admin" ? row.companyId === null : row.companyId === companyId))
+    .map((row) => row.role as Role), [roleRows, companyId]);
 
   return (
     <Ctx.Provider
@@ -152,8 +199,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         authError,
         membershipError,
         companyId,
+        memberships,
         roles,
         isSuperAdmin: roles.includes("super_admin"),
+        selectCompany,
         signOut,
         refreshSession,
         refreshMembership,

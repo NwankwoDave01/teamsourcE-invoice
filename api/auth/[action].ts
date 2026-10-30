@@ -46,7 +46,7 @@ const handler: ApiHandler = async (req, res) => {
     return;
   }
 
-  if (!["login", "logout", "verify-invite", "update-password"].includes(action)) {
+  if (!["login", "signup", "logout", "verify-invite", "verify-signup", "update-password"].includes(action)) {
     respondJson(res, 404, { error: "Not found" });
     return;
   }
@@ -62,6 +62,51 @@ const handler: ApiHandler = async (req, res) => {
   try {
     const client = createAuthClient(req, res);
     const body = requestBody(req);
+
+    if (action === "signup") {
+      const email = typeof body.email === "string" ? body.email.trim() : "";
+      const password = typeof body.password === "string" ? body.password : "";
+      const displayName = typeof body.display_name === "string" ? body.display_name.trim().slice(0, 120) : "";
+      const captchaToken = typeof body.captchaToken === "string" ? body.captchaToken : "";
+      if (!email || email.length > 254 || !password || !captchaToken) {
+        respondJson(res, 400, { error: "Email, password, and CAPTCHA are required" });
+        return;
+      }
+      if (password.length < 12) {
+        respondJson(res, 400, { error: "Password must be at least 12 characters long" });
+        return;
+      }
+
+      const { error } = await client.auth.signUp({
+        email,
+        password,
+        options: {
+          captchaToken,
+          data: displayName ? { display_name: displayName } : {},
+          emailRedirectTo: `${req.headers.origin}/auth/verify-signup`,
+        },
+      });
+      if (error) {
+        if (/already registered|already exists|user exists/i.test(error.message)) {
+          respondJson(res, 202, {
+            ok: true,
+            message: "If this address can be registered, a verification email has been sent.",
+          });
+          return;
+        }
+        respondJson(res, error.status === 429 ? 429 : 400, {
+          error: /captcha|turnstile/i.test(error.message)
+            ? "CAPTCHA verification failed. Please try again."
+            : error.message,
+        });
+        return;
+      }
+      respondJson(res, 202, {
+        ok: true,
+        message: "If this address can be registered, a verification email has been sent.",
+      });
+      return;
+    }
 
     if (action === "login") {
       const email = typeof body.email === "string" ? body.email.trim() : "";
@@ -96,18 +141,18 @@ const handler: ApiHandler = async (req, res) => {
       return;
     }
 
-    if (action === "verify-invite") {
+    if (action === "verify-invite" || action === "verify-signup") {
       const tokenHash = typeof body.token_hash === "string" ? body.token_hash : "";
       if (!tokenHash) {
-        respondJson(res, 400, { error: "Invitation token is required" });
+        respondJson(res, 400, { error: action === "verify-invite" ? "Invitation token is required" : "Email verification token is required" });
         return;
       }
       const { data, error } = await client.auth.verifyOtp({
         token_hash: tokenHash,
-        type: "invite",
+        type: action === "verify-invite" ? "invite" : "signup",
       });
       if (error || !data.user) {
-        respondJson(res, 400, { error: error?.message ?? "Invitation link could not be verified" });
+        respondJson(res, 400, { error: error?.message ?? "Verification link could not be verified" });
         return;
       }
       respondJson(res, 200, { user: publicUser(data.user) });

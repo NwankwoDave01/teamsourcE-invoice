@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Building2, Loader2, MapPin, ShieldCheck } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { toast } from "sonner";
 import { BrandMark } from "@/components/shared/BrandMark";
 
 export default function CompanyOnboarding() {
+  const navigate = useNavigate();
   const { user, refreshMembership, signOut } = useAuth();
   const [name, setName] = useState("");
   const [tin, setTin] = useState("");
@@ -26,44 +28,24 @@ export default function CompanyOnboarding() {
     }
     setSaving(true);
     try {
-      const { data: company, error: cErr } = await supabase
-        .from("companies")
-        .insert({
-          name: name.trim(),
-          tin: tin.trim() || "NG-PENDING",
-          industry: "Other",
-          plan: "Starter",
-          status: "Trial",
-          city: city.trim() || null,
-          state: state.trim() || null,
-          country_code: "NG",
-          created_by: user.id,
-        } as never)
-        .select()
-        .single();
-      if (cErr) throw cErr;
-
-      const [{ error: mErr }, { error: rErr }] = await Promise.all([
-        supabase.from("company_members").insert({
-          company_id: company.id,
-          user_id: user.id,
-          status: "Active",
-          last_active_at: new Date().toISOString(),
-        } as never),
-        supabase.from("user_roles").insert({
-          user_id: user.id,
-          company_id: company.id,
-          role: "company_admin",
-        } as never),
-      ]);
-      if (mErr) throw mErr;
-      if (rErr) throw rErr;
+      const { data: companyId, error } = await supabase.rpc("create_company_with_owner", {
+        p_name: name.trim(),
+        p_tin: tin.trim() || "NG-PENDING",
+        p_city: city.trim() || null,
+        p_state: state.trim() || null,
+      });
+      if (error) throw error;
+      if (typeof companyId !== "string" || !companyId) {
+        throw new Error("Company creation was not confirmed by the server.");
+      }
 
       toast.success("Workspace created");
-      await refreshMembership();
+      await refreshMembership(companyId);
+      navigate("/app/dashboard", { replace: true });
     } catch (e: unknown) {
-      const err = e as Error;
-      toast.error("Failed to create workspace", { description: err.message });
+      toast.error("Failed to create workspace", {
+        description: e instanceof Error ? e.message : "The company could not be created.",
+      });
     } finally {
       setSaving(false);
     }
@@ -74,9 +56,9 @@ export default function CompanyOnboarding() {
       <div className="w-full max-w-lg">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <BrandMark />
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Set up your workspace</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Create a company workspace</h1>
           <p className="text-sm text-muted-foreground">
-            Create your TeamSource workspace first. You can connect your NRS / APP integration from Settings next.
+            Each company is a separate workspace with its own members and records. You can create more than one.
           </p>
         </div>
 
@@ -149,7 +131,7 @@ export default function CompanyOnboarding() {
               </Button>
               <Button type="submit" disabled={saving} className="min-w-[160px] gap-1.5">
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {saving ? "Creating…" : "Create workspace & continue"}
+                {saving ? "Creating…" : "Create company & continue"}
               </Button>
             </div>
           </form>

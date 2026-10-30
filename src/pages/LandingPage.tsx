@@ -113,10 +113,10 @@ export default function LandingPage() {
             </Link>
 
             <Link
-              to="/auth/login"
+              to="/auth/signup"
               className="rounded-xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
             >
-              Sign in
+              Create account
             </Link>
           </div>
         </div>
@@ -156,10 +156,10 @@ export default function LandingPage() {
 
             <div className="mt-10 flex flex-wrap gap-4">
               <Link
-                to="/auth/login"
+                to="/auth/signup"
                 className="rounded-2xl bg-cyan-400 px-7 py-4 font-semibold text-slate-950 transition hover:bg-cyan-300"
               >
-                Sign in
+                Create an account
               </Link>
 
               <a

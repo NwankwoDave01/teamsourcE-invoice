@@ -25,7 +25,7 @@ const dateLabel = (value: string | null) => value && !Number.isNaN(Date.parse(va
 export default function Team() {
   const { companyId, user, roles, isSuperAdmin } = useAuth();
   // Reset dialogs and form state when the authenticated tenant changes.
-  return <TeamContent key={`${user?.id}:${companyId}`} canManage={!!companyId && (isSuperAdmin || roles.includes("company_admin"))} />;
+  return <TeamContent key={`${user?.id}:${companyId}`} canManage={!!companyId && (isSuperAdmin || roles.includes("company_owner") || roles.includes("company_admin"))} />;
 }
 
 function TeamContent({ canManage }: { canManage: boolean }) {
@@ -67,7 +67,7 @@ function TeamContent({ canManage }: { canManage: boolean }) {
   return <div>
     <PageHeader title="Team" description="Manage users and their access roles." actions={canManage ? <Button size="sm" className="gap-1.5" disabled={busy || team.isFetching} onClick={() => { setError(null); setInviteOpen(true); }}><Plus className="h-4 w-4" />Invite member</Button> : undefined} />
     <div className="space-y-4 p-6">
-      {!canManage ? <p className="text-sm text-muted-foreground">Only active company admins can manage the team.</p> : <>
+      {!canManage ? <p className="text-sm text-muted-foreground">Only active company owners and admins can manage the team.</p> : <>
         {errorNotice}
         <div className="relative max-w-md"><Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Search team members" placeholder="Search team members" value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" /></div>
         {team.isError ? <div role="alert" className="space-y-2 text-sm text-destructive"><p>{team.error.message}</p><Button variant="outline" onClick={() => void team.refetch()}>Refresh team</Button></div> : team.isLoading ? <p className="flex items-center text-muted-foreground"><Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading team…</p> : <>
@@ -78,7 +78,7 @@ function TeamContent({ canManage }: { canManage: boolean }) {
                 <td className="px-5 py-3"><div className="flex items-center gap-3"><Avatar className="h-8 w-8 shrink-0"><AvatarFallback className="bg-secondary text-xs">{(m.display_name || m.email || "?").slice(0, 2).toUpperCase()}</AvatarFallback></Avatar><div><p className="font-medium">{m.display_name || m.email || "Unnamed member"}</p><p className="break-all text-muted-foreground">{m.email || "Email unavailable"}</p></div></div></td>
                 <td className="px-5 py-3">{tenantRoles.some((r) => r === m.role) && m.status === "Active" ? <RoleSelect value={m.role} onChange={(next) => void changeRole(m.user_id, next)} disabled={busy || team.isFetching} label={`Role for ${m.email || m.display_name}`} /> : <Badge variant="secondary">{teamRoleLabels[m.role] ?? m.role}</Badge>}</td>
                 <td className="px-5 py-3"><Badge variant="secondary">{m.status}</Badge></td><td className="px-5 py-3 text-muted-foreground">{dateLabel(m.last_active_at)}</td>
-                <td className="px-5 py-3"><Button variant="ghost" size="sm" className="gap-1.5 text-destructive" disabled={busy || team.isFetching || m.status === "Disabled"} onClick={() => { setError(null); setConfirmation({ kind: "member", id: m.user_id, name: m.email || m.display_name || "this member" }); }}><Trash2 className="h-4 w-4" />Remove</Button></td>
+                <td className="px-5 py-3"><Button variant="ghost" size="sm" className="gap-1.5 text-destructive" disabled={busy || team.isFetching || m.status === "Disabled" || m.role === "company_owner"} title={m.role === "company_owner" ? "Transfer ownership before removing this member." : undefined} onClick={() => { setError(null); setConfirmation({ kind: "member", id: m.user_id, name: m.email || m.display_name || "this member" }); }}><Trash2 className="h-4 w-4" />Remove</Button></td>
               </tr>)}</tbody>
             </table></div>}
           </Card>

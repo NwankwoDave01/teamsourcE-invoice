@@ -126,7 +126,7 @@ export default function CreateInvoice({ mode = "create" }: { mode?: "create" | "
   } catch {
     // Graceful fallback when rendered without AuthProvider in standalone component tests
   }
-  const isStaff = roles.includes("staff_user") && !roles.includes("company_admin") && !roles.includes("finance_officer") && !isSuperAdmin;
+  const isStaff = roles.includes("staff_user") && !roles.includes("company_owner") && !roles.includes("company_admin") && !roles.includes("finance_officer") && !isSuperAdmin;
 
   const { data: sourceInvoice, isLoading: loadingSource } = useInvoice(sourceId);
   const { data: customers = [] } = useCustomers();

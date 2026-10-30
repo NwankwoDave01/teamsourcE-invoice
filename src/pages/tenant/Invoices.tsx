@@ -110,8 +110,8 @@ export default function Invoices() {
   } catch {
     // Graceful fallback when rendered without AuthProvider
   }
-  const isStaff = roles.includes("staff_user") && !roles.includes("company_admin") && !roles.includes("finance_officer") && !isSuperAdmin;
-  const canManage = isSuperAdmin || roles.includes("company_admin") || roles.includes("finance_officer") || (!isStaff && roles.length === 0);
+  const isStaff = roles.includes("staff_user") && !roles.includes("company_owner") && !roles.includes("company_admin") && !roles.includes("finance_officer") && !isSuperAdmin;
+  const canManage = isSuperAdmin || roles.includes("company_owner") || roles.includes("company_admin") || roles.includes("finance_officer") || (!isStaff && roles.length === 0);
   const history = useNrsSubmissionHistory();
   const blockReason = (inv: (typeof invoices)[number]) => {
     if (!canManage) return "Staff users cannot submit invoices to NRS.";

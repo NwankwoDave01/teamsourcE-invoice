@@ -14,6 +14,8 @@ const mocks = vi.hoisted(() => ({
   roles: ["company_admin"] as string[],
   isSuperAdmin: false,
   signOut: vi.fn(),
+  selectCompany: vi.fn().mockResolvedValue(undefined),
+  memberships: [{ companyId: "company-1", name: "Acme Nigeria Ltd", plan: "Starter", tin: "12345678-0001" }],
   company: { id: "company-1", name: "Acme Nigeria Ltd", plan: "Starter", tin: "12345678-0001" },
 }));
 
@@ -22,6 +24,8 @@ vi.mock("@/contexts/AuthContext", () => ({
     user: mocks.user,
     roles: mocks.roles,
     isSuperAdmin: mocks.isSuperAdmin,
+    memberships: mocks.memberships,
+    selectCompany: mocks.selectCompany,
     signOut: mocks.signOut,
     loading: false,
     companyId: "company-1",
@@ -70,6 +74,12 @@ describe("TopBar dynamic role label", () => {
     mocks.roles = ["company_admin"];
     renderTopBar("tenant");
     expect(screen.getByText("Company Admin")).toBeInTheDocument();
+  });
+
+  it("displays 'Company Owner' for company owners", () => {
+    mocks.roles = ["company_owner"];
+    renderTopBar("tenant");
+    expect(screen.getByText("Company Owner")).toBeInTheDocument();
   });
 
   it("displays 'Finance Officer' for finance officer users", () => {

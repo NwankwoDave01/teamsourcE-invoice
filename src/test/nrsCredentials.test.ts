@@ -52,7 +52,8 @@ describe("tenant credential contract", () => {
   it("rejects stale metadata shapes rather than assuming successful configuration", () => {
     expect(() => parseCredentialStatus({ ready: true, environment: "sandbox" })).toThrow();
   });
-  it("role-gates security-sensitive actions to company administrators", () => {
+  it("role-gates security-sensitive actions to company owners and administrators", () => {
+    expect(canAdministerCredentials(["company_owner"], "company-a")).toBe(true);
     expect(canAdministerCredentials(["company_admin"], "company-a")).toBe(true);
     expect(canAdministerCredentials(["super_admin"], "company-a")).toBe(true);
     expect(canAdministerCredentials(["finance_officer"], "company-a")).toBe(false);

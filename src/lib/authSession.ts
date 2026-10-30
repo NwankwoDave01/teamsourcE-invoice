@@ -54,6 +54,19 @@ export async function signInWithPassword(email: string, password: string, captch
   return postAuth("login", { email, password, captchaToken });
 }
 
+export async function registerAccount(
+  email: string,
+  password: string,
+  displayName: string,
+  captchaToken: string,
+) {
+  return postAuth("signup", { email, password, display_name: displayName, captchaToken });
+}
+
+export async function verifySignup(tokenHash: string) {
+  return postAuth("verify-signup", { token_hash: tokenHash });
+}
+
 export async function signOutFromSession() {
   await postAuth("logout", {});
 }

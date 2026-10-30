@@ -88,6 +88,7 @@ Deno.serve(async (req: Request) => {
       return json({
         ok: true, pending: true,
         email: actor.email,
+        company_id: invitation.company_id,
         company_name: company?.name ?? "your company",
         role: invitation.role,
         expires_at: invitation.expires_at,

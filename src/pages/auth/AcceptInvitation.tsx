@@ -6,7 +6,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import {
   fetchInvitationStatus,
   acceptTenantInvitation,
-  loadActiveMembership,
+  loadActiveMemberships,
   teamRoleLabels,
   InvitationDetails,
 } from "@/lib/tenantAdmin";
@@ -99,6 +99,7 @@ export default function AcceptInvitation() {
           if (!cancelled) {
             setInvitation({
               companyName: details.companyName,
+              companyId: details.companyId,
               role: details.role,
               email: details.email || user.email || undefined,
             });
@@ -145,6 +146,7 @@ export default function AcceptInvitation() {
       const details = await fetchInvitationStatus();
       setInvitation({
         companyName: details.companyName,
+        companyId: details.companyId,
         role: details.role,
         email: details.email || user.email || undefined,
       });
@@ -186,15 +188,18 @@ export default function AcceptInvitation() {
       await acceptTenantInvitation();
 
       // 3. Reload active membership in auth context
-      await refreshMembership();
+      await refreshMembership(invitation?.companyId ?? undefined);
 
       // 4. Verify active membership before entering dashboard
       const user = await getCurrentUser();
       if (!user) {
         throw new Error("The invitation session could not be verified. Please sign in and retry.");
       }
-      const membership = await loadActiveMembership(user.id);
-      if (!membership.companyId) {
+      const memberships = await loadActiveMemberships(user.id);
+      if (!memberships.length || (
+        invitation?.companyId
+        && !memberships.some(({ companyId }) => companyId === invitation.companyId)
+      )) {
         throw new Error("Active company membership was not confirmed by the server.");
       }
 

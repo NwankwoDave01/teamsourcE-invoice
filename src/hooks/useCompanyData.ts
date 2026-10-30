@@ -190,7 +190,7 @@ export function useDeleteInvoice() {
   const { roles = [], isSuperAdmin = false } = useAuth();
   return useMutation({
     mutationFn: async (id: string) => {
-      const isManager = isSuperAdmin || roles.includes("company_admin") || roles.includes("finance_officer");
+      const isManager = isSuperAdmin || roles.includes("company_owner") || roles.includes("company_admin") || roles.includes("finance_officer");
       if (roles.length > 0 && !isManager) {
         throw new Error("Access denied: staff users cannot delete invoices.");
       }
@@ -384,7 +384,7 @@ export function useUpdateInvoice() {
       if (!companyId || !user) throw new Error("An active company is required.");
 
       // Check client-side role authorization matching can_edit_invoice
-      const isManager = isSuperAdmin || roles.includes("company_admin") || roles.includes("finance_officer");
+      const isManager = isSuperAdmin || roles.includes("company_owner") || roles.includes("company_admin") || roles.includes("finance_officer");
       const isStaff = roles.includes("staff_user");
 
       if (roles.length > 0 && !isManager && !isStaff) {
@@ -524,7 +524,7 @@ export function useUpdateInvoiceStatus() {
   const { roles = [], isSuperAdmin = false } = useAuth();
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: DBInvoiceStatus }) => {
-      const isManager = isSuperAdmin || roles.includes("company_admin") || roles.includes("finance_officer");
+      const isManager = isSuperAdmin || roles.includes("company_owner") || roles.includes("company_admin") || roles.includes("finance_officer");
       if (roles.length > 0 && !isManager) {
         throw new Error("Access denied: staff users cannot elevate invoice status or submit invoices.");
       }
@@ -543,7 +543,7 @@ export function useTeam() {
   const { companyId, roles, isSuperAdmin } = useAuth();
   return useQuery({
     queryKey: ["team", companyId],
-    enabled: !!companyId && (isSuperAdmin || roles.includes("company_admin")),
+    enabled: !!companyId && (isSuperAdmin || roles.includes("company_owner") || roles.includes("company_admin")),
     queryFn: async () => {
       if (!companyId) throw new Error("No active company selected.");
       return parseTeam(await invokeTenantAdmin({ action: "list", company_id: companyId }));
@@ -556,7 +556,7 @@ function useTeamChange<Action extends TeamChange["action"]>(action: Action) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (input: Omit<Extract<TeamChange, { action: Action }>, "action">) => {
-      if (!companyId || (!isSuperAdmin && !roles.includes("company_admin"))) throw new Error("An active company admin is required.");
+      if (!companyId || (!isSuperAdmin && !roles.includes("company_owner") && !roles.includes("company_admin"))) throw new Error("An active company owner or admin is required.");
       // Allowlist request fields even if a caller supplies extra runtime values.
       const change: Record<string, unknown> = { ...input };
       if ((action === "invite" || action === "set_role") && !tenantRoles.some((role) => role === change.role)) {

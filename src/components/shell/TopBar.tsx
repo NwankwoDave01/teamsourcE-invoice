@@ -12,11 +12,12 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrentCompany } from "@/hooks/useCompanyData";
 import { teamRoleLabels } from "@/lib/tenantAdmin";
+import { toast } from "sonner";
 
 export function TopBar({ variant = "tenant" }: { variant?: "tenant" | "admin" }) {
   const navigate = useNavigate();
   const isAdmin = variant === "admin";
-  const { user, roles, isSuperAdmin, signOut } = useAuth();
+  const { user, roles, isSuperAdmin, memberships, companyId, selectCompany, signOut } = useAuth();
   const { data: company } = useCurrentCompany();
 
   const displayName = user?.display_name || user?.email?.split("@")[0] || "User";
@@ -27,7 +28,8 @@ export function TopBar({ variant = "tenant" }: { variant?: "tenant" | "admin" })
     navigate("/auth/login", { replace: true });
   };
 
-  const tenantRole = roles.find((r) => r === "company_admin")
+  const tenantRole = roles.find((r) => r === "company_owner")
+    || roles.find((r) => r === "company_admin")
     || roles.find((r) => r === "finance_officer")
     || roles.find((r) => r === "staff_user");
 
@@ -69,9 +71,27 @@ export function TopBar({ variant = "tenant" }: { variant?: "tenant" | "admin" })
             </>
           )}
           <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
-          <DropdownMenuItem onClick={() => navigate("/app/dashboard")}>
-            <Building2 className="mr-2 h-4 w-4" /> Tenant workspace
-          </DropdownMenuItem>
+          {memberships.map((membership) => (
+            <DropdownMenuItem
+              key={membership.companyId}
+              onClick={() => {
+                void selectCompany(membership.companyId)
+                  .then(() => navigate("/app/dashboard"))
+                  .catch((error: unknown) => toast.error(
+                    error instanceof Error ? error.message : "Company access could not be confirmed.",
+                  ));
+              }}
+            >
+              <Building2 className="mr-2 h-4 w-4" />
+              <span className="flex-1 truncate">{membership.name}</span>
+              {membership.companyId === companyId && <span className="ml-2 text-xs text-muted-foreground">Current</span>}
+            </DropdownMenuItem>
+          ))}
+          {!isAdmin && (
+            <DropdownMenuItem onClick={() => navigate("/app/workspaces/new")}>
+              <Building2 className="mr-2 h-4 w-4" /> Create a company
+            </DropdownMenuItem>
+          )}
           {isSuperAdmin && (
             <DropdownMenuItem onClick={() => navigate("/admin/overview")}>
               <ShieldCheck className="mr-2 h-4 w-4" /> Super Admin console

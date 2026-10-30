@@ -4,7 +4,7 @@ import { z } from "zod";
 export const tenantRoles = ["company_admin", "finance_officer", "staff_user"] as const;
 export type TenantRole = typeof tenantRoles[number];
 export const teamRoleLabels: Record<string, string> = {
-  company_admin: "Company Admin", finance_officer: "Finance Officer", staff_user: "Staff User", super_admin: "Super Admin",
+  company_owner: "Company Owner", company_admin: "Company Admin", finance_officer: "Finance Officer", staff_user: "Staff User", super_admin: "Super Admin",
 };
 const member = z.object({
   id: z.string(), user_id: z.string(), status: z.string(),
@@ -50,11 +50,34 @@ export function parseTeam(data: unknown): TeamData {
   return parsed.data;
 }
 
-export async function loadActiveMembership(uid: string) {
-  const { data: membership, error } = await supabase.from("company_members")
-    .select("company_id").eq("user_id", uid).eq("status", "Active").maybeSingle();
+export interface ActiveCompanyMembership {
+  companyId: string;
+  name: string;
+  plan: string;
+  tin: string;
+}
+
+export async function loadActiveMemberships(uid: string): Promise<ActiveCompanyMembership[]> {
+  const { data: memberships, error } = await supabase.from("company_members")
+    .select("company_id").eq("user_id", uid).eq("status", "Active");
   if (error) throw error;
-  return { companyId: membership?.company_id ?? null };
+  const ids = [...new Set((memberships ?? []).map(({ company_id }) => company_id))];
+  if (!ids.length) return [];
+
+  const { data: companies, error: companiesError } = await supabase.from("companies")
+    .select("id, name, plan, tin").in("id", ids).order("name");
+  if (companiesError) throw companiesError;
+  const companyById = new Map((companies ?? []).map((company) => [company.id, company]));
+  return ids.map((companyId) => {
+    const company = companyById.get(companyId);
+    if (!company) throw new Error("An active company membership has no readable company record.");
+    return {
+      companyId,
+      name: company.name,
+      plan: company.plan,
+      tin: company.tin,
+    };
+  });
 }
 
 export async function loadUserRoles(uid: string) {
@@ -69,6 +92,7 @@ export async function loadUserRoles(uid: string) {
 
 export interface InvitationDetails {
   companyName: string;
+  companyId: string | null;
   role: string;
   email?: string;
 }
@@ -81,8 +105,9 @@ export async function fetchInvitationStatus(): Promise<InvitationDetails> {
     (typeof data.companyName === "string" && data.companyName) ||
     "Inviting Company";
   const role = typeof data.role === "string" ? data.role : "staff_user";
+  const companyId = typeof data.company_id === "string" ? data.company_id : null;
   const email = typeof data.email === "string" ? data.email : undefined;
-  return { companyName, role, email };
+  return { companyName, companyId, role, email };
 }
 
 export async function acceptTenantInvitation(): Promise<unknown> {

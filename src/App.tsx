@@ -32,6 +32,7 @@ import Reports from "./pages/tenant/Reports";
 import Team from "./pages/tenant/Team";
 import TenantSettings from "./pages/tenant/Settings";
 import AuditLogs from "./pages/tenant/AuditLogs";
+import CompanyOnboarding from "./pages/tenant/onboarding/CompanyOnboarding";
 
 import AdminOverview from "./pages/admin/Overview";
 import AdminCompanies from "./pages/admin/Companies";
@@ -56,6 +57,7 @@ const App = () => (
 
             <Route path="/auth/login" element={<Login />} />
             <Route path="/auth/signup" element={<Signup />} />
+            <Route path="/auth/verify-signup" element={<Signup />} />
             <Route path="/auth/accept-invite" element={<AcceptInvitation />} />
             <Route path="/api-docs" element={<ApiDocs />} />
             <Route path="/sla" element={<SLA />} />
@@ -79,6 +81,7 @@ const App = () => (
             <Route path="team" element={<Team />} />
             <Route path="settings" element={<TenantSettings />} />
             <Route path="audit-logs" element={<AuditLogs />} />
+            <Route path="workspaces/new" element={<CompanyOnboarding />} />
               </Route>
             </Route>
 

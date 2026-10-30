@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
     getUser: vi.fn(),
     refreshSession: vi.fn(),
     signInWithPassword: vi.fn(),
+    signUp: vi.fn(),
     signOut: vi.fn(),
     verifyOtp: vi.fn(),
     updateUser: vi.fn(),
@@ -100,6 +101,7 @@ beforeEach(() => {
   mocks.auth.getUser.mockReset().mockResolvedValue({ data: { user }, error: null });
   mocks.auth.refreshSession.mockReset().mockResolvedValue({ data: { session: activeSession }, error: null });
   mocks.auth.signInWithPassword.mockReset().mockResolvedValue({ data: { user }, error: null });
+  mocks.auth.signUp.mockReset().mockResolvedValue({ data: { user, session: null }, error: null });
   mocks.auth.signOut.mockReset().mockResolvedValue({ error: null });
   mocks.auth.verifyOtp.mockReset().mockResolvedValue({ data: { user }, error: null });
   mocks.auth.updateUser.mockReset().mockResolvedValue({ data: { user }, error: null });
@@ -112,6 +114,67 @@ afterEach(() => {
 });
 
 describe("Vercel-managed Supabase sessions", () => {
+  it("registers without returning an auth identity or browser token", async () => {
+    const { response, result } = makeResponse();
+
+    await authHandler(makeRequest("POST", "/api/auth/signup", {
+      email: user.email,
+      password: "a-secure-password",
+      display_name: "Example User",
+      captchaToken: "captcha-token",
+    }), response);
+
+    expect(mocks.auth.signUp).toHaveBeenCalledWith({
+      email: user.email,
+      password: "a-secure-password",
+      options: {
+        captchaToken: "captcha-token",
+        data: { display_name: "Example User" },
+        emailRedirectTo: "https://app.example.com/auth/verify-signup",
+      },
+    });
+    expect(result.statusCode).toBe(202);
+    expect(result.body).toEqual({
+      ok: true,
+      message: "If this address can be registered, a verification email has been sent.",
+    });
+    expect(JSON.stringify(result.body)).not.toContain(user.id);
+    expect(JSON.stringify(result.body)).not.toContain("access_token");
+  });
+
+  it("does not disclose duplicate account existence during registration", async () => {
+    mocks.auth.signUp.mockResolvedValueOnce({
+      data: { user: null, session: null },
+      error: { message: "User already registered" },
+    });
+    const { response, result } = makeResponse();
+
+    await authHandler(makeRequest("POST", "/api/auth/signup", {
+      email: user.email,
+      password: "a-secure-password",
+      captchaToken: "captcha-token",
+    }), response);
+
+    expect(result.statusCode).toBe(202);
+    expect(result.body).toEqual({
+      ok: true,
+      message: "If this address can be registered, a verification email has been sent.",
+    });
+  });
+
+  it("enforces the minimum password length at the BFF", async () => {
+    const { response, result } = makeResponse();
+
+    await authHandler(makeRequest("POST", "/api/auth/signup", {
+      email: user.email,
+      password: "too-short",
+      captchaToken: "captcha-token",
+    }), response);
+
+    expect(result.statusCode).toBe(400);
+    expect(mocks.auth.signUp).not.toHaveBeenCalled();
+  });
+
   it("sets Secure, HttpOnly, SameSite=Lax cookies on login and never returns tokens", async () => {
     mocks.auth.signInWithPassword.mockImplementation(async () => {
       setCookie(mocks.createServerClient.mock.calls[0][2]);
@@ -225,6 +288,19 @@ describe("Vercel-managed Supabase sessions", () => {
     await authHandler(makeRequest("POST", "/api/auth/verify-invite", { token_hash: "invite-token" }), response);
 
     expect(mocks.auth.verifyOtp).toHaveBeenCalledWith({ token_hash: "invite-token", type: "invite" });
+    expect(result.body).toEqual({ user: { id: user.id, email: user.email, display_name: "Example User" } });
+  });
+
+  it("verifies public signup tokens only through the explicit server endpoint", async () => {
+    mocks.auth.verifyOtp.mockImplementation(async () => {
+      setCookie(mocks.createServerClient.mock.calls[0][2]);
+      return { data: { user }, error: null };
+    });
+    const { response, result } = makeResponse();
+
+    await authHandler(makeRequest("POST", "/api/auth/verify-signup", { token_hash: "signup-token" }), response);
+
+    expect(mocks.auth.verifyOtp).toHaveBeenCalledWith({ token_hash: "signup-token", type: "signup" });
     expect(result.body).toEqual({ user: { id: user.id, email: user.email, display_name: "Example User" } });
   });
 
