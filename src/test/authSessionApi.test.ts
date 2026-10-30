@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiRequest, ApiResponse } from "../../api/_lib/vercel";
 import authHandler from "../../api/auth/[action]";
-import supabaseHandler from "../../api/supabase/[...path]";
+import supabaseHandler from "../../api/supabase-proxy";
 
 const mocks = vi.hoisted(() => ({
   createServerClient: vi.fn(),

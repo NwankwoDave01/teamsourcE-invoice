@@ -5,7 +5,7 @@ import { componentTagger } from "lovable-tagger";
 import { parse } from "cookie";
 import type { ApiHandler, ApiRequest, ApiResponse } from "./api/_lib/vercel";
 import authHandler from "./api/auth/[action]";
-import supabaseHandler from "./api/supabase/[...path]";
+import supabaseHandler from "./api/supabase-proxy";
 
 function localApiFunctions(): Plugin {
   const handlers: Record<string, ApiHandler> = {
@@ -35,6 +35,10 @@ function localApiFunctions(): Plugin {
         }
         if (route === "auth") {
           query.action = requestUrl.pathname.slice("/api/auth/".length);
+        }
+
+        if (route === "supabase") {
+          query.path = requestUrl.pathname.slice("/api/supabase/".length);
         }
 
         let body: unknown;

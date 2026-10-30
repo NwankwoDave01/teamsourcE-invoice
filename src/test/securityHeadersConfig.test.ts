@@ -30,6 +30,7 @@ describe("Vercel browser security headers", () => {
     expect(header("Referrer-Policy")).toBe("strict-origin-when-cross-origin");
     expect(header("Permissions-Policy")).toBe("camera=(), microphone=(), geolocation=()");
     expect(config.rewrites).toEqual([
+      { source: "/api/supabase/(.*)", destination: "/api/supabase-proxy?path=$1" },
       { source: "/:path((?!api(?:/|$)).*)", destination: "/" },
     ]);
   });

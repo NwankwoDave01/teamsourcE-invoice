@@ -20,13 +20,13 @@ describe("Vercel API Node ESM module resolution", () => {
         "--skipLibCheck",
         "--outDir", outputDirectory,
         "api/auth/[action].ts",
-        "api/supabase/[...path].ts",
+        "api/supabase-proxy.ts",
       ], { cwd: projectRoot, stdio: "pipe" });
 
       expect(existsSync(join(outputDirectory, "_lib/session.js"))).toBe(true);
 
       const authEntrypoint = pathToFileURL(join(outputDirectory, "auth/[action].js")).href;
-      const supabaseEntrypoint = pathToFileURL(join(outputDirectory, "supabase/[...path].js")).href;
+      const supabaseEntrypoint = pathToFileURL(join(outputDirectory, "supabase-proxy.js")).href;
       execFileSync(process.execPath, [
         "--input-type=module",
         "-e",
