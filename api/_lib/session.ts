@@ -1,6 +1,6 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 import { parse, serialize } from "cookie";
-import type { ApiRequest, ApiResponse } from "./vercel";
+import type { ApiRequest, ApiResponse } from "./vercel.js";
 
 const isProduction = () => process.env.NODE_ENV === "production";
 

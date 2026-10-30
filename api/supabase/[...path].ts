@@ -1,11 +1,11 @@
-import type { ApiHandler, ApiRequest } from "../_lib/vercel";
+import type { ApiHandler, ApiRequest } from "../_lib/vercel.js";
 import {
   createAuthClient,
   getAuthenticatedSession,
   hasSameOrigin,
   methodNotAllowed,
   respondJson,
-} from "../_lib/session";
+} from "../_lib/session.js";
 
 const allowedMethods = new Set(["GET", "HEAD", "POST", "PATCH", "PUT", "DELETE"]);
 const allowedHeaders = [

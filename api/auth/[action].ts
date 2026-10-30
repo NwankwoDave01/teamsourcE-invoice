@@ -1,11 +1,11 @@
-import type { ApiHandler, ApiRequest } from "../_lib/vercel";
+import type { ApiHandler, ApiRequest } from "../_lib/vercel.js";
 import {
   createAuthClient,
   getAuthenticatedSession,
   hasSameOrigin,
   methodNotAllowed,
   respondJson,
-} from "../_lib/session";
+} from "../_lib/session.js";
 
 function requestBody(req: ApiRequest): Record<string, unknown> {
   return req.body && typeof req.body === "object" && !Array.isArray(req.body)
