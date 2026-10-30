@@ -102,6 +102,7 @@ export default function AcceptInvitation() {
               companyId: details.companyId,
               role: details.role,
               email: details.email || user.email || undefined,
+              requiresPasswordSetup: details.requiresPasswordSetup,
             });
             setLoading(false);
           }
@@ -149,6 +150,7 @@ export default function AcceptInvitation() {
         companyId: details.companyId,
         role: details.role,
         email: details.email || user.email || undefined,
+        requiresPasswordSetup: details.requiresPasswordSetup,
       });
       setAwaitingVerification(false);
     } catch (err: unknown) {
@@ -169,20 +171,20 @@ export default function AcceptInvitation() {
     e.preventDefault();
     setError(null);
 
-    if (password.length < 12) {
+    if (invitation?.requiresPasswordSetup && password.length < 12) {
       setError("Password must be at least 12 characters long.");
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (invitation?.requiresPasswordSetup && password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
 
     setSubmitting(true);
     try {
-      // 1. Update user password
-      await updateAccountPassword(password);
+      // New Auth-invited users set an initial password; existing accounts keep theirs.
+      if (invitation?.requiresPasswordSetup) await updateAccountPassword(password);
 
       // 2. Call accept_invitation via tenant-admin contract
       await acceptTenantInvitation();
@@ -292,9 +294,12 @@ export default function AcceptInvitation() {
                 <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
                   <KeyRound className="h-5 w-5" />
                 </div>
-                <h1 className="text-2xl font-semibold">Set up your account</h1>
+                <h1 className="text-2xl font-semibold">
+                  {invitation?.requiresPasswordSetup ? "Set up your account" : "Accept workspace invitation"}
+                </h1>
                 <p className="text-sm text-muted-foreground">
-                  You are joining <span className="font-semibold text-foreground">{invitation?.companyName}</span>.
+                  {invitation?.requiresPasswordSetup ? "You are joining " : "Accept your invitation to join "}
+                  <span className="font-semibold text-foreground">{invitation?.companyName}</span>.
                 </p>
                 <div className="flex items-center justify-center gap-2 pt-1">
                   <Badge variant="secondary" className="bg-primary/10 text-primary">
@@ -313,33 +318,37 @@ export default function AcceptInvitation() {
               )}
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-1.5">
-                  <Label htmlFor="password">Set password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    required
-                    minLength={12}
-                    autoComplete="new-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="At least 12 characters"
-                  />
-                </div>
+                {invitation?.requiresPasswordSetup && (
+                  <>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="password">Set password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        required
+                        minLength={12}
+                        autoComplete="new-password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="At least 12 characters"
+                      />
+                    </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="confirmPassword">Confirm password</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    required
-                    minLength={12}
-                    autoComplete="new-password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Repeat your password"
-                  />
-                </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="confirmPassword">Confirm password</Label>
+                      <Input
+                        id="confirmPassword"
+                        type="password"
+                        required
+                        minLength={12}
+                        autoComplete="new-password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Repeat your password"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <Button type="submit" className="w-full gap-2" disabled={submitting}>
                   {submitting ? (
@@ -347,7 +356,7 @@ export default function AcceptInvitation() {
                   ) : (
                     <CheckCircle2 className="h-4 w-4" />
                   )}
-                  {submitting ? "Accepting invitation…" : "Set password & accept invitation"}
+                  {submitting ? "Accepting invitation…" : invitation?.requiresPasswordSetup ? "Set password & accept invitation" : "Accept invitation"}
                 </Button>
               </form>
 

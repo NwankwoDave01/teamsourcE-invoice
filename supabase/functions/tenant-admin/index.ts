@@ -57,7 +57,7 @@ Deno.serve(async (req: Request) => {
 
     // Read-only invitation preflight. This never activates tenant access.
     if (action === "invitation_status") {
-      if (!actor.invited_at) return json({ ok: true, pending: false });
+      if (!actor.email_confirmed_at) return json({ ok: true, pending: false });
       const { data: invitation, error: invitationError } = await admin
         .from("company_invitations")
         .select("id, company_id, role, expires_at")
@@ -69,16 +69,6 @@ Deno.serve(async (req: Request) => {
         .maybeSingle();
       if (invitationError) throw invitationError;
       if (!invitation) return json({ ok: true, pending: false });
-      const { data: membership, error: membershipError } = await admin
-        .from("company_members")
-        .select("status")
-        .eq("company_id", invitation.company_id)
-        .eq("user_id", actor.id)
-        .maybeSingle();
-      if (membershipError) throw membershipError;
-      if (!membership || membership.status !== "Invited") {
-        return json({ ok: true, pending: false });
-      }
       const { data: company, error: companyError } = await admin
         .from("companies")
         .select("name")
@@ -92,22 +82,35 @@ Deno.serve(async (req: Request) => {
         company_name: company?.name ?? "your company",
         role: invitation.role,
         expires_at: invitation.expires_at,
+        requires_password_setup: Boolean(actor.invited_at),
       });
     }
 
-    // Accept only a real Auth-invite account. The service-role RPC atomically activates
-    // the invited membership and consumes the matching invitation in one transaction.
+    // Keep acceptance behind the existing server-side RPC. Its deployed transaction
+    // semantics are not defined in this repository and must be verified separately.
     if (isAcceptance) {
-      if (!actor.invited_at) {
-        return json({ ok: true, accepted: false, message: "No pending invitation" });
+      if (!actor.email_confirmed_at) {
+        return json({ ok: false, error: "A verified email is required to accept an invitation." }, 403);
       }
+      const { data: invitation, error: invitationError } = await admin
+        .from("company_invitations")
+        .select("id")
+        .eq("email", actor.email.toLowerCase())
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (invitationError) throw invitationError;
+      if (!invitation) return json({ ok: false, error: "No pending invitation" }, 409);
+
       const { data, error } = await admin.rpc("tenant_admin_accept_invitation", {
         p_user_id: actor.id,
         p_email: actor.email.toLowerCase(),
       });
       if (error) {
         if (error.message.includes("does not have a valid invitation")) {
-          return json({ ok: true, accepted: false, message: "No pending invitation" });
+          return json({ ok: false, error: "No pending invitation" }, 409);
         }
         throw error;
       }
@@ -156,27 +159,27 @@ Deno.serve(async (req: Request) => {
       const displayName = typeof body.display_name === "string" ? body.display_name.trim().slice(0, 120) : "";
       if (!emailPattern.test(email) || email.length > 254) return json({ ok: false, error: "Enter a valid email address" }, 400);
       if (!allowedRoles.has(role)) return json({ ok: false, error: "Choose a supported company role" }, 400);
-      // Expire stale invitations before enforcing one pending invite per email.
+      // Expire stale invitations only in the authorized company.
       const now = new Date().toISOString();
       const { error: expireError } = await admin.from("company_invitations")
-        .update({ status: "revoked" }).eq("status", "pending").lte("expires_at", now);
+        .update({ status: "revoked" }).eq("company_id", companyId)
+        .eq("status", "pending").lte("expires_at", now);
       if (expireError) throw expireError;
 
       const { data: pendingInvitation, error: pendingError } = await admin
-        .from("company_invitations").select("id, company_id")
-        .eq("email", email).eq("status", "pending").gt("expires_at", now).maybeSingle();
+        .from("company_invitations").select("id")
+        .eq("company_id", companyId).eq("email", email)
+        .eq("status", "pending").gt("expires_at", now).maybeSingle();
       if (pendingError) throw pendingError;
       if (pendingInvitation) {
         return json({
           ok: false,
-          error: pendingInvitation.company_id === companyId
-            ? "A pending invitation already exists. Have the user accept it or revoke it before re-inviting."
-            : "This email has a pending invitation for another company. Revoke it or have the user accept it first.",
+          error: "A pending invitation already exists. Have the user accept it or revoke it before re-inviting.",
         }, 409);
       }
 
-      // Locate an existing auth identity. Current app resolves one active tenant per login;
-      // do not silently attach a user already belonging to another tenant.
+      // Locate an existing Auth identity so an additional company never creates a
+      // duplicate account. Existing memberships in other companies are preserved.
       let existingUser: { id: string; email?: string; invited_at?: string | null } | null = null;
       for (let page = 1; page <= 20; page++) {
         const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
@@ -186,40 +189,49 @@ Deno.serve(async (req: Request) => {
       }
 
       if (existingUser) {
-        const { data: memberships, error: existingError } = await admin
-          .from("company_members").select("company_id, status")
-          .eq("user_id", existingUser.id);
+        const { data: membership, error: existingError } = await admin
+          .from("company_members").select("status")
+          .eq("user_id", existingUser.id).eq("company_id", companyId).maybeSingle();
         if (existingError) throw existingError;
-        if ((memberships ?? []).some(m => m.status === "Active" && m.company_id !== companyId)) {
-          return json({ ok: false, error: "This account already belongs to another tenant. Use a separate login for this tenant." }, 409);
-        }
-        if (existingUser.invited_at && !(memberships ?? []).some(m => m.status === "Active")) {
-          return json({ ok: false, error: "This account was created by an invitation and has not completed acceptance. The user must accept a valid invitation before access can be granted." }, 409);
-        }
-        if ((memberships ?? []).some(m => m.company_id === companyId && m.status === "Active")) {
+        if (membership?.status === "Active") {
           return json({ ok: false, error: "This person is already an active member of this company." }, 409);
         }
-        // A user created by an invitation must not be made active by repeating
-        // the invite action. Only the signed-in invite acceptance RPC may activate it.
-        if ((memberships ?? []).some(m => m.company_id === companyId && m.status === "Invited")) {
+        if (membership) {
           return json({
             ok: false,
-            error: "This account already has a pending or incomplete invitation for this company. The user must accept the invitation before access can be activated.",
+            error: "This account has an existing inactive membership in this company. Review it before inviting again.",
           }, 409);
         }
 
-        const { error: memberError } = await admin.from("company_members").upsert({
-          company_id: companyId, user_id: existingUser.id, status: "Active", last_active_at: new Date().toISOString(),
-        }, { onConflict: "company_id,user_id" });
-        if (memberError) throw memberError;
-        const { error: deleteRoleError } = await admin.from("user_roles").delete()
-          .eq("company_id", companyId).eq("user_id", existingUser.id);
-        if (deleteRoleError) throw deleteRoleError;
+        const { data: invitation, error: insertError } = await admin.from("company_invitations").insert({
+          company_id: companyId, email, role, invited_by: actor.id, status: "pending",
+        }).select("id").single();
+        if (insertError) {
+          if (insertError.code === "23505") return json({ ok: false, error: "A pending invitation already exists for this email and company." }, 409);
+          throw insertError;
+        }
+
+        const { error: memberError } = await admin.from("company_members").insert({
+          company_id: companyId, user_id: existingUser.id, status: "Invited", last_active_at: null,
+        });
+        if (memberError) {
+          await admin.from("company_invitations").update({ status: "revoked" }).eq("id", invitation.id);
+          throw memberError;
+        }
         const { error: roleError } = await admin.from("user_roles").insert({
           company_id: companyId, user_id: existingUser.id, role,
         });
-        if (roleError) throw roleError;
-        return json({ ok: true, mode: "added_existing_user", message: "Existing account added to this company", user_id: existingUser.id });
+        if (roleError) {
+          await admin.from("company_members").delete()
+            .eq("company_id", companyId).eq("user_id", existingUser.id).eq("status", "Invited");
+          await admin.from("company_invitations").update({ status: "revoked" }).eq("id", invitation.id);
+          throw roleError;
+        }
+        return json({
+          ok: true,
+          mode: "invitation_pending",
+          message: "Invitation recorded. The recipient must sign in with this email and explicitly accept it at /auth/accept-invite.",
+        }, 201);
       }
 
       // Bind Auth user creation to this server-initiated invitation. The random nonce

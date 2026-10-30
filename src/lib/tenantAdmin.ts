@@ -95,10 +95,12 @@ export interface InvitationDetails {
   companyId: string | null;
   role: string;
   email?: string;
+  requiresPasswordSetup: boolean;
 }
 
 export async function fetchInvitationStatus(): Promise<InvitationDetails> {
   const data = (await invokeTenantAdmin({ action: "invitation_status" })) as Record<string, unknown>;
+  if (data.pending !== true) throw new Error("No valid pending invitation was found for this verified email.");
   const companyName =
     (typeof data.company_name === "string" && data.company_name) ||
     (typeof (data.company as { name?: string })?.name === "string" && (data.company as { name: string }).name) ||
@@ -107,7 +109,8 @@ export async function fetchInvitationStatus(): Promise<InvitationDetails> {
   const role = typeof data.role === "string" ? data.role : "staff_user";
   const companyId = typeof data.company_id === "string" ? data.company_id : null;
   const email = typeof data.email === "string" ? data.email : undefined;
-  return { companyName, companyId, role, email };
+  const requiresPasswordSetup = data.requires_password_setup === true;
+  return { companyName, companyId, role, email, requiresPasswordSetup };
 }
 
 export async function acceptTenantInvitation(): Promise<unknown> {

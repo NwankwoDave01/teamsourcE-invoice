@@ -90,7 +90,7 @@ function TeamContent({ canManage }: { canManage: boolean }) {
     <Dialog open={canManage && inviteOpen} onOpenChange={(open) => { if (!busy) setInviteOpen(open); }}><DialogContent className="max-w-[calc(100%-2rem)] sm:max-w-lg"><DialogHeader><DialogTitle>Invite member</DialogTitle><DialogDescription>Invite a teammate to this company.</DialogDescription></DialogHeader>
       <form className="space-y-4" onSubmit={async (e) => {
         e.preventDefault(); setError(null);
-        try { await invite.mutateAsync({ email: email.trim(), display_name: displayName.trim(), role }); toast.success("Invitation request completed. New accounts receive an invitation email; existing eligible users are added."); setEmail(""); setDisplayName(""); setInviteRole("staff_user"); setInviteOpen(false); } catch (cause) { reportError(cause); }
+        try { await invite.mutateAsync({ email: email.trim(), display_name: displayName.trim(), role }); toast.success("Invitation recorded. New accounts receive an Auth email. Existing accounts are not emailed; ask them to sign in and open /auth/accept-invite."); setEmail(""); setDisplayName(""); setInviteRole("staff_user"); setInviteOpen(false); } catch (cause) { reportError(cause); }
       }}>
         <div className="space-y-2"><Label htmlFor="team-email">Email</Label><Input id="team-email" type="email" required value={email} onChange={(e) => setEmail(e.target.value)} disabled={busy} /></div>
         <div className="space-y-2"><Label htmlFor="team-name">Display name</Label><Input id="team-name" value={displayName} onChange={(e) => setDisplayName(e.target.value)} disabled={busy} /></div>

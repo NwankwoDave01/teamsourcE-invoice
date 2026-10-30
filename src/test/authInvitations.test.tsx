@@ -68,7 +68,15 @@ beforeEach(() => {
   membershipQueryError = null;
   roleQueryError = null;
   mocks.invoke.mockReset().mockResolvedValue({
-    data: { ok: true, company_name: "Acme Nigeria", role: "finance_officer", email: "user@example.com" },
+    data: {
+      ok: true,
+      pending: true,
+      company_name: "Acme Nigeria",
+      company_id: "company-a",
+      role: "finance_officer",
+      email: "user@example.com",
+      requires_password_setup: true,
+    },
     error: null,
   });
   mocks.getCurrentUser.mockReset().mockResolvedValue(null);
@@ -266,6 +274,24 @@ describe("Authentication & Invitation Flow Safeguards", () => {
       expect(mocks.verifyInvitation).not.toHaveBeenCalled();
     });
 
+    it("does not offer acceptance when the verified account has no pending invitation", async () => {
+      mocks.getCurrentUser.mockResolvedValue(user);
+      mocks.invoke.mockResolvedValue({
+        data: { ok: true, pending: false },
+        error: null,
+      });
+      render(
+        <MemoryRouter initialEntries={["/auth/accept-invite"]}>
+          <AuthProvider>
+            <AcceptInvitation />
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      expect(await screen.findByText("No valid pending invitation was found for this verified email.")).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Accept invitation" })).not.toBeInTheDocument();
+    });
+
     it("calls verifyOtp only when Continue to accept invitation is clicked, and never twice", async () => {
       render(
         <MemoryRouter initialEntries={["/auth/accept-invite?token_hash=scanner-safe-token&type=invite"]}>
@@ -346,6 +372,41 @@ describe("Authentication & Invitation Flow Safeguards", () => {
 
       // 4. Verifies active membership and enters dashboard
       await screen.findByText("Company Workspace Dashboard");
+    });
+
+    it("lets a verified existing account accept without changing its password", async () => {
+      mocks.getCurrentUser.mockResolvedValue(user);
+      activeMembers = [{ company_id: "company-a" }, { company_id: "company-b" }];
+      mocks.invoke.mockResolvedValue({
+        data: {
+          ok: true,
+          pending: true,
+          company_name: "Second Company",
+          company_id: "company-b",
+          role: "staff_user",
+          email: user.email,
+          requires_password_setup: false,
+        },
+        error: null,
+      });
+      render(
+        <MemoryRouter initialEntries={["/auth/accept-invite"]}>
+          <AuthProvider>
+            <Routes>
+              <Route path="/auth/accept-invite" element={<AcceptInvitation />} />
+              <Route path="/app/dashboard" element={<div>Company Workspace Dashboard</div>} />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      await screen.findByRole("heading", { name: "Accept workspace invitation" });
+      expect(screen.queryByLabelText("Set password")).not.toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
+
+      await screen.findByText("Company Workspace Dashboard");
+      expect(mocks.updateAccountPassword).not.toHaveBeenCalled();
+      expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", { body: { action: "accept_invitation" } });
     });
 
     it("does not enter the dashboard unless active membership is confirmed", async () => {
