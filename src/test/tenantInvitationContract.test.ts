@@ -20,19 +20,43 @@ describe("tenant invitation safeguards", () => {
     expect(statusHandler).toMatch(/\.eq\("email", actor\.email\.toLowerCase\(\)\)/);
     expect(statusHandler).toMatch(/\.eq\("status", "pending"\)/);
     expect(statusHandler).toMatch(/\.gt\("expires_at"/);
+    expect(statusHandler).not.toMatch(/\.limit\(1\)/);
+    expect(statusHandler).toMatch(/selection_required: true/);
+    expect(statusHandler).toMatch(/invitations: invitationDetails/);
+    expect(statusHandler).toMatch(/invitationDetails\.length > 1/);
     expect(statusHandler).not.toMatch(/if\s*\(!actor\.invited_at\)/);
   });
 
-  it("requires a verified matching email and preserves the existing acceptance RPC call", () => {
+  it("requires a valid selected company and a verified matching email", () => {
+    expect(acceptanceHandler).toMatch(/if \(!uuidPattern\.test\(companyId\)\)/);
     expect(acceptanceHandler).toMatch(/if \(!actor\.email_confirmed_at\)/);
     expect(acceptanceHandler).toMatch(/\.eq\("email", actor\.email\.toLowerCase\(\)\)/);
+    expect(acceptanceHandler).toMatch(/\.eq\("company_id", companyId\)/);
     expect(acceptanceHandler).toMatch(/\.eq\("status", "pending"\)/);
     expect(acceptanceHandler).toMatch(/\.gt\("expires_at"/);
     expect(acceptanceHandler).toMatch(/if \(!invitation\) return json\(\{ ok: false, error: "No pending invitation" \}, 409\)/);
+    expect(acceptanceHandler).toMatch(/membership\.status !== "Invited"/);
+    expect(acceptanceHandler).toMatch(/role\.role !== invitation\.role/);
+    expect(acceptanceHandler).toMatch(/p_company_id: companyId/);
     expect(acceptanceHandler).toMatch(/admin\.rpc\("tenant_admin_accept_invitation"/);
     expect(acceptanceHandler).toMatch(/p_user_id: actor\.id/);
     expect(acceptanceHandler).toMatch(/p_email: actor\.email\.toLowerCase\(\)/);
+    expect(acceptanceHandler).not.toMatch(/p_company_id: null/);
+    expect(acceptanceHandler).not.toMatch(/p_user_id: actor\.id,\s*p_email: actor\.email\.toLowerCase\(\)\s*\}/);
     expect(acceptanceHandler).not.toMatch(/actor\.invited_at/);
+  });
+
+  it("rejects expired, revoked, missing-membership, and role-mismatched invitations before RPC", () => {
+    expect(acceptanceHandler).toMatch(/\.eq\("status", "pending"\)/);
+    expect(acceptanceHandler).toMatch(/\.gt\("expires_at", new Date\(\)\.toISOString\(\)\)/);
+    expect(acceptanceHandler).toMatch(/if \(!membership \|\| membership\.status !== "Invited"\)/);
+    expect(acceptanceHandler).toMatch(/if \(!role \|\| role\.role !== invitation\.role\)/);
+    expect(acceptanceHandler.indexOf("membership.status !== \"Invited\"")).toBeLessThan(
+      acceptanceHandler.indexOf('admin.rpc("tenant_admin_accept_invitation"'),
+    );
+    expect(acceptanceHandler.indexOf("role.role !== invitation.role")).toBeLessThan(
+      acceptanceHandler.indexOf('admin.rpc("tenant_admin_accept_invitation"'),
+    );
   });
 
   it("limits expiry and duplicate checks to the authorized company", () => {

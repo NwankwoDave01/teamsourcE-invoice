@@ -13,6 +13,7 @@ const json = (body: unknown, status = 200) =>
 
 const allowedRoles = new Set(["company_admin", "finance_officer", "staff_user"]);
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -58,55 +59,93 @@ Deno.serve(async (req: Request) => {
     // Read-only invitation preflight. This never activates tenant access.
     if (action === "invitation_status") {
       if (!actor.email_confirmed_at) return json({ ok: true, pending: false });
-      const { data: invitation, error: invitationError } = await admin
+      const { data: invitations, error: invitationError } = await admin
         .from("company_invitations")
         .select("id, company_id, role, expires_at")
         .eq("email", actor.email.toLowerCase())
         .eq("status", "pending")
         .gt("expires_at", new Date().toISOString())
-        .order("created_at", { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        .order("created_at", { ascending: true });
       if (invitationError) throw invitationError;
-      if (!invitation) return json({ ok: true, pending: false });
-      const { data: company, error: companyError } = await admin
+      if (!invitations?.length) return json({ ok: true, pending: false });
+      const { data: companies, error: companyError } = await admin
         .from("companies")
-        .select("name")
-        .eq("id", invitation.company_id)
-        .maybeSingle();
+        .select("id, name")
+        .in("id", invitations.map(({ company_id }) => company_id));
       if (companyError) throw companyError;
-      return json({
-        ok: true, pending: true,
-        email: actor.email,
+      const companyNames = new Map((companies ?? []).map(({ id, name }) => [id, name]));
+      const invitationDetails = invitations.map((invitation) => ({
         company_id: invitation.company_id,
-        company_name: company?.name ?? "your company",
+        company_name: companyNames.get(invitation.company_id) ?? "your company",
         role: invitation.role,
         expires_at: invitation.expires_at,
         requires_password_setup: Boolean(actor.invited_at),
+      }));
+      if (invitationDetails.length > 1) {
+        return json({
+          ok: true,
+          pending: true,
+          selection_required: true,
+          email: actor.email,
+          invitations: invitationDetails,
+        });
+      }
+      const invitation = invitationDetails[0];
+      return json({
+        ok: true, pending: true,
+        email: actor.email,
+        company_id: invitations[0].company_id,
+        company_name: invitation.company_name,
+        role: invitation.role,
+        expires_at: invitation.expires_at,
+        requires_password_setup: invitation.requires_password_setup,
       });
     }
 
-    // Keep acceptance behind the existing server-side RPC. Its deployed transaction
-    // semantics are not defined in this repository and must be verified separately.
     if (isAcceptance) {
+      if (!uuidPattern.test(companyId)) {
+        return json({ ok: false, error: "A valid company_id is required to accept an invitation." }, 400);
+      }
       if (!actor.email_confirmed_at) {
         return json({ ok: false, error: "A verified email is required to accept an invitation." }, 403);
       }
       const { data: invitation, error: invitationError } = await admin
         .from("company_invitations")
-        .select("id")
+        .select("id, role")
         .eq("email", actor.email.toLowerCase())
+        .eq("company_id", companyId)
         .eq("status", "pending")
         .gt("expires_at", new Date().toISOString())
-        .order("created_at", { ascending: true })
-        .limit(1)
         .maybeSingle();
       if (invitationError) throw invitationError;
       if (!invitation) return json({ ok: false, error: "No pending invitation" }, 409);
 
+      const { data: membership, error: membershipError } = await admin
+        .from("company_members")
+        .select("status")
+        .eq("company_id", companyId)
+        .eq("user_id", actor.id)
+        .maybeSingle();
+      if (membershipError) throw membershipError;
+      if (!membership || membership.status !== "Invited") {
+        return json({ ok: false, error: "The invited company membership is missing or is no longer pending." }, 409);
+      }
+
+      const { data: role, error: roleError } = await admin
+        .from("user_roles")
+        .select("role")
+        .eq("company_id", companyId)
+        .eq("user_id", actor.id)
+        .maybeSingle();
+      if (roleError) throw roleError;
+      if (!role || role.role !== invitation.role) {
+        return json({ ok: false, error: "The invitation role does not match the pending company membership." }, 409);
+      }
+
       const { data, error } = await admin.rpc("tenant_admin_accept_invitation", {
         p_user_id: actor.id,
         p_email: actor.email.toLowerCase(),
+        p_company_id: companyId,
       });
       if (error) {
         if (error.message.includes("does not have a valid invitation")) {

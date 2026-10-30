@@ -337,7 +337,9 @@ describe("Authentication & Invitation Flow Safeguards", () => {
 
       await screen.findByText("Token has expired or is invalid");
       expect(mocks.updateAccountPassword).not.toHaveBeenCalled();
-      expect(mocks.invoke).not.toHaveBeenCalledWith("tenant-admin", { body: { action: "accept_invitation" } });
+      expect(mocks.invoke).not.toHaveBeenCalledWith("tenant-admin", {
+        body: { action: "accept_invitation", company_id: "company-a" },
+      });
     });
 
     it("completes full acceptance: verifies token, sets password, calls accept_invitation, and verifies active membership", async () => {
@@ -367,7 +369,9 @@ describe("Authentication & Invitation Flow Safeguards", () => {
 
       await waitFor(() => {
         expect(mocks.updateAccountPassword).toHaveBeenCalledWith("SecretPass123!");
-        expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", { body: { action: "accept_invitation" } });
+        expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", {
+          body: { action: "accept_invitation", company_id: "company-a" },
+        });
       });
 
       // 4. Verifies active membership and enters dashboard
@@ -406,7 +410,58 @@ describe("Authentication & Invitation Flow Safeguards", () => {
 
       await screen.findByText("Company Workspace Dashboard");
       expect(mocks.updateAccountPassword).not.toHaveBeenCalled();
-      expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", { body: { action: "accept_invitation" } });
+      expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", {
+        body: { action: "accept_invitation", company_id: "company-b" },
+      });
+    });
+
+    it("requires an explicit choice when more than one company invitation is pending", async () => {
+      mocks.getCurrentUser.mockResolvedValue(user);
+      activeMembers = [{ company_id: "company-a" }, { company_id: "company-b" }];
+      mocks.invoke.mockImplementation(async (_name, { body }) => ({
+        data: body.action === "invitation_status"
+          ? {
+            ok: true,
+            pending: true,
+            selection_required: true,
+            email: user.email,
+            invitations: [
+              {
+                company_id: "company-a",
+                company_name: "Acme Nigeria",
+                role: "finance_officer",
+                requires_password_setup: false,
+              },
+              {
+                company_id: "company-b",
+                company_name: "Second Company",
+                role: "staff_user",
+                requires_password_setup: false,
+              },
+            ],
+          }
+          : { ok: true, accepted: true },
+        error: null,
+      }));
+      render(
+        <MemoryRouter initialEntries={["/auth/accept-invite"]}>
+          <AuthProvider>
+            <Routes>
+              <Route path="/auth/accept-invite" element={<AcceptInvitation />} />
+              <Route path="/app/dashboard" element={<div>Company Workspace Dashboard</div>} />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      await screen.findByRole("heading", { name: "Choose an invitation" });
+      fireEvent.click(screen.getByRole("button", { name: /Second Company/ }));
+      fireEvent.click(screen.getByRole("button", { name: "Accept invitation" }));
+
+      await screen.findByText("Company Workspace Dashboard");
+      expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", {
+        body: { action: "accept_invitation", company_id: "company-b" },
+      });
     });
 
     it("does not enter the dashboard unless active membership is confirmed", async () => {
@@ -450,7 +505,9 @@ describe("Authentication & Invitation Flow Safeguards", () => {
 
       await screen.findByText("Password must be at least 12 characters long.");
       expect(mocks.updateAccountPassword).not.toHaveBeenCalled();
-      expect(mocks.invoke).not.toHaveBeenCalledWith("tenant-admin", { body: { action: "accept_invitation" } });
+      expect(mocks.invoke).not.toHaveBeenCalledWith("tenant-admin", {
+        body: { action: "accept_invitation", company_id: "company-a" },
+      });
     });
 
     it("accepts a matching 12-character invitation password", async () => {
@@ -474,7 +531,9 @@ describe("Authentication & Invitation Flow Safeguards", () => {
 
       await screen.findByText("Company Workspace Dashboard");
       expect(mocks.updateAccountPassword).toHaveBeenCalledWith("123456789012");
-      expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", { body: { action: "accept_invitation" } });
+      expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", {
+        body: { action: "accept_invitation", company_id: "company-a" },
+      });
     });
 
     it("still requires confirmation to match a valid-length password", async () => {

@@ -30,6 +30,7 @@ export default function AcceptInvitation() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [invitation, setInvitation] = useState<InvitationDetails | null>(null);
+  const [availableInvitations, setAvailableInvitations] = useState<InvitationDetails[]>([]);
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -95,15 +96,14 @@ export default function AcceptInvitation() {
       }
       if (user) {
         try {
-          const details = await fetchInvitationStatus();
+          const status = await fetchInvitationStatus();
           if (!cancelled) {
-            setInvitation({
-              companyName: details.companyName,
-              companyId: details.companyId,
-              role: details.role,
-              email: details.email || user.email || undefined,
-              requiresPasswordSetup: details.requiresPasswordSetup,
-            });
+            const invitations = status.invitations.map((item) => ({
+              ...item,
+              email: item.email || user.email || undefined,
+            }));
+            setAvailableInvitations(invitations);
+            setInvitation(status.selectionRequired ? null : invitations[0]);
             setLoading(false);
           }
         } catch (err: unknown) {
@@ -144,14 +144,13 @@ export default function AcceptInvitation() {
       if (!verifiedSession) throw new Error("Invitation session could not be verified. Please reopen the invitation link.");
 
       // Session established; now fetch company and role
-      const details = await fetchInvitationStatus();
-      setInvitation({
-        companyName: details.companyName,
-        companyId: details.companyId,
-        role: details.role,
-        email: details.email || user.email || undefined,
-        requiresPasswordSetup: details.requiresPasswordSetup,
-      });
+      const status = await fetchInvitationStatus();
+      const invitations = status.invitations.map((item) => ({
+        ...item,
+        email: item.email || user.email || undefined,
+      }));
+      setAvailableInvitations(invitations);
+      setInvitation(status.selectionRequired ? null : invitations[0]);
       setAwaitingVerification(false);
     } catch (err: unknown) {
       const msg =
@@ -171,6 +170,11 @@ export default function AcceptInvitation() {
     e.preventDefault();
     setError(null);
 
+    if (!invitation?.companyId) {
+      setError("Choose a company invitation before accepting.");
+      return;
+    }
+
     if (invitation?.requiresPasswordSetup && password.length < 12) {
       setError("Password must be at least 12 characters long.");
       return;
@@ -187,10 +191,10 @@ export default function AcceptInvitation() {
       if (invitation?.requiresPasswordSetup) await updateAccountPassword(password);
 
       // 2. Call accept_invitation via tenant-admin contract
-      await acceptTenantInvitation();
+      await acceptTenantInvitation(invitation.companyId);
 
       // 3. Reload active membership in auth context
-      await refreshMembership(invitation?.companyId ?? undefined);
+      await refreshMembership(invitation.companyId);
 
       // 4. Verify active membership before entering dashboard
       const user = await getCurrentUser();
@@ -198,10 +202,7 @@ export default function AcceptInvitation() {
         throw new Error("The invitation session could not be verified. Please sign in and retry.");
       }
       const memberships = await loadActiveMemberships(user.id);
-      if (!memberships.length || (
-        invitation?.companyId
-        && !memberships.some(({ companyId }) => companyId === invitation.companyId)
-      )) {
+      if (!memberships.some(({ companyId }) => companyId === invitation.companyId)) {
         throw new Error("Active company membership was not confirmed by the server.");
       }
 
@@ -287,6 +288,32 @@ export default function AcceptInvitation() {
               <p className="text-xs text-muted-foreground">
                 Clicking above confirms your invitation link and prevents email security scanners from consuming your one-time token.
               </p>
+            </div>
+          ) : !invitation && availableInvitations.length > 1 ? (
+            <div className="space-y-5">
+              <div className="space-y-2 text-center">
+                <h1 className="text-2xl font-semibold">Choose an invitation</h1>
+                <p className="text-sm text-muted-foreground">Select the company invitation you want to accept.</p>
+              </div>
+              <div className="space-y-3">
+                {availableInvitations.map((candidate) => (
+                  <Button
+                    key={candidate.companyId}
+                    type="button"
+                    variant="outline"
+                    className="h-auto w-full justify-between gap-3 p-4 text-left"
+                    onClick={() => setInvitation(candidate)}
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate font-medium">{candidate.companyName}</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {teamRoleLabels[candidate.role] ?? candidate.role}
+                      </span>
+                    </span>
+                    <ArrowRight className="h-4 w-4 shrink-0" />
+                  </Button>
+                ))}
+              </div>
             </div>
           ) : (
             <div className="space-y-6">

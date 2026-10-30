@@ -92,27 +92,59 @@ export async function loadUserRoles(uid: string) {
 
 export interface InvitationDetails {
   companyName: string;
-  companyId: string | null;
+  companyId: string;
   role: string;
   email?: string;
   requiresPasswordSetup: boolean;
 }
 
-export async function fetchInvitationStatus(): Promise<InvitationDetails> {
-  const data = (await invokeTenantAdmin({ action: "invitation_status" })) as Record<string, unknown>;
-  if (data.pending !== true) throw new Error("No valid pending invitation was found for this verified email.");
+export interface InvitationStatus {
+  invitations: InvitationDetails[];
+  selectionRequired: boolean;
+}
+
+function parseInvitationDetails(data: Record<string, unknown>, email?: string): InvitationDetails {
+  const companyId = typeof data.company_id === "string" ? data.company_id : "";
+  if (!companyId) throw new Error("Invitation response did not include a company.");
   const companyName =
     (typeof data.company_name === "string" && data.company_name) ||
     (typeof (data.company as { name?: string })?.name === "string" && (data.company as { name: string }).name) ||
     (typeof data.companyName === "string" && data.companyName) ||
     "Inviting Company";
-  const role = typeof data.role === "string" ? data.role : "staff_user";
-  const companyId = typeof data.company_id === "string" ? data.company_id : null;
-  const email = typeof data.email === "string" ? data.email : undefined;
-  const requiresPasswordSetup = data.requires_password_setup === true;
-  return { companyName, companyId, role, email, requiresPasswordSetup };
+  return {
+    companyName,
+    companyId,
+    role: typeof data.role === "string" ? data.role : "staff_user",
+    email: typeof data.email === "string" ? data.email : email,
+    requiresPasswordSetup: data.requires_password_setup === true,
+  };
 }
 
-export async function acceptTenantInvitation(): Promise<unknown> {
-  return invokeTenantAdmin({ action: "accept_invitation" });
-}
+export async function fetchInvitationStatus(): Promise<InvitationStatus> {
+  const data = (await invokeTenantAdmin({ action: "invitation_status" })) as Record<string, unknown>;
+  if (data.pending !== true) throw new Error("No valid pending invitation was found for this verified email.");
+  const email = typeof data.email === "string" ? data.email : undefined;
+  if (data.selection_required === true) {
+    if (!Array.isArray(data.invitations) || data.invitations.length < 2) {
+      throw new Error("Invitation selection response is incomplete. Please refresh.");
+    }
+    return {
+      invitations: data.invitations.map((candidate) => {
+        if (!candidate || typeof candidate !== "object") {
+          throw new Error("Invitation response is incompatible. Please refresh.");
+        }
+        return parseInvitationDetails(candidate as Record<string, unknown>, email);
+      }),
+      selectionRequired: true,
+    };
+  }
+  return {
+    invitations: [parseInvitationDetails(data, email)],
+    selectionRequired: false,
+  };
+}
+
+export async function acceptTenantInvitation(companyId: string): Promise<unknown> {
+  if (!companyId) throw new Error("Choose a company invitation to accept.");
+  return invokeTenantAdmin({ action: "accept_invitation", company_id: companyId });
+}
