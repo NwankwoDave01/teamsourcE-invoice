@@ -40,11 +40,10 @@
   `nrs-qr-repair` also validate bearer tokens but have no browser invocation
   found in `src/`. Service-role credentials are read from Edge Function
   environment variables, not the browser bundle.
-- `vercel.json` configures security headers and a catch-all SPA rewrite. There
-  is no existing server/API route or server-session dependency. Vercel Functions
-  under `api/` can provide the required same-origin server component while
-  retaining the Vite SPA deployment. Supabase Edge Functions are not suitable
-  for setting this app's same-origin cookie.
+- `vercel.json` configures security headers and a SPA rewrite that must exclude
+  `/api/*` so Vercel Functions under `api/` can provide the required same-origin
+  server component while retaining the Vite SPA deployment. Supabase Edge
+  Functions are not suitable for setting this app's same-origin cookie.
 - `supabase/config.toml` contains only the project ID. The repository does not
   define deployed Supabase Auth URL, CAPTCHA, token-expiry, refresh-token, or
   cookie settings; those are dashboard-managed and were not independently
@@ -122,9 +121,10 @@ API handlers during local Vite development.
   environment file or shell. The browser continues to use the existing
   publishable key; the server and browser values must identify the same
   Supabase project.
-- First deploy to a Vercel Preview and verify `/api/auth/*` and
-  `/api/supabase/*` are handled by Functions ahead of the existing catch-all
-  SPA rewrite. Then test CAPTCHA login, refresh, logout, invite acceptance,
+- First deploy to a Vercel Preview and verify the function inventory contains
+  `api/auth/[action].ts` and `api/supabase/[...path].ts`, and that requests under
+  `/api/*` are not rewritten to the SPA. Then test CAPTCHA login, refresh,
+  logout, invite acceptance,
   active-membership/role reads, tenant-admin changes, invoice operations, and
   NRS sandbox workflows before Production promotion. No production deployment
   was performed here.
