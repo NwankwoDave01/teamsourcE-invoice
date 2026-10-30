@@ -23,7 +23,7 @@ export default function AdminCompanies() {
     const q = search.trim().toLowerCase();
     if (!q) return companies;
     return companies.filter(
-      (c: any) =>
+      (c) =>
         c.name.toLowerCase().includes(q) ||
         c.tin?.toLowerCase().includes(q),
     );
@@ -71,7 +71,7 @@ export default function AdminCompanies() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((c: any) => (
+                  {filtered.map((c) => (
                     <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted/30">
                       <td className="px-5 py-3 font-medium">{c.name}</td>
                       <td className="px-5 py-3 font-mono text-xs text-muted-foreground">{c.tin}</td>

@@ -21,19 +21,20 @@ export function round2(n: number): number {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 }
 
-// deno-lint-ignore-file no-explicit-any
-type AnyRow = Record<string, any>;
+type AnyRow = Record<string, unknown>;
 
 /** Drop null / undefined / "" recursively so NRS never receives empty fields. */
-export function omitEmpty(value: any): any {
+export function omitEmpty<T extends Record<string, unknown>>(value: T): Record<string, unknown>;
+export function omitEmpty(value: unknown): unknown;
+export function omitEmpty(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map(omitEmpty).filter((item) => item !== undefined);
   }
   if (value && typeof value === "object") {
     const entries = Object.entries(value)
-      .map(([key, entryValue]) => [key, omitEmpty(entryValue)])
+      .map(([key, entryValue]) => [key, omitEmpty(entryValue)] as const)
       .filter(([, entryValue]) => entryValue !== undefined);
-    return Object.fromEntries(entries as [string, any][]);
+    return Object.fromEntries(entries);
   }
   return value === null || value === undefined || value === "" ? undefined : value;
 }
@@ -61,7 +62,7 @@ function buildAddress(source: AnyRow | null) {
     postal_zone: source?.postcode ?? null,
     country_subentity: source?.state ?? null,
     country_subentity_code: source?.lga ?? null,
-    country: (source?.country_code ?? "NG").toUpperCase(),
+    country: String(source?.country_code ?? "NG").toUpperCase(),
   });
 }
 

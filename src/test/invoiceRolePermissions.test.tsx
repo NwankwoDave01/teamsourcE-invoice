@@ -4,6 +4,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Invoices from "@/pages/tenant/Invoices";
 import InvoiceDetails from "@/pages/tenant/InvoiceDetails";
+import type { DBInvoice } from "@/hooks/useCompanyData";
 
 global.ResizeObserver = class ResizeObserver {
   observe() {}
@@ -21,12 +22,18 @@ const authMock = vi.hoisted(() => ({
 }));
 
 const invoiceDataMock = vi.hoisted(() => ({
-  invoices: [] as any[],
-  currentInvoice: null as any,
+  invoices: [] as InvoiceFixture[],
+  currentInvoice: null as InvoiceFixture | null,
   updateStatusMutateAsync: vi.fn(),
   deleteMutateAsync: vi.fn(),
   nrsSubmit: vi.fn(),
 }));
+
+type InvoiceFixture = Pick<
+  DBInvoice,
+  "id" | "company_id" | "number" | "customer_id" | "customer_name" | "issue_date" | "due_date" |
+    "subtotal" | "tax" | "total" | "status" | "irn"
+> & Partial<DBInvoice> & { submission_status?: string | null };
 
 vi.mock("@/contexts/AuthContext", () => ({
   useAuth: () => ({
@@ -38,7 +45,7 @@ vi.mock("@/contexts/AuthContext", () => ({
 }));
 
 vi.mock("@/hooks/useCompanyData", async () => {
-  const actual = await vi.importActual<any>("@/hooks/useCompanyData");
+  const actual = await vi.importActual<typeof import("@/hooks/useCompanyData")>("@/hooks/useCompanyData");
   return {
     ...actual,
     useCurrentCompany: () => ({

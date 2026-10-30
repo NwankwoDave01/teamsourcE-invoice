@@ -1,4 +1,6 @@
 import { supabase } from "@/integrations/supabase/client";
+import type { AppDatabase } from "@/integrations/supabase/appSchema";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   NrsBuildResult,
   NrsInvoicePayload,
@@ -7,6 +9,8 @@ import type {
 import { normalizeInvoiceTypeCode } from "./invoiceTypeCode";
 import { validateForNrs } from "./validators";
 import { round2 } from "./codes";
+
+const appSupabase = supabase as SupabaseClient<AppDatabase>;
 
 /**
  * Build an internal UBL-style NRS payload preview for an invoice.
@@ -19,12 +23,11 @@ import { round2 } from "./codes";
  * the payload so the user can still preview.
  */
 export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult> {
-  const { data: invoiceRaw, error: invErr } = await supabase
+  const { data: invoice, error: invErr } = await appSupabase
     .from("invoices")
     .select("*")
     .eq("id", invoiceId)
     .maybeSingle();
-  const invoice = invoiceRaw as any;
   if (invErr) throw invErr;
   if (!invoice) {
     return {
@@ -52,15 +55,14 @@ export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult
     };
   }
 
-  const [{ data: lines }, { data: companyRaw }, customerRes] = await Promise.all([
-    supabase.from("invoice_lines").select("*").eq("invoice_id", invoiceId).order("position"),
-    supabase.from("companies").select("*").eq("id", invoice.company_id).maybeSingle(),
+  const [{ data: lines }, { data: company }, customerRes] = await Promise.all([
+    appSupabase.from("invoice_lines").select("*").eq("invoice_id", invoiceId).order("position"),
+    appSupabase.from("companies").select("*").eq("id", invoice.company_id).maybeSingle(),
     invoice.customer_id
-      ? supabase.from("customers").select("*").eq("id", invoice.customer_id).maybeSingle()
-      : Promise.resolve({ data: null }),
+      ? appSupabase.from("customers").select("*").eq("id", invoice.customer_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ]);
-  const company = companyRaw as any;
-  const customer = (customerRes as any).data ?? null;
+  const customer = customerRes.data ?? null;
 
   const issues = validateForNrs({
     invoice,
@@ -79,7 +81,7 @@ export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult
   const currency = (invoice.currency ?? "NGN").toUpperCase();
   const invoiceTypeCode = normalizedInvoiceType.code;
 
-  const builtLines: NrsLine[] = (lines ?? []).map((l: any, idx: number) => {
+  const builtLines: NrsLine[] = (lines ?? []).map((l, idx) => {
     const qty = Number(l.qty ?? 0);
     const unitPrice = Number(l.unit_price ?? 0);
     const taxRate = Number(l.tax_rate ?? 0);
@@ -143,7 +145,7 @@ export async function buildNrsPayload(invoiceId: string): Promise<NrsBuildResult
       },
     },
     buyer: {
-      buyerType: (customer?.buyer_type ?? "business") as any,
+      buyerType: (customer?.buyer_type ?? "business") as NrsInvoicePayload["buyer"]["buyerType"],
       tin: customer?.tin ?? null,
       vatNumber: null,
       rcNumber: customer?.rc_number ?? null,

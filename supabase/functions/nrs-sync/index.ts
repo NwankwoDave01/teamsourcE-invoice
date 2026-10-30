@@ -9,7 +9,10 @@ const corsHeaders = {
   "Vary": "Origin",
 };
 
-declare const Deno: any;
+declare const Deno: {
+  env: { get(name: string): string | undefined };
+  serve(handler: (request: Request) => Promise<Response>): void;
+};
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
@@ -33,8 +36,11 @@ Deno.serve(async (req: Request) => {
     if (authError || !authData.user) return json({ error: "Unauthorized" }, 401);
 
     const admin = createClient(supabaseUrl, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-    const body = await req.json().catch(() => ({}));
-    let companyId = typeof body?.company_id === "string" ? body.company_id : "";
+    const body: unknown = await req.json().catch(() => ({}));
+    const bodyRecord = body && typeof body === "object" && !Array.isArray(body)
+      ? body as Record<string, unknown>
+      : null;
+    let companyId = typeof bodyRecord?.company_id === "string" ? bodyRecord.company_id : "";
 
     if (!companyId) {
       const { data: memberships, error } = await admin
@@ -138,11 +144,10 @@ Deno.serve(async (req: Request) => {
         results.push({ type: ep.type, status: "failed", error: "NRS returned invalid JSON" });
         continue;
       }
-      const items = Array.isArray(payload)
-        ? payload
-        : (payload && typeof payload === "object" && Array.isArray((payload as any).data))
-          ? (payload as any).data
-          : null;
+      const payloadData = payload && typeof payload === "object" && !Array.isArray(payload)
+        ? (payload as Record<string, unknown>).data
+        : null;
+      const items = Array.isArray(payload) ? payload : Array.isArray(payloadData) ? payloadData : null;
       if (!items) {
         results.push({ type: ep.type, status: "failed", error: "Unexpected NRS response structure" });
         continue;

@@ -20,8 +20,7 @@ export interface StrictIssue {
   severity: StrictSeverity;
 }
 
-// deno-lint-ignore-file no-explicit-any
-type AnyRow = Record<string, any>;
+type AnyRow = Record<string, unknown>;
 
 export interface StrictInput {
   invoice: AnyRow;

@@ -35,7 +35,7 @@ import { resolveQrImageSource } from "@/lib/nrs/qrDisplay";
 import { submissionStageLabel, type SubmitResult } from "@/lib/nrs/submitContract";
 import { SubmissionBadge, submissionLabel } from "@/components/shared/SubmissionBadge";
 import { downloadInvoicePdf } from "@/lib/pdfExport";
-import { PrintableInvoice } from "@/components/shared/PrintableInvoice";
+import { PrintableInvoice, type PrintableInvoiceData } from "@/components/shared/PrintableInvoice";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -77,7 +77,7 @@ export default function InvoiceDetails() {
   const [submitting, setSubmitting] = useState(false);
   const [lastResult, setLastResult] = useState<SubmitResult | null>(null);
   const submitToNrs = useNrsSubmit();
-  let user: any = null;
+  let user: ReturnType<typeof useAuth>["user"] = null;
   let companyId: string | null = null;
   let roles: string[] = [];
   let isSuperAdmin = false;
@@ -94,6 +94,13 @@ export default function InvoiceDetails() {
   const canManage = isSuperAdmin || roles.includes("company_admin") || roles.includes("finance_officer") || (!isStaff && roles.length === 0);
   const history = useNrsSubmissionHistory();
   const [confirmReject, setConfirmReject] = useState(false);
+  const printableInvoice: PrintableInvoiceData | null = invoice
+    ? {
+        ...invoice,
+        customer_tin: customer?.tin ?? null,
+        customer_address: customer?.address_line1 ?? null,
+      }
+    : null;
 
   if (isLoading) {
     return (
@@ -185,7 +192,7 @@ export default function InvoiceDetails() {
   return (
     <div>
       <div className="print-only">
-        <PrintableInvoice invoices={[invoice as any]} company={company} />
+        {printableInvoice && <PrintableInvoice invoices={[printableInvoice]} company={company} />}
       </div>
       <div className="screen-only">
         <PageHeader

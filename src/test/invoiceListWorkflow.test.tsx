@@ -3,7 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Invoices from "@/pages/tenant/Invoices";
-import { INVOICE_STATUSES, type DBInvoiceStatus } from "@/hooks/useCompanyData";
+import { INVOICE_STATUSES, type DBInvoice, type DBInvoiceStatus } from "@/hooks/useCompanyData";
 import * as csvExportModule from "@/lib/csvExport";
 
 global.ResizeObserver = class ResizeObserver {
@@ -15,14 +15,20 @@ global.ResizeObserver = class ResizeObserver {
 window.HTMLElement.prototype.scrollIntoView = vi.fn();
 
 const mocks = vi.hoisted(() => ({
-  invoices: [] as any[],
+  invoices: [] as InvoiceFixture[],
   updateStatusMutateAsync: vi.fn(),
   deleteMutateAsync: vi.fn(),
   nrsSubmit: vi.fn(),
 }));
 
+type InvoiceFixture = Pick<
+  DBInvoice,
+  "id" | "company_id" | "number" | "customer_id" | "customer_name" | "issue_date" | "due_date" |
+    "subtotal" | "tax" | "total" | "status" | "irn"
+> & Partial<DBInvoice> & { submission_status?: string | null };
+
 vi.mock("@/hooks/useCompanyData", async () => {
-  const actual = await vi.importActual<any>("@/hooks/useCompanyData");
+  const actual = await vi.importActual<typeof import("@/hooks/useCompanyData")>("@/hooks/useCompanyData");
   return {
     ...actual,
     useCurrentCompany: () => ({
@@ -59,7 +65,7 @@ vi.mock("@/lib/pdfExport", () => ({
 }));
 
 vi.mock("@/integrations/supabase/client", () => {
-  const builder: any = {
+  const builder = {
     select: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     in: vi.fn().mockReturnThis(),
@@ -74,7 +80,7 @@ vi.mock("@/integrations/supabase/client", () => {
   };
 });
 
-function createSampleInvoices(count: number): any[] {
+function createSampleInvoices(count: number): InvoiceFixture[] {
   const statuses: DBInvoiceStatus[] = [
     "Draft",
     "In Review",

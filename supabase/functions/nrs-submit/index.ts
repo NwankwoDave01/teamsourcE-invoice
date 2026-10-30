@@ -5,6 +5,8 @@ import { resolveNrsBaseUrl } from "../_shared/nrsBaseUrl.ts";
 import {
   createNrsMonetaryTotals,
   validateNrsInvoiceAmounts,
+  type InvoiceAmountHeader,
+  type InvoiceAmountLine,
 } from "../_shared/invoiceMonetaryTotals.ts";
 
 const cors = {
@@ -79,7 +81,11 @@ function normalizeInvoiceTypeCode(value: unknown): InvoiceTypeCodeResult {
     : { valid: false, reason: "unsupported" };
 }
 
-const omit = (value: any): any => {
+type NrsRow = Record<string, unknown>;
+type NrsInvoiceRow = NrsRow & InvoiceAmountHeader;
+type NrsInvoiceLine = NrsRow & InvoiceAmountLine;
+
+const omit = (value: unknown): unknown => {
   if (Array.isArray(value)) {
     return value
       .map(omit)
@@ -116,7 +122,7 @@ const round = (value: number) =>
  * The invoice-number component supplied to the IRN
  * must be alphanumeric.
  */
-function toNrsInvoiceReference(number: string) {
+function toNrsInvoiceReference(number: unknown) {
   const normalized = String(number ?? "")
     .replace(/[^A-Za-z0-9]/g, "")
     .toUpperCase();
@@ -166,7 +172,7 @@ function strictIrn(
 }
 
 function party(
-  source: any,
+  source: NrsRow | null,
   fallback: string,
 ) {
   // Match the NRS party shape used in the known-working Postman request.
@@ -203,10 +209,10 @@ function isRealIsoDate(value: unknown): boolean {
 }
 
 function validateInput(
-  invoice: any,
-  lines: any[],
-  company: any,
-  customer: any,
+  invoice: NrsInvoiceRow,
+  lines: NrsInvoiceLine[],
+  company: NrsRow | null,
+  customer: NrsRow | null,
 ) {
   const errors: string[] = [];
 
@@ -269,15 +275,15 @@ function validateInput(
 }
 
 function buildPayload(
-  invoice: any,
-  lines: any[],
-  company: any,
-  customer: any,
+  invoice: NrsInvoiceRow,
+  lines: NrsInvoiceLine[],
+  company: NrsRow | null,
+  customer: NrsRow | null,
   irn: string,
   invoiceTypeCode: string,
 ) {
   const builtLines = lines.map(
-    (line: any, index: number) => {
+    (line, index) => {
       const quantity = Number(
         line.qty || 0,
       );
@@ -411,10 +417,11 @@ function buildPayload(
     }, 0),
   );
 
-  const taxGroups: Record<
-    string,
-    any
-  > = {};
+  const taxGroups: Record<string, {
+    taxable_amount: number;
+    tax_amount: number;
+    tax_category: { id: string; percent: number };
+  }> = {};
 
   for (const line of lines) {
     const category =
@@ -608,22 +615,27 @@ async function readBody(
 }
 
 function getMessage(
-  response: any,
+  response: unknown,
   fallback: string,
 ) {
+  const responseRecord = response && typeof response === "object" && !Array.isArray(response)
+    ? response as Record<string, unknown>
+    : null;
   if (
-    typeof response?.message ===
+    typeof responseRecord?.message ===
     "string"
   ) {
-    return response.message;
+    return responseRecord.message;
   }
 
+  const errorRecord = responseRecord?.error && typeof responseRecord.error === "object" && !Array.isArray(responseRecord.error)
+    ? responseRecord.error as Record<string, unknown>
+    : null;
   if (
-    typeof response?.error
-      ?.public_message ===
+    typeof errorRecord?.public_message ===
     "string"
   ) {
-    return response.error.public_message;
+    return errorRecord.public_message;
   }
 
   return fallback;
@@ -660,7 +672,7 @@ function publicPem(
 
 async function generateQr(
   irn: string,
-  crypto: any,
+  crypto: { certificate: string; public_key: string },
 ) {
   const timestamp =
     Math.floor(
