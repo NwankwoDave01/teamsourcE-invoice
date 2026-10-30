@@ -1,5 +1,5 @@
 import { cleanup, render, screen, waitFor, act, fireEvent } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import AcceptInvitation from "@/pages/auth/AcceptInvitation";
@@ -38,6 +38,8 @@ vi.mock("@/components/auth/TurnstileCaptcha", () => ({
 
 let filters: [string, unknown][];
 let activeMember: { company_id: string } | null;
+let membershipQueryError: Error | null;
+let roleQueryError: Error | null;
 const user = { id: "user-a", email: "user@example.com" };
 
 function Probe() {
@@ -45,7 +47,22 @@ function Probe() {
   return (
     <>
       <div>{auth.loading ? "loading" : `${auth.companyId ?? "no-company"}:${auth.roles.join(",")}`}</div>
+      <div data-testid="authenticated-user">{auth.user?.id ?? "signed-out"}</div>
+      <div data-testid="membership-error">{auth.membershipError ?? "membership-ok"}</div>
       <button onClick={() => void auth.signOut()}>Sign out probe</button>
+      <button onClick={() => void auth.refreshMembership()}>Refresh membership probe</button>
+    </>
+  );
+}
+
+function LoginDestination() {
+  const location = useLocation();
+  const state = location.state as { reason?: string } | null;
+  return (
+    <>
+      <div>Login Page</div>
+      <div>{state?.reason ?? "no-reason"}</div>
+      <Probe />
     </>
   );
 }
@@ -54,6 +71,8 @@ beforeEach(() => {
   window.history.replaceState({}, "", "/auth/login");
   filters = [];
   activeMember = { company_id: "company-a" };
+  membershipQueryError = null;
+  roleQueryError = null;
   mocks.invoke.mockReset().mockResolvedValue({
     data: { ok: true, company_name: "Acme Nigeria", role: "finance_officer", email: "user@example.com" },
     error: null,
@@ -73,11 +92,11 @@ beforeEach(() => {
         if (table === "company_members") filters.push([key, value]);
         return query;
       }),
-      maybeSingle: vi.fn(async () => ({ data: activeMember, error: null })),
+      maybeSingle: vi.fn(async () => ({ data: activeMember, error: membershipQueryError })),
       then: (resolve: (value: unknown) => unknown) =>
         Promise.resolve({
           data: [{ role: "company_admin", company_id: "company-a" }],
-          error: null,
+          error: roleQueryError,
         }).then(resolve),
     };
     return query;
@@ -88,7 +107,7 @@ afterEach(() => { cleanup(); window.history.replaceState({}, "", "/"); });
 
 describe("Authentication & Invitation Flow Safeguards", () => {
   describe("AuthProvider normal sign-in", () => {
-    it("accepts once before reading Active membership during normal session load", async () => {
+    it("verifies normal sessions without accepting invitations and loads Active membership", async () => {
       mocks.getCurrentUser.mockResolvedValueOnce(user);
       render(
         <AuthProvider>
@@ -96,8 +115,8 @@ describe("Authentication & Invitation Flow Safeguards", () => {
         </AuthProvider>
       );
       await screen.findByText("company-a:company_admin");
-      expect(mocks.invoke).toHaveBeenCalledWith("tenant-admin", { body: { action: "accept_invitation" } });
-      expect(mocks.invoke.mock.invocationCallOrder[0]).toBeLessThan(mocks.from.mock.invocationCallOrder[0]);
+      expect(screen.getByTestId("authenticated-user")).toHaveTextContent("user-a");
+      expect(mocks.invoke).not.toHaveBeenCalled();
       // Must only query Active company_members
       expect(filters).toContainEqual(["user_id", "user-a"]);
       expect(filters).toContainEqual(["status", "Active"]);
@@ -117,15 +136,16 @@ describe("Authentication & Invitation Flow Safeguards", () => {
       });
       await waitFor(() => expect(mocks.getCurrentUser).toHaveBeenCalledTimes(2));
       expect(mocks.from.mock.calls.length).toBe(initialFromCalls);
-      expect(mocks.invoke).toHaveBeenCalledTimes(1);
+      expect(mocks.invoke).not.toHaveBeenCalled();
     });
 
-    it("fails safely on no pending invite and still requires Active membership", async () => {
+    it("keeps a valid session authenticated when no pending invitation exists", async () => {
       mocks.getCurrentUser.mockResolvedValueOnce(user);
-      mocks.invoke.mockResolvedValueOnce({ data: { ok: true, accepted: false }, error: null });
       activeMember = null;
       render(<AuthProvider><Probe /></AuthProvider>);
       await screen.findByText("no-company:");
+      expect(screen.getByTestId("authenticated-user")).toHaveTextContent("user-a");
+      expect(mocks.invoke).not.toHaveBeenCalled();
       expect(filters).toContainEqual(["status", "Active"]);
     });
 
@@ -139,17 +159,49 @@ describe("Authentication & Invitation Flow Safeguards", () => {
       expect(mocks.from).not.toHaveBeenCalled();
     });
 
-    it("ignores an acceptance response after sign-out", async () => {
+    it("ignores membership responses after sign-out", async () => {
       let finish: ((value: unknown) => void) | undefined;
-      mocks.invoke.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+      activeMember = null;
+      mocks.from.mockImplementationOnce((table) => {
+        const query = {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn((key, value) => {
+            if (table === "company_members") filters.push([key, value]);
+            return query;
+          }),
+          maybeSingle: vi.fn(() => new Promise((resolve) => { finish = resolve; })),
+          then: (resolve: (value: unknown) => unknown) =>
+            Promise.resolve({ data: [], error: null }).then(resolve),
+        };
+        return query;
+      });
       mocks.getCurrentUser.mockResolvedValueOnce(user);
       render(<AuthProvider><Probe /></AuthProvider>);
-      await waitFor(() => expect(mocks.invoke).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(finish).toBeDefined());
       fireEvent.click(screen.getByRole("button", { name: "Sign out probe" }));
       await waitFor(() => expect(mocks.getCurrentUser).toHaveBeenCalledTimes(1));
-      await act(async () => { finish?.({ data: { ok: true }, error: null }); });
-      await screen.findByText("no-company:");
-      expect(mocks.from).not.toHaveBeenCalled();
+      await act(async () => { finish?.({ data: null, error: null }); });
+      expect(screen.getByTestId("authenticated-user")).toHaveTextContent("signed-out");
+    });
+
+    it("preserves the authenticated user and reports membership query failures", async () => {
+      mocks.getCurrentUser.mockResolvedValueOnce(user);
+      membershipQueryError = new Error("membership unavailable");
+      render(<AuthProvider><Probe /></AuthProvider>);
+
+      expect(await screen.findByTestId("membership-error")).toHaveTextContent("Company membership could not be loaded.");
+      expect(screen.getByTestId("authenticated-user")).toHaveTextContent("user-a");
+      expect(screen.getByText("no-company:")).toBeInTheDocument();
+    });
+
+    it("keeps active membership when the independent role query fails", async () => {
+      mocks.getCurrentUser.mockResolvedValueOnce(user);
+      roleQueryError = new Error("roles unavailable");
+      render(<AuthProvider><Probe /></AuthProvider>);
+
+      expect(await screen.findByTestId("membership-error")).toHaveTextContent("User roles could not be loaded.");
+      expect(screen.getByText("company-a:")).toBeInTheDocument();
+      expect(screen.getByTestId("authenticated-user")).toHaveTextContent("user-a");
     });
 
     it("leaves companyId as null when user has no active membership", async () => {
@@ -161,6 +213,7 @@ describe("Authentication & Invitation Flow Safeguards", () => {
         </AuthProvider>
       );
       await screen.findByText("no-company:");
+      expect(screen.getByTestId("authenticated-user")).toHaveTextContent("user-a");
       expect(filters).toContainEqual(["status", "Active"]);
     });
   });
@@ -269,6 +322,30 @@ describe("Authentication & Invitation Flow Safeguards", () => {
       await screen.findByText("Company Workspace Dashboard");
     });
 
+    it("does not enter the dashboard unless active membership is confirmed", async () => {
+      mocks.getCurrentUser.mockResolvedValue(user);
+      activeMember = null;
+      render(
+        <MemoryRouter initialEntries={["/auth/accept-invite?token_hash=valid-token&type=invite"]}>
+          <AuthProvider>
+            <Routes>
+              <Route path="/auth/accept-invite" element={<AcceptInvitation />} />
+              <Route path="/app/dashboard" element={<div>Company Workspace Dashboard</div>} />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      fireEvent.click(await screen.findByRole("button", { name: /Continue to accept invitation/i }));
+      await screen.findByText("Set up your account");
+      fireEvent.change(screen.getByLabelText("Set password"), { target: { value: "SecretPass123!" } });
+      fireEvent.change(screen.getByLabelText("Confirm password"), { target: { value: "SecretPass123!" } });
+      fireEvent.click(screen.getByRole("button", { name: /Set password & accept invitation/i }));
+
+      expect(await screen.findByText("Active company membership was not confirmed by the server.")).toBeInTheDocument();
+      expect(screen.queryByText("Company Workspace Dashboard")).not.toBeInTheDocument();
+    });
+
     it("rejects an 11-character invitation password", async () => {
       render(
         <MemoryRouter initialEntries={["/auth/accept-invite?token_hash=valid-token&type=invite"]}>
@@ -344,7 +421,7 @@ describe("Authentication & Invitation Flow Safeguards", () => {
               <Route element={<ProtectedRoute />}>
                 <Route path="/app/invoices" element={<div>Tenant Content</div>} />
               </Route>
-              <Route path="/auth/login" element={<div>Login Page</div>} />
+              <Route path="/auth/login" element={<LoginDestination />} />
             </Routes>
           </AuthProvider>
         </MemoryRouter>
@@ -353,6 +430,29 @@ describe("Authentication & Invitation Flow Safeguards", () => {
       // Should redirect to login, NOT render tenant content
       await screen.findByText("Login Page");
       expect(screen.queryByText("Tenant Content")).not.toBeInTheDocument();
+      expect(screen.getByText("no_active_membership")).toBeInTheDocument();
+      expect(screen.getByTestId("authenticated-user")).toHaveTextContent("user-a");
+    });
+
+    it("blocks company routes and shows a retry when membership could not be retrieved", async () => {
+      mocks.getCurrentUser.mockResolvedValueOnce(user);
+      membershipQueryError = new Error("membership unavailable");
+      render(
+        <MemoryRouter initialEntries={["/app/invoices"]}>
+          <AuthProvider>
+            <Routes>
+              <Route element={<ProtectedRoute />}>
+                <Route path="/app/invoices" element={<div>Tenant Content</div>} />
+              </Route>
+              <Route path="/auth/login" element={<div>Login Page</div>} />
+            </Routes>
+          </AuthProvider>
+        </MemoryRouter>
+      );
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("Company membership could not be loaded.");
+      expect(screen.queryByText("Tenant Content")).not.toBeInTheDocument();
+      expect(screen.queryByText("Login Page")).not.toBeInTheDocument();
     });
 
     it("allows tenant access when active company membership is present", async () => {

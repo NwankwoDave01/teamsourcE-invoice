@@ -190,11 +190,12 @@ export default function AcceptInvitation() {
 
       // 4. Verify active membership before entering dashboard
       const user = await getCurrentUser();
-      if (user) {
-        const membership = await loadActiveMembership(user.id);
-        if (!membership.companyId) {
-          throw new Error("Active company membership was not confirmed by the server.");
-        }
+      if (!user) {
+        throw new Error("The invitation session could not be verified. Please sign in and retry.");
+      }
+      const membership = await loadActiveMembership(user.id);
+      if (!membership.companyId) {
+        throw new Error("Active company membership was not confirmed by the server.");
       }
 
       toast({

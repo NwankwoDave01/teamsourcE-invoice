@@ -35,16 +35,27 @@ export default function Login() {
     }
 
     setLoading(true);
+    let verifyingSession = false;
     try {
       const signedInUser = await signInWithPassword(email, password, captchaToken);
       if (!signedInUser) throw new Error("Sign-in did not establish a session.");
+      verifyingSession = true;
       const verifiedSession = await refreshSession(true);
       if (!verifiedSession) throw new Error("The new session could not be verified.");
       navigate(from, { replace: true });
     } catch (error) {
+      const message = error instanceof Error ? error.message : "Please try again.";
+      const normalizedMessage = message.toLowerCase();
+      const title = verifyingSession
+        ? "Session verification failed"
+        : /captcha|turnstile/.test(normalizedMessage)
+          ? "CAPTCHA verification failed"
+          : /invalid.*(credential|password)|credential.*invalid/.test(normalizedMessage)
+            ? "Invalid credentials"
+            : "Sign-in failed";
       toast({
-        title: "Sign-in failed",
-        description: error instanceof Error ? error.message : "Please try again.",
+        title,
+        description: message,
         variant: "destructive",
       });
     } finally {

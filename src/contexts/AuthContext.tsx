@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { getCurrentUser, signOutFromSession, type SessionUser } from "@/lib/authSession";
-import { acceptTenantInvitation, loadActiveMembership } from "@/lib/tenantAdmin";
+import { loadActiveMembership, loadUserRoles } from "@/lib/tenantAdmin";
 
 type Role = "super_admin" | "company_admin" | "finance_officer" | "staff_user";
 
@@ -8,6 +8,7 @@ interface AuthCtx {
   user: SessionUser | null;
   loading: boolean;
   authError: string | null;
+  membershipError: string | null;
   companyId: string | null;
   roles: Role[];
   isSuperAdmin: boolean;
@@ -22,6 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [membershipError, setMembershipError] = useState<string | null>(null);
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [roles, setRoles] = useState<Role[]>([]);
   const currentUid = useRef<string | null>(null);
@@ -31,16 +33,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadMembership = useCallback(async (uid: string) => {
     const request = ++membershipRequest.current;
-    try {
-      const membership = await loadActiveMembership(uid);
-      if (currentUid.current !== uid || request !== membershipRequest.current) return;
-      setCompanyId(membership.companyId);
-      setRoles(membership.roles as Role[]);
-    } catch {
-      if (currentUid.current !== uid || request !== membershipRequest.current) return;
-      setCompanyId(null);
-      setRoles([]);
-    }
+    setMembershipError(null);
+    const [membershipResult, rolesResult] = await Promise.allSettled([
+      loadActiveMembership(uid),
+      loadUserRoles(uid),
+    ]);
+    if (currentUid.current !== uid || request !== membershipRequest.current) return;
+
+    const activeCompanyId = membershipResult.status === "fulfilled"
+      ? membershipResult.value.companyId
+      : null;
+    setCompanyId(activeCompanyId);
+
+    const validRoles = new Set<Role>(["super_admin", "company_admin", "finance_officer", "staff_user"]);
+    const loadedRoles = rolesResult.status === "fulfilled"
+      ? rolesResult.value
+        .filter((role) => validRoles.has(role.role as Role)
+          && (role.role === "super_admin" || (activeCompanyId && role.companyId === activeCompanyId)))
+        .map((role) => role.role as Role)
+      : [];
+    setRoles(loadedRoles);
+
+    const errors = [
+      membershipResult.status === "rejected" ? "Company membership could not be loaded." : null,
+      rolesResult.status === "rejected" ? "User roles could not be loaded." : null,
+    ].filter(Boolean);
+    setMembershipError(errors.length ? `${errors.join(" ")} Retry to check company access.` : null);
   }, []);
 
   const refreshSession = useCallback(async (forceReload = false): Promise<SessionUser | null> => {
@@ -56,6 +74,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!uid) {
         loadedUid.current = null;
         ++membershipRequest.current;
+        setMembershipError(null);
         setCompanyId(null);
         setRoles([]);
         setLoading(false);
@@ -68,6 +87,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       loadedUid.current = uid;
       ++membershipRequest.current;
+      setMembershipError(null);
       setCompanyId(null);
       setRoles([]);
 
@@ -76,23 +96,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return currentUser;
       }
 
-      await acceptTenantInvitation();
-      if (request !== sessionRequest.current || currentUid.current !== uid) return null;
       await loadMembership(uid);
       if (request === sessionRequest.current) setLoading(false);
       return currentUser;
     } catch (error) {
       if (request === sessionRequest.current) {
-        currentUid.current = null;
-        loadedUid.current = null;
-        ++membershipRequest.current;
-        setUser(null);
-        setCompanyId(null);
-        setRoles([]);
         setAuthError(error instanceof Error ? error.message : "Session validation failed.");
         setLoading(false);
       }
-      return null;
+      throw error;
     }
   }, [loadMembership]);
 
@@ -101,9 +113,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const activeSessionRequest = sessionRequest;
     const activeMembershipRequest = membershipRequest;
     const loadOnFocus = () => {
-      if (!disposed) void refreshSession();
+      if (!disposed) void refreshSession().catch(() => undefined);
     };
-    void refreshSession();
+    void refreshSession().catch(() => undefined);
     window.addEventListener("focus", loadOnFocus);
     return () => {
       disposed = true;
@@ -123,6 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setCompanyId(null);
     setRoles([]);
     setAuthError(null);
+    setMembershipError(null);
     setLoading(false);
   };
 
@@ -137,6 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         loading,
         authError,
+        membershipError,
         companyId,
         roles,
         isSuperAdmin: roles.includes("super_admin"),
