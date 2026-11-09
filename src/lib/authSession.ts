@@ -65,3 +65,29 @@ export async function verifyInvitation(tokenHash: string) {
 export async function updateAccountPassword(password: string) {
   return postAuth("update-password", { password });
 }
+
+export interface RegistrationInput {
+  businessName: string;
+  legalName: string;
+  fullName: string;
+  email: string;
+  password: string;
+  passwordConfirmation: string;
+  captchaToken: string;
+}
+
+export async function registerBusiness(input: RegistrationInput): Promise<string> {
+  const response = await fetch("/api/auth/register", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const result = await readResponse(response, "/api/auth/register") as AuthResponse & { message?: string };
+  if (!response.ok) throw new Error(result.error || "Registration failed.");
+  return result.message ?? "Check your email to confirm your account.";
+}
+
+export async function confirmSignup(tokenHash: string) {
+  return postAuth("confirm-signup", { token_hash: tokenHash });
+}

@@ -113,10 +113,10 @@ export default function LandingPage() {
             </Link>
 
             <Link
-              to="/auth/login"
+              to="/auth/signup"
               className="rounded-xl bg-cyan-400 px-5 py-3 text-sm font-semibold text-slate-950 transition hover:bg-cyan-300"
             >
-              Sign in
+              Create account
             </Link>
           </div>
         </div>
@@ -462,8 +462,8 @@ export default function LandingPage() {
             </h2>
 
             <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-slate-600">
-              Workspace access is invitation-only. Ask your company administrator to invite your
-              work email, then use the invitation link to set up your account.
+              Register your business to get your own secure workspace. Joining an existing company?
+              Use the invitation link from your administrator.
             </p>
 
             <div className="mt-10 flex flex-wrap justify-center gap-4">
