@@ -15,6 +15,7 @@ import TenantLayout from "./layouts/TenantLayout";
 import AdminLayout from "./layouts/AdminLayout";
 
 import Login from "./pages/auth/Login";
+import ConfirmSignup from "./pages/auth/ConfirmSignup";
 import Signup from "./pages/auth/Signup";
 import AcceptInvitation from "./pages/auth/AcceptInvitation";
 
@@ -57,6 +58,7 @@ const App = () => (
             <Route path="/auth/login" element={<Login />} />
             <Route path="/auth/signup" element={<Signup />} />
             <Route path="/auth/accept-invite" element={<AcceptInvitation />} />
+            <Route path="/auth/confirm" element={<ConfirmSignup />} />
             <Route path="/api-docs" element={<ApiDocs />} />
             <Route path="/sla" element={<SLA />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />

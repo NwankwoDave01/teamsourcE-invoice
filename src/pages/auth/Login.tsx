@@ -130,7 +130,9 @@ export default function Login() {
           </form>
 
           <p className="mt-6 text-center text-sm text-muted-foreground">
-            Access to {BRAND.name} is invitation-only. Ask your company administrator to invite you.
+            New to {BRAND.name}?{" "}
+            <Link to="/auth/signup" className="font-medium text-primary hover:underline">Create a business account</Link>.
+            Joining an existing company? Use the invitation link from your administrator.
           </p>
         </Card>
 
