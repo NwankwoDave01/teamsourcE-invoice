@@ -22,6 +22,57 @@ function publicUser(user: { id: string; email?: string; user_metadata?: Record<s
   };
 }
 
+const GENERIC_REGISTER_MESSAGE =
+  "If this email can be registered, we have sent a confirmation link. Confirm your email to activate your workspace.";
+const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
+
+function cleanText(value: unknown): string {
+  // eslint-disable-next-line no-control-regex
+  return typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim() : "";
+}
+
+export function parseRegistration(body: Record<string, unknown>):
+  | { ok: true; value: { email: string; password: string; businessName: string; legalName: string | null; fullName: string; captchaToken: string } }
+  | { ok: false; error: string } {
+  const email = cleanText(body.email).toLowerCase();
+  const password = typeof body.password === "string" ? body.password : "";
+  const confirmation = typeof body.passwordConfirmation === "string" ? body.passwordConfirmation : "";
+  const businessName = cleanText(body.businessName);
+  const legalName = cleanText(body.legalName);
+  const fullName = cleanText(body.fullName);
+  const captchaToken = typeof body.captchaToken === "string" ? body.captchaToken.trim() : "";
+  if (!captchaToken) return { ok: false, error: "Complete the CAPTCHA before registering." };
+  if (businessName.length < 2 || businessName.length > 160) return { ok: false, error: "Enter a business name between 2 and 160 characters." };
+  if (legalName.length > 200) return { ok: false, error: "Legal name must be 200 characters or fewer." };
+  if (fullName.length < 2 || fullName.length > 120) return { ok: false, error: "Enter your full name (2 to 120 characters)." };
+  if (email.length > 320 || !EMAIL_PATTERN.test(email)) return { ok: false, error: "Enter a valid work email." };
+  if (password.length < 12 || password.length > 128) return { ok: false, error: "Password must be between 12 and 128 characters long" };
+  if (password !== confirmation) return { ok: false, error: "Passwords do not match." };
+  return { ok: true, value: { email, password, businessName, legalName: legalName || null, fullName, captchaToken } };
+}
+
+function requestOrigin(req: ApiRequest): string {
+  const forwarded = req.headers["x-forwarded-proto"];
+  const protocol = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim()
+    ?? (process.env.NODE_ENV === "production" ? "https" : "http");
+  return `${protocol}://${req.headers.host}`;
+}
+
+async function completeRegistration(client: ReturnType<typeof createAuthClient>): Promise<boolean> {
+  try {
+    const { data, error } = await client.rpc("complete_business_registration");
+    if (error) {
+      console.error("[auth] Business registration provisioning failed", error.code ?? "unknown");
+      return false;
+    }
+    return Boolean(data && typeof data === "object" && (data as { ok?: unknown }).ok === true
+      && (data as { provisioned?: unknown }).provisioned === true);
+  } catch (error) {
+    console.error("[auth] Business registration provisioning unavailable", error);
+    return false;
+  }
+}
+
 const handler: ApiHandler = async (req, res) => {
   const action = req.query.action;
   if (typeof action !== "string") {
@@ -46,7 +97,7 @@ const handler: ApiHandler = async (req, res) => {
     return;
   }
 
-  if (!["login", "logout", "verify-invite", "update-password"].includes(action)) {
+  if (!["login", "logout", "verify-invite", "update-password", "register", "confirm-signup"].includes(action)) {
     respondJson(res, 404, { error: "Not found" });
     return;
   }
@@ -79,6 +130,75 @@ const handler: ApiHandler = async (req, res) => {
       });
       if (error || !data.user) {
         respondJson(res, 401, { error: error?.message ?? "Sign-in failed" });
+        return;
+      }
+      // Finish a confirmed self-service registration (no-op for everyone else).
+      await completeRegistration(client);
+      respondJson(res, 200, { user: publicUser(data.user) });
+      return;
+    }
+
+    if (action === "register") {
+      const parsed = parseRegistration(body);
+      if (!parsed.ok) {
+        respondJson(res, 400, { error: parsed.error });
+        return;
+      }
+      const { email, password, businessName, legalName, fullName, captchaToken } = parsed.value;
+      const { data, error } = await client.auth.signUp({
+        email,
+        password,
+        options: {
+          captchaToken,
+          emailRedirectTo: `${requestOrigin(req)}/auth/confirm`,
+          // Only intent + display data; company id and role are never accepted from clients.
+          data: {
+            display_name: fullName,
+            business_name: businessName,
+            legal_name: legalName,
+            tsflow_signup_intent: "business_registration",
+          },
+        },
+      });
+      if (error) {
+        const message = error.message.toLowerCase();
+        if (/captcha/.test(message)) {
+          respondJson(res, 400, { error: "CAPTCHA verification failed. Please try again." });
+          return;
+        }
+        if (error.status === 429 || /rate limit/.test(message)) {
+          respondJson(res, 429, { error: "Too many attempts. Please wait and try again." });
+          return;
+        }
+        if (/signups? not allowed|signup.*disabled/.test(message)) {
+          respondJson(res, 503, { error: "Registration is not available right now." });
+          return;
+        }
+        // Duplicate emails, pending invitations and trigger rejections all get the generic reply.
+        console.error("[auth/register] Sign-up rejected", error.status ?? "unknown");
+      }
+      if (data?.session) {
+        // Never grant a session before email confirmation, even if auto-confirm is misconfigured.
+        await client.auth.signOut();
+      }
+      respondJson(res, 200, { ok: true, message: GENERIC_REGISTER_MESSAGE });
+      return;
+    }
+
+    if (action === "confirm-signup") {
+      const tokenHash = typeof body.token_hash === "string" ? body.token_hash : "";
+      if (!tokenHash) {
+        respondJson(res, 400, { error: "Confirmation token is required" });
+        return;
+      }
+      const { data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: "email" });
+      if (error || !data.user || !data.user.email_confirmed_at) {
+        respondJson(res, 400, { error: "This confirmation link is invalid or has expired." });
+        return;
+      }
+      const provisioned = await completeRegistration(client);
+      if (!provisioned) {
+        respondJson(res, 409, { error: "Your email is confirmed, but the workspace could not be set up. Sign in to retry." });
         return;
       }
       respondJson(res, 200, { user: publicUser(data.user) });
