@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ApiRequest, ApiResponse } from "../../api/_lib/vercel";
-import authHandler from "../../api/auth/[action]";
+import authHandler, { parseRegistration, registrationOrigin } from "../../api/auth/[action]";
 import supabaseHandler from "../../api/supabase-proxy";
 
 const mocks = vi.hoisted(() => ({
@@ -117,6 +117,126 @@ afterEach(() => {
 });
 
 describe("Vercel-managed Supabase sessions", () => {
+  const registration = {
+    businessName: "Example Business", legalName: "", fullName: "Example User",
+    email: "USER@example.com", password: "example-password", passwordConfirmation: "example-password", captchaToken: "captcha-token",
+  };
+
+  it("normalizes registration details and rejects invalid fields", () => {
+    expect(parseRegistration({ ...registration, businessName: "  Example  Business  " })).toEqual({
+      ok: true, value: { email: "user@example.com", password: "example-password", businessName: "Example Business", legalName: null, fullName: "Example User", captchaToken: "captcha-token" },
+    });
+    for (const invalid of [{ businessName: "x" }, { fullName: "x" }, { legalName: "x".repeat(201) }, { email: "invalid" }, { password: "short" }, { passwordConfirmation: "different-password" }]) {
+      expect(parseRegistration({ ...registration, ...invalid }).ok).toBe(false);
+    }
+  });
+
+  it("requires CAPTCHA before any signup call", async () => {
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/register", { ...registration, captchaToken: "" }), response);
+    expect(result.statusCode).toBe(400);
+    expect(mocks.auth.signUp).not.toHaveBeenCalled();
+  });
+
+  it("passes CAPTCHA to Auth and ignores client tenant and role fields", async () => {
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/register", { ...registration, company_id: "attacker-tenant", role: "super_admin", tsflow_invitation_nonce: "attacker-nonce" }), response);
+    expect(result.statusCode).toBe(200);
+    expect(mocks.auth.signUp).toHaveBeenCalledWith({
+      email: "user@example.com", password: "example-password", options: {
+        captchaToken: "captcha-token", emailRedirectTo: "https://app.example.com/auth/confirm",
+        data: { display_name: "Example User", business_name: "Example Business", legal_name: null, tsflow_signup_intent: "business_registration" },
+      },
+    });
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("returns the same generic response for duplicates and invitation-trigger rejections", async () => {
+    const success = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/register", registration), success.response);
+    for (const message of ["User already registered", "This email has a pending company invitation."]) {
+      mocks.auth.signUp.mockResolvedValueOnce({ data: null, error: { message, status: 400 } });
+      const rejected = makeResponse();
+      await authHandler(makeRequest("POST", "/api/auth/register", registration), rejected.response);
+      expect(rejected.result.statusCode).toBe(200);
+      expect(rejected.result.body).toEqual(success.result.body);
+    }
+  });
+
+  it("reports server-side CAPTCHA rejection without claiming registration succeeded", async () => {
+    mocks.auth.signUp.mockResolvedValueOnce({ data: null, error: { message: "CAPTCHA verification failed", status: 400 } });
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/register", registration), response);
+    expect(result.statusCode).toBe(400);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("rejects unconfigured or insecure canonical origins and header-injected redirects", async () => {
+    vi.stubEnv("AUTH_SITE_URL", "");
+    expect(() => registrationOrigin()).toThrow();
+    vi.stubEnv("AUTH_SITE_URL", "http://app.example.com");
+    expect(() => registrationOrigin()).toThrow();
+    vi.stubEnv("AUTH_SITE_URL", "https://app.example.com");
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/register", registration, { host: "attacker.example", origin: "https://attacker.example" }), response);
+    expect(result.statusCode).toBe(403);
+    expect(mocks.auth.signUp).not.toHaveBeenCalled();
+  });
+
+  it("discards any premature signup session and never provisions on signup", async () => {
+    mocks.auth.signUp.mockResolvedValueOnce({ data: { user, session: activeSession }, error: null });
+    const { response } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/register", registration), response);
+    expect(mocks.auth.signOut).toHaveBeenCalledOnce();
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("does not provision an unconfirmed email or invalid confirmation token", async () => {
+    for (const verification of [{ data: { user }, error: null }, { data: { user: null }, error: { message: "expired" } }]) {
+      mocks.auth.verifyOtp.mockResolvedValueOnce(verification);
+      const { response, result } = makeResponse();
+      await authHandler(makeRequest("POST", "/api/auth/confirm-signup", { token_hash: "signup-token" }), response);
+      expect(result.statusCode).toBe(400);
+    }
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("persists HttpOnly cookies on token verification and provisions using the same client without arguments", async () => {
+    mocks.auth.verifyOtp.mockImplementation(async () => {
+      setCookie(mocks.createServerClient.mock.calls[0][2]);
+      return { data: { user: { ...user, email_confirmed_at: "2026-11-10T07:06:00Z" } }, error: null };
+    });
+    mocks.rpc.mockResolvedValueOnce({ data: { ok: true, provisioned: true }, error: null });
+    const { response, headers, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/confirm-signup", { token_hash: "signup-token", company_id: "other", role: "super_admin" }), response);
+    expect(result.statusCode).toBe(200);
+    expect(mocks.auth.verifyOtp).toHaveBeenCalledWith({ token_hash: "signup-token", type: "email" });
+    expect(mocks.rpc).toHaveBeenCalledWith("complete_business_registration");
+    expect(mocks.createServerClient).toHaveBeenCalledOnce();
+    expect(headers.get("set-cookie")).toEqual(expect.arrayContaining([expect.stringContaining("HttpOnly"), expect.stringContaining("Secure")]));
+    expect(JSON.stringify(result.body)).not.toContain("token");
+  });
+
+  it("blocks login when registration completion fails instead of silently granting access", async () => {
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: { code: "P0001", message: "provisioning failed" } });
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/login", { email: user.email, password: "example-password", captchaToken: "captcha-token" }), response);
+    expect(result.statusCode).toBe(409);
+    expect(mocks.auth.signOut).toHaveBeenCalledOnce();
+    expect(result.body).not.toHaveProperty("user");
+  });
+
+  it("tolerates only a missing pre-migration RPC for normal/invited accounts", async () => {
+    mocks.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202" } });
+    const normal = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/login", { email: user.email, password: "example-password", captchaToken: "captcha-token" }), normal.response);
+    expect(normal.result.statusCode).toBe(200);
+    mocks.auth.signInWithPassword.mockResolvedValueOnce({ data: { user: { ...user, user_metadata: { tsflow_signup_intent: "business_registration" } } }, error: null });
+    const pending = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/login", { email: user.email, password: "example-password", captchaToken: "captcha-token" }), pending.response);
+    expect(pending.result.statusCode).toBe(409);
+  });
+
   it("sets Secure, HttpOnly, SameSite=Lax cookies on login and never returns tokens", async () => {
     mocks.auth.signInWithPassword.mockImplementation(async () => {
       setCookie(mocks.createServerClient.mock.calls[0][2]);
