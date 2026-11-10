@@ -5,6 +5,7 @@ import supabaseHandler from "../../api/supabase-proxy";
 
 const mocks = vi.hoisted(() => ({
   createServerClient: vi.fn(),
+  rpc: vi.fn(),
   auth: {
     getSession: vi.fn(),
     getUser: vi.fn(),
@@ -13,6 +14,7 @@ const mocks = vi.hoisted(() => ({
     signOut: vi.fn(),
     verifyOtp: vi.fn(),
     updateUser: vi.fn(),
+    signUp: vi.fn(),
   },
 }));
 
@@ -96,6 +98,7 @@ beforeEach(() => {
   vi.stubEnv("NODE_ENV", "production");
   vi.stubEnv("SUPABASE_URL", "https://project.supabase.co");
   vi.stubEnv("SUPABASE_PUBLISHABLE_KEY", "publishable-key");
+  vi.stubEnv("AUTH_SITE_URL", "https://app.example.com");
   mocks.auth.getSession.mockReset().mockResolvedValue({ data: { session: activeSession }, error: null });
   mocks.auth.getUser.mockReset().mockResolvedValue({ data: { user }, error: null });
   mocks.auth.refreshSession.mockReset().mockResolvedValue({ data: { session: activeSession }, error: null });
@@ -103,7 +106,9 @@ beforeEach(() => {
   mocks.auth.signOut.mockReset().mockResolvedValue({ error: null });
   mocks.auth.verifyOtp.mockReset().mockResolvedValue({ data: { user }, error: null });
   mocks.auth.updateUser.mockReset().mockResolvedValue({ data: { user }, error: null });
-  mocks.createServerClient.mockReset().mockReturnValue({ auth: mocks.auth });
+  mocks.auth.signUp.mockReset().mockResolvedValue({ data: { user: null, session: null }, error: null });
+  mocks.rpc.mockReset().mockResolvedValue({ data: { ok: true, provisioned: false }, error: null });
+  mocks.createServerClient.mockReset().mockReturnValue({ auth: mocks.auth, rpc: mocks.rpc });
 });
 
 afterEach(() => {
