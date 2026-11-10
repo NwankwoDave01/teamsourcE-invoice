@@ -14,6 +14,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { useSearchParams } from "react-router-dom";
 import { TaxpayerCredentials } from "@/components/nrs/TaxpayerCredentials";
+import { normalizeTaxpayerTin, taxpayerProfileIsComplete } from "@/lib/nrs/tin";
 
 interface AppConnectionDraft {
   businessAddress: string;
@@ -35,6 +36,16 @@ const emptyAppDraft: AppConnectionDraft = {
   businessCity: "", businessCountry: "NG", businessPostalCode: "", businessState: "",
   contactEmail: "", entityFirsId: "", businessFirsId: "", businessWebhookUrl: "", contractId: "",
 };
+
+function nrsFromCompany(company: Partial<NrsCompanyExtra> | null | undefined) {
+  return {
+    nrs_business_id: company?.nrs_business_id ?? "",
+    nrs_service_id: company?.nrs_service_id ?? "",
+    nrs_environment: company?.nrs_environment ?? "sandbox",
+    nrs_sandbox_base_url: company?.nrs_sandbox_base_url ?? "",
+    nrs_production_base_url: company?.nrs_production_base_url ?? "",
+  };
+}
 
 export default function Settings() {
   const { data: company, isLoading } = useCurrentCompany();
@@ -64,7 +75,7 @@ export default function Settings() {
     if (company) {
       setForm({
         name: company.name,
-        tin: company.tin,
+        tin: company.tin ?? "",
         industry: company.industry ?? "",
         legal_name: company.legal_name ?? "",
         rc_number: company.rc_number ?? "",
@@ -80,7 +91,7 @@ export default function Settings() {
         country_code: company.country_code ?? "NG",
         industry_code: company.industry_code ?? "",
       });
-      setNrs(nrsFromCompany());
+      setNrs(nrsFromCompany(nrsCompany));
       try {
         const saved = localStorage.getItem(`teamsource-app-connection:${company.id}`);
         setAppDraft(saved ? { ...emptyAppDraft, ...JSON.parse(saved) } : {
@@ -98,22 +109,17 @@ export default function Settings() {
         setAppDraft(emptyAppDraft);
       }
     }
-  }, [company]);
-
-  function nrsFromCompany() {
-    return {
-      nrs_business_id: nrsCompany?.nrs_business_id ?? "",
-      nrs_service_id: nrsCompany?.nrs_service_id ?? "",
-      nrs_environment: nrsCompany?.nrs_environment ?? "sandbox",
-      nrs_sandbox_base_url: nrsCompany?.nrs_sandbox_base_url ?? "",
-      nrs_production_base_url: nrsCompany?.nrs_production_base_url ?? "",
-    };
-  }
+  }, [company, nrsCompany]);
 
   const handleSave = async () => {
     if (!company) return;
+    const tin = form.tin.trim() ? normalizeTaxpayerTin(form.tin) : null;
+    if (form.tin.trim() && !tin) {
+      toast.error("Enter a taxpayer TIN, or leave it blank until it is available.");
+      return;
+    }
     try {
-      await update.mutateAsync({ id: company.id, ...form });
+      await update.mutateAsync({ id: company.id, ...form, tin });
       toast.success("Company profile updated");
     } catch (e: unknown) {
       const err = e as Error;
@@ -131,11 +137,16 @@ export default function Settings() {
       toast.error("Only Company Admins can update NRS integration settings");
       return;
     }
+    const tin = form.tin.trim() ? normalizeTaxpayerTin(form.tin) : null;
+    if (form.tin.trim() && !tin) {
+      toast.error("Enter a taxpayer TIN, or leave it blank until it is available.");
+      return;
+    }
     try {
       await update.mutateAsync({
         id: company.id,
         ...nrs,
-        tin: form.tin,
+        tin,
         legal_name: form.legal_name,
         rc_number: form.rc_number,
         nrs_sandbox_base_url: nrs.nrs_sandbox_base_url || "https://eivc-k6z6d.ondigitalocean.app",
@@ -161,6 +172,7 @@ export default function Settings() {
 
   const appDraftComplete = Object.values(appDraft).every((value) => value.trim().length > 0);
   const connectionState = appDraftComplete ? "Configured locally — connection pending" : "Awaiting APP details";
+  const taxpayerProfileComplete = taxpayerProfileIsComplete(company);
 
   return (
     <div>
@@ -178,6 +190,14 @@ export default function Settings() {
           <TabsContent value="company">
             <Card className="p-6 shadow-elegant-sm">
               <h3 className="mb-4 text-base font-semibold">Company profile</h3>
+              {company && !taxpayerProfileComplete && (
+                <div role="status" className="mb-5 rounded-md border border-warning/40 bg-warning/10 p-4 text-sm">
+                  <p className="font-medium">Taxpayer profile incomplete</p>
+                  <p className="mt-1 text-muted-foreground">
+                    Add a valid TIN, registered legal name, contact email, street address, city and country in this page before NRS submission. Workspace access and your subscription status are unaffected.
+                  </p>
+                </div>
+              )}
               {isLoading ? (
                 <div className="flex items-center justify-center py-12 text-muted-foreground">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading…
@@ -192,7 +212,7 @@ export default function Settings() {
                   <Input value={form.industry} onChange={(e) => set("industry")(e.target.value)} />
                 </Field>
                 <Field label="TIN">
-                  <Input value={form.tin} onChange={(e) => set("tin")(e.target.value)} />
+                  <Input value={form.tin} onChange={(e) => set("tin")(e.target.value)} placeholder="Leave blank until issued" />
                 </Field>
                 <Field label="Registered legal name (NRS)">
                   <Input value={form.legal_name} onChange={(e) => set("legal_name")(e.target.value)} placeholder="As registered with CAC" />
@@ -247,7 +267,7 @@ export default function Settings() {
                 <Button variant="outline" onClick={() => {
                   if (!company) return;
                   setForm({
-                    name: company.name, tin: company.tin, industry: company.industry ?? "",
+                    name: company.name, tin: company.tin ?? "", industry: company.industry ?? "",
                     legal_name: company.legal_name ?? "", rc_number: company.rc_number ?? "", vat_number: company.vat_number ?? "",
                     email: company.email ?? "", phone: company.phone ?? "",
                     address_line1: company.address_line1 ?? "", address_line2: company.address_line2 ?? "",
@@ -464,7 +484,7 @@ export default function Settings() {
                           variant="outline"
                           onClick={() => {
                             if (!company) return;
-                            setNrs(nrsFromCompany());
+                            setNrs(nrsFromCompany(nrsCompany));
                             try {
                               const saved = localStorage.getItem(`teamsource-app-connection:${company.id}`);
                               setAppDraft(saved ? { ...emptyAppDraft, ...JSON.parse(saved) } : emptyAppDraft);

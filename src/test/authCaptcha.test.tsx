@@ -9,6 +9,7 @@ import LandingPage from "@/pages/LandingPage";
 const mocks = vi.hoisted(() => ({
   signInWithPassword: vi.fn(),
   registerBusiness: vi.fn(),
+  resendSignupConfirmation: vi.fn(),
   refreshSession: vi.fn(),
   toast: vi.fn(),
   membershipError: null as string | null,
@@ -17,6 +18,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("@/lib/authSession", () => ({
   signInWithPassword: mocks.signInWithPassword,
   registerBusiness: mocks.registerBusiness,
+  resendSignupConfirmation: mocks.resendSignupConfirmation,
 }));
 
 vi.mock("@/contexts/AuthContext", () => ({
@@ -58,6 +60,7 @@ beforeEach(() => {
   vi.stubEnv("VITE_TURNSTILE_SITE_KEY", "turnstile-test-site-key");
   mocks.signInWithPassword.mockReset().mockResolvedValue({ id: "user-a", email: "user@example.com" });
   mocks.registerBusiness.mockReset().mockResolvedValue("If this email can be registered, check your email to confirm.");
+  mocks.resendSignupConfirmation.mockReset().mockResolvedValue("If this email can be registered, check your email to confirm.");
   mocks.refreshSession.mockReset().mockResolvedValue({ id: "user-a", email: "user@example.com" });
   mocks.toast.mockReset();
   mocks.membershipError = null;
@@ -73,6 +76,7 @@ function renderLogin() {
     <MemoryRouter initialEntries={["/auth/login"]}>
       <Routes>
         <Route path="/auth/login" element={<Login />} />
+        <Route path="/auth/accept-invite" element={<div>Accept invitation page</div>} />
         <Route path="/app/dashboard" element={<div>Workspace dashboard</div>} />
       </Routes>
     </MemoryRouter>,
@@ -97,6 +101,18 @@ describe("Turnstile authentication", () => {
       "valid-password",
       "turnstile-test-token",
     );
+  });
+
+  it("sends an authenticated user with a pending invitation directly to acceptance", async () => {
+    mocks.signInWithPassword.mockResolvedValueOnce({
+      id: "user-a", email: "user@example.com", invitation_pending: true,
+    });
+    renderLogin();
+    fillLoginForm();
+    fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await screen.findByText("Accept invitation page");
   });
 
   it("blocks sign-in when the CAPTCHA token is missing or expired", async () => {
@@ -210,6 +226,24 @@ describe("Turnstile authentication", () => {
       password: "secure-password", passwordConfirmation: "secure-password", captchaToken: "turnstile-test-token",
     }));
     expect(mocks.refreshSession).not.toHaveBeenCalled();
+  });
+
+  it("offers a CAPTCHA-protected confirmation resend after registration", async () => {
+    render(
+      <MemoryRouter initialEntries={["/auth/signup"]}>
+        <Signup />
+      </MemoryRouter>,
+    );
+    for (const [label, value] of [["Business name", "Test Business"], ["Full name", "Test User"], ["Work email", "user@example.com"], ["Password", "secure-password"], ["Confirm password", "secure-password"]]) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    }
+    fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+    await screen.findByText("Check your email");
+
+    fireEvent.click(screen.getByRole("button", { name: "Complete CAPTCHA" }));
+    fireEvent.click(screen.getByRole("button", { name: "Resend confirmation email" }));
+    await waitFor(() => expect(mocks.resendSignupConfirmation).toHaveBeenCalledWith("user@example.com", "turnstile-test-token"));
   });
 
   it("links to business registration while retaining separate invitation guidance", async () => {

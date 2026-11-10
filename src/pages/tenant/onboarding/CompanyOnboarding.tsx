@@ -1,69 +1,55 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { Building2, Loader2, MapPin, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { recoverBusinessWorkspace } from "@/lib/authSession";
+import { fetchInvitationStatus, type InvitationDetails } from "@/lib/tenantAdmin";
 import { toast } from "sonner";
 import { BrandMark } from "@/components/shared/BrandMark";
 
 export default function CompanyOnboarding() {
   const { user, refreshMembership, signOut } = useAuth();
   const [name, setName] = useState("");
-  const [tin, setTin] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [saving, setSaving] = useState(false);
+  const [checkingInvitation, setCheckingInvitation] = useState(true);
+  const [invitation, setInvitation] = useState<InvitationDetails | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setCheckingInvitation(false);
+      return;
+    }
+    fetchInvitationStatus()
+      .then((details) => { if (!cancelled) setInvitation(details.pending ? details : null); })
+      .catch(() => { if (!cancelled) setInvitation(null); })
+      .finally(() => { if (!cancelled) setCheckingInvitation(false); });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
     if (!user) return;
-    if (!name.trim()) {
-      toast.error("Business name is required");
+    if (name.trim().length < 2) {
+      toast.error("Business name must be at least 2 characters.");
       return;
     }
     setSaving(true);
     try {
-      const { data: company, error: cErr } = await supabase
-        .from("companies")
-        .insert({
-          name: name.trim(),
-          tin: tin.trim() || "NG-PENDING",
-          industry: "Other",
-          plan: "Starter",
-          status: "Trial",
-          city: city.trim() || null,
-          state: state.trim() || null,
-          country_code: "NG",
-          created_by: user.id,
-        } as never)
-        .select()
-        .single();
-      if (cErr) throw cErr;
-
-      const [{ error: mErr }, { error: rErr }] = await Promise.all([
-        supabase.from("company_members").insert({
-          company_id: company.id,
-          user_id: user.id,
-          status: "Active",
-          last_active_at: new Date().toISOString(),
-        } as never),
-        supabase.from("user_roles").insert({
-          user_id: user.id,
-          company_id: company.id,
-          role: "company_admin",
-        } as never),
-      ]);
-      if (mErr) throw mErr;
-      if (rErr) throw rErr;
-
-      toast.success("Workspace created");
+      await recoverBusinessWorkspace({ businessName: name, city, state });
       await refreshMembership();
-    } catch (e: unknown) {
-      const err = e as Error;
-      toast.error("Failed to create workspace", { description: err.message });
+      toast.success("Workspace recovered. Add your taxpayer details in Company Settings before NRS submission.");
+    } catch (error) {
+      if (error && typeof error === "object" && "invitationPending" in error && error.invitationPending === true) {
+        setInvitation({ pending: true, companyName: "your invited company", role: "staff_user", needsPasswordSetup: false });
+      }
+      toast.error("Workspace recovery failed", { description: error instanceof Error ? error.message : "Please retry." });
     } finally {
       setSaving(false);
     }
@@ -74,85 +60,54 @@ export default function CompanyOnboarding() {
       <div className="w-full max-w-lg">
         <div className="mb-6 flex flex-col items-center gap-2 text-center">
           <BrandMark />
-          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Set up your workspace</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-tight">Workspace access</h1>
           <p className="text-sm text-muted-foreground">
-            Create your TeamSource workspace first. You can connect your NRS / APP integration from Settings next.
+            This signed-in account has no active company membership. Accept a pending invitation or use the secure workspace recovery form.
           </p>
         </div>
 
-        <Card className="p-6 shadow-elegant-sm">
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div className="space-y-2">
-              <Label htmlFor="business-name" className="flex items-center gap-1.5 text-sm">
-                <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                Business name <span className="text-destructive">*</span>
-              </Label>
-              <Input
-                id="business-name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Adeola Ventures Ltd"
-                autoFocus
-              />
+        <Card className="space-y-5 p-6 shadow-elegant-sm">
+          {checkingInvitation ? (
+            <div className="flex items-center justify-center py-6 text-sm text-muted-foreground">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Checking invitations…
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="tin" className="flex items-center gap-1.5 text-sm">
-                <ShieldCheck className="h-3.5 w-3.5 text-muted-foreground" />
-                Tax Identification Number (TIN)
-              </Label>
-              <Input
-                id="tin"
-                value={tin}
-                onChange={(e) => setTin(e.target.value)}
-                placeholder="e.g. NG-44192011"
-                className="font-mono"
-              />
-              <p className="text-[11px] text-muted-foreground">
-                You can add or update this later from Settings.
-              </p>
+          ) : invitation ? (
+            <div className="space-y-3 rounded-md border border-info/40 bg-info/10 p-4">
+              <div className="flex items-center gap-2 font-medium"><ShieldCheck className="h-4 w-4" /> Pending invitation</div>
+              <p className="text-sm text-muted-foreground">You have an invitation to join {invitation.companyName}. Your access remains inactive until you accept it.</p>
+              <Button asChild className="w-full"><Link to="/auth/accept-invite">Review and accept invitation</Link></Button>
             </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div className="rounded-md border border-warning/40 bg-warning/10 p-4 text-sm">
+                <p className="font-medium">Workspace recovery</p>
+                <p className="mt-1 text-muted-foreground">The server will verify this account and create at most one workspace. A TIN is not required to get workspace access; enter taxpayer details later in Company Settings before using NRS submission.</p>
+              </div>
               <div className="space-y-2">
-                <Label htmlFor="city" className="flex items-center gap-1.5 text-sm">
-                  <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                  City
+                <Label htmlFor="business-name" className="flex items-center gap-1.5 text-sm">
+                  <Building2 className="h-3.5 w-3.5 text-muted-foreground" /> Business name
                 </Label>
-                <Input
-                  id="city"
-                  value={city}
-                  onChange={(e) => setCity(e.target.value)}
-                  placeholder="Lagos"
-                />
+                <Input id="business-name" value={name} onChange={(event) => setName(event.target.value)} maxLength={160} required />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="state" className="text-sm">State</Label>
-                <Input
-                  id="state"
-                  value={state}
-                  onChange={(e) => setState(e.target.value)}
-                  placeholder="Lagos"
-                />
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="city" className="flex items-center gap-1.5 text-sm"><MapPin className="h-3.5 w-3.5 text-muted-foreground" /> City</Label>
+                  <Input id="city" value={city} onChange={(event) => setCity(event.target.value)} maxLength={120} />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="state">State</Label>
+                  <Input id="state" value={state} onChange={(event) => setState(event.target.value)} maxLength={120} />
+                </div>
               </div>
-            </div>
-
-            <div className="flex items-center justify-between gap-3 pt-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => signOut()}
-                className="text-muted-foreground"
-              >
-                Sign out
-              </Button>
-              <Button type="submit" disabled={saving} className="min-w-[160px] gap-1.5">
-                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-                {saving ? "Creating…" : "Create workspace & continue"}
-              </Button>
-            </div>
-          </form>
+              <div className="flex items-center justify-between gap-3 pt-2">
+                <Button type="button" variant="ghost" size="sm" onClick={() => void signOut()} className="text-muted-foreground">Sign out</Button>
+                <Button type="submit" disabled={saving} className="min-w-[160px] gap-1.5">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {saving ? "Recovering…" : "Recover workspace"}
+                </Button>
+              </div>
+            </form>
+          )}
         </Card>
       </div>
     </div>

@@ -74,7 +74,7 @@ beforeEach(() => {
   membershipQueryError = null;
   roleQueryError = null;
   mocks.invoke.mockReset().mockResolvedValue({
-    data: { ok: true, company_name: "Acme Nigeria", role: "finance_officer", email: "user@example.com" },
+    data: { ok: true, pending: true, needs_password_setup: true, company_name: "Acme Nigeria", role: "finance_officer", email: "user@example.com" },
     error: null,
   });
   mocks.getCurrentUser.mockReset().mockResolvedValue(null);
@@ -411,7 +411,7 @@ describe("Authentication & Invitation Flow Safeguards", () => {
   });
 
   describe("ProtectedRoute safeguards", () => {
-    it("blocks tenant routes for users without active company access and avoids redirect loop", async () => {
+    it("keeps authenticated recovery sessions out of login redirects so TenantLayout can show recovery", async () => {
       mocks.getCurrentUser.mockResolvedValueOnce(user);
       activeMember = null; // No active company
       render(
@@ -427,11 +427,9 @@ describe("Authentication & Invitation Flow Safeguards", () => {
         </MemoryRouter>
       );
 
-      // Should redirect to login, NOT render tenant content
-      await screen.findByText("Login Page");
-      expect(screen.queryByText("Tenant Content")).not.toBeInTheDocument();
-      expect(screen.getByText("no_active_membership")).toBeInTheDocument();
-      expect(screen.getByTestId("authenticated-user")).toHaveTextContent("user-a");
+      // TenantLayout replaces the outlet with recovery/invitation UI for this session.
+      await screen.findByText("Tenant Content");
+      expect(screen.queryByText("Login Page")).not.toBeInTheDocument();
     });
 
     it("blocks company routes and shows a retry when membership could not be retrieved", async () => {
@@ -475,17 +473,19 @@ describe("Authentication & Invitation Flow Safeguards", () => {
     });
   });
 
-  describe("Invitation-only signup", () => {
-    it("does not submit public signup or create a workspace", async () => {
+  describe("Self-service signup", () => {
+    it("shows the business registration form and keeps invitation guidance", async () => {
       render(
         <MemoryRouter initialEntries={["/auth/signup"]}>
           <Signup />
         </MemoryRouter>
       );
 
-      expect(await screen.findByText("Workspace access is invitation-only")).toBeInTheDocument();
-      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Create workspace" })).not.toBeInTheDocument();
+      expect(await screen.findByText("Create a business account")).toBeInTheDocument();
+      expect(screen.getByLabelText("Business name")).toBeInTheDocument();
+      expect(screen.getByLabelText("Work email")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Create account" })).toBeInTheDocument();
+      expect(screen.getByText(/Joining an existing company\?/)).toBeInTheDocument();
     });
   });
 });

@@ -8,6 +8,7 @@ import {
   type InvoiceAmountHeader,
   type InvoiceAmountLine,
 } from "../_shared/invoiceMonetaryTotals.ts";
+import { isUsableTaxpayerTin } from "../_shared/tin.ts";
 
 const cors = {
   "Access-Control-Allow-Origin": "https://e-invoicing.teamsource.net",
@@ -233,9 +234,9 @@ function validateInput(
     errors.push("Supply date must be a real calendar date in YYYY-MM-DD format");
   }
 
-  if (!company?.tin) errors.push("Supplier TIN is required");
+  if (!isUsableTaxpayerTin(company?.tin)) errors.push("Supplier TIN is missing or is a placeholder; add a valid taxpayer TIN before NRS submission");
   if (!company?.email) errors.push("Supplier email is required");
-  if (!customer?.tin) errors.push("Customer TIN is required");
+  if (!isUsableTaxpayerTin(customer?.tin)) errors.push("Customer TIN is missing or is a placeholder");
   if (!customer?.email) errors.push("Customer email is required");
   if (!lines.length) errors.push("At least one invoice line is required");
 

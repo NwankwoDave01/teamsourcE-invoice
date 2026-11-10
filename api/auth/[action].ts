@@ -64,21 +64,25 @@ export function registrationOrigin(): string {
   return url.origin;
 }
 
-async function completeRegistration(client: ReturnType<typeof createAuthClient>, user: { user_metadata?: Record<string, unknown> }): Promise<boolean> {
+async function completeRegistration(client: ReturnType<typeof createAuthClient>, user: { user_metadata?: Record<string, unknown> }): Promise<{ provisioned: boolean; invitationPending: boolean }> {
   const { data, error } = await client.rpc("complete_business_registration");
   if (error) {
     // Source can ship before the reviewed migration. Only a missing RPC is tolerated
     // for pre-existing accounts; actual provisioning failures are never ignored.
-    if (error.code === "PGRST202" && user.user_metadata?.tsflow_signup_intent !== "business_registration") return false;
+    if (error.code === "PGRST202" && user.user_metadata?.tsflow_signup_intent !== "business_registration") {
+      return { provisioned: false, invitationPending: false };
+    }
     throw new Error("Your workspace setup could not be completed. Please sign in again to retry.");
   }
-  if (!data || typeof data !== "object" || data.ok !== true || typeof data.provisioned !== "boolean") {
+  if (!data || typeof data !== "object" || data.ok !== true || typeof data.provisioned !== "boolean"
+    || (data.invitation_pending !== undefined && typeof data.invitation_pending !== "boolean")) {
     throw new Error("Workspace setup could not be confirmed. Please sign in again to retry.");
   }
-  if (!data.provisioned && user.user_metadata?.tsflow_signup_intent === "business_registration") {
+  const invitationPending = data.invitation_pending === true;
+  if (!data.provisioned && !invitationPending && user.user_metadata?.tsflow_signup_intent === "business_registration") {
     throw new Error("Your registration is unavailable or expired. Please contact your administrator.");
   }
-  return data.provisioned;
+  return { provisioned: data.provisioned, invitationPending };
 }
 
 const handler: ApiHandler = async (req, res) => {
@@ -105,7 +109,7 @@ const handler: ApiHandler = async (req, res) => {
     return;
   }
 
-  if (!["login", "logout", "verify-invite", "update-password", "register", "confirm-signup"].includes(action)) {
+  if (!["login", "logout", "verify-invite", "update-password", "register", "resend-confirmation", "confirm-signup", "recover-workspace"].includes(action)) {
     respondJson(res, 404, { error: "Not found" });
     return;
   }
@@ -121,6 +125,32 @@ const handler: ApiHandler = async (req, res) => {
   try {
     const client = createAuthClient(req, res);
     const body = requestBody(req);
+
+    if (action === "resend-confirmation") {
+      const email = cleanText(body.email).toLowerCase();
+      const captchaToken = typeof body.captchaToken === "string" ? body.captchaToken.trim() : "";
+      if (!EMAIL_PATTERN.test(email) || email.length > 320 || !captchaToken) {
+        respondJson(res, 400, { error: "A valid email and CAPTCHA are required." });
+        return;
+      }
+      const origin = registrationOrigin();
+      if (req.headers.origin !== origin) {
+        respondJson(res, 403, { error: "Confirmation resend is not available from this site." });
+        return;
+      }
+      const { error } = await client.auth.resend({
+        type: "signup",
+        email,
+        options: { captchaToken, emailRedirectTo: `${origin}/auth/confirm` },
+      });
+      if (error && /captcha/i.test(error.message)) {
+        respondJson(res, 400, { error: "CAPTCHA verification failed. Please try again." });
+        return;
+      }
+      if (error) console.error("[auth/resend-confirmation] Resend rejected", error.status ?? "unknown");
+      respondJson(res, 200, { ok: true, message: GENERIC_REGISTER_MESSAGE });
+      return;
+    }
 
     if (action === "login") {
       const email = typeof body.email === "string" ? body.email.trim() : "";
@@ -141,14 +171,17 @@ const handler: ApiHandler = async (req, res) => {
         return;
       }
       // Finish a confirmed self-service registration (no-op for everyone else).
+      let completion: { provisioned: boolean; invitationPending: boolean };
       try {
-        await completeRegistration(client, data.user);
+        completion = await completeRegistration(client, data.user);
       } catch (error) {
         await client.auth.signOut();
         respondJson(res, 409, { error: error instanceof Error ? error.message : "Workspace setup failed. Please sign in to retry." });
         return;
       }
-      respondJson(res, 200, { user: publicUser(data.user) });
+      respondJson(res, 200, {
+        user: { ...publicUser(data.user), invitation_pending: completion.invitationPending },
+      });
       return;
     }
 
@@ -215,12 +248,48 @@ const handler: ApiHandler = async (req, res) => {
         respondJson(res, 400, { error: "This confirmation link is invalid or has expired." });
         return;
       }
-      const provisioned = await completeRegistration(client, data.user);
-      if (!provisioned) {
+      const completion = await completeRegistration(client, data.user);
+      if (!completion.provisioned && !completion.invitationPending) {
         respondJson(res, 409, { error: "Your email is confirmed, but the workspace could not be set up. Sign in to retry." });
         return;
       }
-      respondJson(res, 200, { user: publicUser(data.user) });
+      respondJson(res, 200, {
+        user: { ...publicUser(data.user), invitation_pending: completion.invitationPending },
+      });
+      return;
+    }
+
+    if (action === "recover-workspace") {
+      const session = await getAuthenticatedSession(client);
+      if (!session) {
+        respondJson(res, 401, { error: "Sign in to recover your workspace." });
+        return;
+      }
+      const businessName = cleanText(body.businessName);
+      const city = cleanText(body.city);
+      const state = cleanText(body.state);
+      if (businessName.length < 2 || businessName.length > 160 || city.length > 120 || state.length > 120) {
+        respondJson(res, 400, { error: "Enter a business name between 2 and 160 characters. City and state must be 120 characters or fewer." });
+        return;
+      }
+      const { data, error } = await client.rpc("recover_business_registration", {
+        p_business_name: businessName,
+        p_city: city || null,
+        p_state: state || null,
+      });
+      if (error) {
+        respondJson(res, 409, { error: "Workspace recovery could not be completed. Sign in again or contact your company administrator." });
+        return;
+      }
+      if (data && typeof data === "object" && data.invitation_pending === true) {
+        respondJson(res, 409, { error: "A pending company invitation must be accepted first.", invitation_pending: true });
+        return;
+      }
+      if (!data || typeof data !== "object" || data.ok !== true || data.provisioned !== true) {
+        respondJson(res, 409, { error: "Workspace recovery could not be confirmed. Please retry." });
+        return;
+      }
+      respondJson(res, 200, { ok: true, user: publicUser(session.user) });
       return;
     }
 

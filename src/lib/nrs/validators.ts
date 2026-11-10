@@ -8,6 +8,7 @@ import {
   approxEqual,
   round2,
 } from "./codes";
+import { isUsableTaxpayerTin } from "./tin";
 
 interface ValidateInput {
   invoice: AppDatabase["public"]["Tables"]["invoices"]["Row"];
@@ -32,6 +33,10 @@ function checkTin(value: string | null | undefined, field: string, opts: { requi
     return issues;
   }
   const v = value.trim();
+  if (!isUsableTaxpayerTin(v)) {
+    issues.push(err(field, "TIN_INVALID", "TIN is a placeholder and cannot identify a taxpayer."));
+    return issues;
+  }
   if (!/\d/.test(v)) {
     issues.push(warn(field, "TIN_FORMAT", "TIN does not contain digits — please double-check."));
   } else if (v.length < 8) {

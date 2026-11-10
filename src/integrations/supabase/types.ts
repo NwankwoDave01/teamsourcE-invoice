@@ -89,7 +89,7 @@ export type Database = {
           rc_number: string | null
           state: string | null
           status: Database["public"]["Enums"]["company_status"]
-          tin: string
+          tin: string | null
           updated_at: string
           vat_number: string | null
         }
@@ -123,7 +123,7 @@ export type Database = {
           rc_number?: string | null
           state?: string | null
           status?: Database["public"]["Enums"]["company_status"]
-          tin: string
+          tin?: string | null
           updated_at?: string
           vat_number?: string | null
         }
@@ -157,7 +157,7 @@ export type Database = {
           rc_number?: string | null
           state?: string | null
           status?: Database["public"]["Enums"]["company_status"]
-          tin?: string
+          tin?: string | null
           updated_at?: string
           vat_number?: string | null
         }

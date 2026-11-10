@@ -35,6 +35,10 @@ export default function ConfirmSignup() {
       if (!confirmed) throw new Error("The confirmation session could not be established. Sign in to retry.");
       const session = await refreshSession(true);
       if (!session || session.id !== confirmed.id) throw new Error("The confirmed session could not be verified. Sign in to retry.");
+      if (confirmed.invitation_pending) {
+        navigate("/auth/accept-invite", { replace: true });
+        return;
+      }
       const membership = await loadActiveMembership(session.id);
       if (!membership.companyId) throw new Error("Active workspace access could not be confirmed. Sign in to retry.");
       navigate("/app/dashboard", { replace: true });

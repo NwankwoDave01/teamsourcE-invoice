@@ -57,7 +57,6 @@ Deno.serve(async (req: Request) => {
 
     // Read-only invitation preflight. This never activates tenant access.
     if (action === "invitation_status") {
-      if (!actor.invited_at) return json({ ok: true, pending: false });
       const { data: invitation, error: invitationError } = await admin
         .from("company_invitations")
         .select("id, company_id, role, expires_at")
@@ -91,18 +90,28 @@ Deno.serve(async (req: Request) => {
         company_name: company?.name ?? "your company",
         role: invitation.role,
         expires_at: invitation.expires_at,
+        needs_password_setup: Boolean(actor.invited_at),
       });
     }
 
     // Accept only a real Auth-invite account. The service-role RPC atomically activates
     // the invited membership and consumes the matching invitation in one transaction.
     if (isAcceptance) {
-      if (!actor.invited_at) {
-        return json({ ok: true, accepted: false, message: "No pending invitation" });
-      }
+      const { data: invitation, error: invitationLookupError } = await admin
+        .from("company_invitations")
+        .select("company_id")
+        .eq("email", actor.email.toLowerCase())
+        .eq("status", "pending")
+        .gt("expires_at", new Date().toISOString())
+        .order("created_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      if (invitationLookupError) throw invitationLookupError;
+      if (!invitation?.company_id) return json({ ok: true, accepted: false, message: "No pending invitation" });
       const { data, error } = await admin.rpc("tenant_admin_accept_invitation", {
         p_user_id: actor.id,
         p_email: actor.email.toLowerCase(),
+        p_company_id: invitation.company_id,
       });
       if (error) {
         if (error.message.includes("does not have a valid invitation")) {
@@ -155,82 +164,39 @@ Deno.serve(async (req: Request) => {
       const displayName = typeof body.display_name === "string" ? body.display_name.trim().slice(0, 120) : "";
       if (!emailPattern.test(email) || email.length > 254) return json({ ok: false, error: "Enter a valid email address" }, 400);
       if (!allowedRoles.has(role)) return json({ ok: false, error: "Choose a supported company role" }, 400);
-      // Expire stale invitations before enforcing one pending invite per email.
-      const now = new Date().toISOString();
-      const { error: expireError } = await admin.from("company_invitations")
-        .update({ status: "revoked" }).eq("status", "pending").lte("expires_at", now);
-      if (expireError) throw expireError;
-
-      const { data: pendingInvitation, error: pendingError } = await admin
-        .from("company_invitations").select("id, company_id")
-        .eq("email", email).eq("status", "pending").gt("expires_at", now).maybeSingle();
-      if (pendingError) throw pendingError;
-      if (pendingInvitation) {
-        return json({
-          ok: false,
-          error: pendingInvitation.company_id === companyId
-            ? "A pending invitation already exists. Have the user accept it or revoke it before re-inviting."
-            : "This email has a pending invitation for another company. Revoke it or have the user accept it first.",
-        }, 409);
-      }
-
-      // Locate an existing auth identity. Current app resolves one active tenant per login;
-      // do not silently attach a user already belonging to another tenant.
-      let existingUser: { id: string; email?: string; invited_at?: string | null } | null = null;
-      for (let page = 1; page <= 20; page++) {
-        const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
-        if (error) throw new Error("Could not check whether this email already has an account");
-        existingUser = data.users.find(u => u.email?.toLowerCase() === email) as { id: string; email?: string; invited_at?: string | null } | undefined ?? null;
-        if (existingUser || data.users.length < 1000) break;
-      }
-
-      if (existingUser) {
-        const { data: memberships, error: existingError } = await admin
-          .from("company_members").select("company_id, status")
-          .eq("user_id", existingUser.id);
-        if (existingError) throw existingError;
-        if ((memberships ?? []).some(m => m.status === "Active" && m.company_id !== companyId)) {
-          return json({ ok: false, error: "This account already belongs to another tenant. Use a separate login for this tenant." }, 409);
-        }
-        if (existingUser.invited_at && !(memberships ?? []).some(m => m.status === "Active")) {
-          return json({ ok: false, error: "This account was created by an invitation and has not completed acceptance. The user must accept a valid invitation before access can be granted." }, 409);
-        }
-        if ((memberships ?? []).some(m => m.company_id === companyId && m.status === "Active")) {
-          return json({ ok: false, error: "This person is already an active member of this company." }, 409);
-        }
-        // A user created by an invitation must not be made active by repeating
-        // the invite action. Only the signed-in invite acceptance RPC may activate it.
-        if ((memberships ?? []).some(m => m.company_id === companyId && m.status === "Invited")) {
-          return json({
-            ok: false,
-            error: "This account already has a pending or incomplete invitation for this company. The user must accept the invitation before access can be activated.",
-          }, 409);
-        }
-
-        const { error: memberError } = await admin.from("company_members").upsert({
-          company_id: companyId, user_id: existingUser.id, status: "Active", last_active_at: new Date().toISOString(),
-        }, { onConflict: "company_id,user_id" });
-        if (memberError) throw memberError;
-        const { error: deleteRoleError } = await admin.from("user_roles").delete()
-          .eq("company_id", companyId).eq("user_id", existingUser.id);
-        if (deleteRoleError) throw deleteRoleError;
-        const { error: roleError } = await admin.from("user_roles").insert({
-          company_id: companyId, user_id: existingUser.id, role,
-        });
-        if (roleError) throw roleError;
-        return json({ ok: true, mode: "added_existing_user", message: "Existing account added to this company", user_id: existingUser.id });
-      }
-
-      // Bind Auth user creation to this server-initiated invitation. The random nonce
-      // allows the auth.users trigger to distinguish this admin invite from self-signup.
       const invitationNonce = crypto.randomUUID();
-      const { data: invitation, error: insertError } = await admin.from("company_invitations").insert({
-        company_id: companyId, email, role, invited_by: actor.id, status: "pending",
-        auth_invite_nonce: invitationNonce,
-      }).select("id, email, role, expires_at").single();
-      if (insertError) {
-        if (insertError.code === "23505") return json({ ok: false, error: "A pending invitation already exists for this email." }, 409);
-        throw insertError;
+      const { data: created, error: createError } = await admin.rpc("tenant_admin_create_invitation", {
+        p_company_id: companyId,
+        p_email: email,
+        p_role: role,
+        p_invited_by: actor.id,
+        p_auth_invite_nonce: invitationNonce,
+      });
+      if (createError) {
+        if (createError.code === "42501") return json({ ok: false, error: "Active company administrator permission is required." }, 403);
+        if (createError.code === "P0001" || createError.code === "23505") {
+          return json({ ok: false, error: "This email already has an invitation or workspace membership that must be resolved first." }, 409);
+        }
+        throw createError;
+      }
+
+      const invitationId = typeof created?.invitation_id === "string" ? created.invitation_id : "";
+      const existingUserId = typeof created?.auth_user_id === "string" ? created.auth_user_id : null;
+      if (!invitationId) throw new Error("Invitation record could not be confirmed");
+      const { data: invitation, error: invitationReadError } = await admin.from("company_invitations")
+        .select("id, email, role, expires_at").eq("id", invitationId).single();
+      if (invitationReadError || !invitation) throw new Error("Invitation record could not be loaded");
+
+      // Existing identities receive a pending Invited membership. Their next
+      // sign-in presents explicit acceptance; no role or membership is activated here.
+      if (existingUserId) {
+        return json({
+          ok: true,
+          mode: "existing_user_invitation",
+          user_id: existingUserId,
+          invitation,
+          message: "Invitation created. The user can sign in and explicitly accept it.",
+        }, 201);
       }
 
       // This backend serves the production TS-Flow app. Invitations must always
@@ -246,7 +212,7 @@ Deno.serve(async (req: Request) => {
         },
       });
       if (sendError) {
-        await admin.from("company_invitations").delete().eq("id", invitation.id);
+        await admin.from("company_invitations").delete().eq("id", invitationId);
         // Keep the actionable Auth error visible to the company admin; do not expose
         // request headers or credentials.
         return json({
@@ -258,8 +224,8 @@ Deno.serve(async (req: Request) => {
       // The nonce is one-use for the auth.users insert only. Clear the database copy
       // after Auth succeeds, then best-effort remove the marker from user metadata.
       const { error: clearNonceError } = await admin.from("company_invitations")
-        .update({ auth_invite_nonce: null }).eq("id", invitation.id);
-      if (clearNonceError) console.error("Unable to clear invitation nonce", { invitationId: invitation.id });
+        .update({ auth_invite_nonce: null }).eq("id", invitationId);
+      if (clearNonceError) console.error("Unable to clear invitation nonce", { invitationId });
       if (inviteData?.user?.id) {
         const { error: metadataError } = await admin.auth.admin.updateUserById(inviteData.user.id, {
           user_metadata: { display_name: inviteDisplayName },

@@ -96,11 +96,14 @@ export default function AcceptInvitation() {
       if (user) {
         try {
           const details = await fetchInvitationStatus();
+          if (!details.pending) throw new Error("No active invitation detected. Please open the invitation link from your email.");
           if (!cancelled) {
             setInvitation({
+              pending: true,
               companyName: details.companyName,
               role: details.role,
               email: details.email || user.email || undefined,
+              needsPasswordSetup: details.needsPasswordSetup,
             });
             setLoading(false);
           }
@@ -143,10 +146,13 @@ export default function AcceptInvitation() {
 
       // Session established; now fetch company and role
       const details = await fetchInvitationStatus();
+      if (!details.pending) throw new Error("No valid pending invitation was found for this account.");
       setInvitation({
+        pending: true,
         companyName: details.companyName,
         role: details.role,
         email: details.email || user.email || undefined,
+        needsPasswordSetup: details.needsPasswordSetup,
       });
       setAwaitingVerification(false);
     } catch (err: unknown) {
@@ -163,24 +169,24 @@ export default function AcceptInvitation() {
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const acceptInvitation = async () => {
     setError(null);
 
-    if (password.length < 12) {
+    if (invitation?.needsPasswordSetup && password.length < 12) {
       setError("Password must be at least 12 characters long.");
       return;
     }
 
-    if (password !== confirmPassword) {
+    if (invitation?.needsPasswordSetup && password !== confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
 
     setSubmitting(true);
     try {
-      // 1. Update user password
-      await updateAccountPassword(password);
+      // Auth-invited users set their first password. Existing signed-in users
+      // accept the pending invitation with their established credentials.
+      if (invitation?.needsPasswordSetup) await updateAccountPassword(password);
 
       // 2. Call accept_invitation via tenant-admin contract
       await acceptTenantInvitation();
@@ -307,7 +313,7 @@ export default function AcceptInvitation() {
                 </div>
               )}
 
-              <form onSubmit={handleSubmit} className="space-y-4">
+              {invitation?.needsPasswordSetup ? <form onSubmit={(event) => { event.preventDefault(); void acceptInvitation(); }} className="space-y-4">
                 <div className="space-y-1.5">
                   <Label htmlFor="password">Set password</Label>
                   <Input
@@ -344,7 +350,13 @@ export default function AcceptInvitation() {
                   )}
                   {submitting ? "Accepting invitation…" : "Set password & accept invitation"}
                 </Button>
-              </form>
+              </form> : <div className="space-y-4">
+                <p className="text-sm text-muted-foreground">Your account is already active. Accepting this invitation will activate your membership in the listed workspace.</p>
+                <Button type="button" className="w-full gap-2" disabled={submitting} onClick={() => void acceptInvitation()}>
+                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  {submitting ? "Accepting invitation…" : "Accept invitation"}
+                </Button>
+              </div>}
 
               <div className="text-center text-xs text-muted-foreground pt-2">
                 Already have an account?{" "}

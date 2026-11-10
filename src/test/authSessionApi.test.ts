@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
     verifyOtp: vi.fn(),
     updateUser: vi.fn(),
     signUp: vi.fn(),
+    resend: vi.fn(),
   },
 }));
 
@@ -107,6 +108,7 @@ beforeEach(() => {
   mocks.auth.verifyOtp.mockReset().mockResolvedValue({ data: { user }, error: null });
   mocks.auth.updateUser.mockReset().mockResolvedValue({ data: { user }, error: null });
   mocks.auth.signUp.mockReset().mockResolvedValue({ data: { user: null, session: null }, error: null });
+  mocks.auth.resend.mockReset().mockResolvedValue({ data: {}, error: null });
   mocks.rpc.mockReset().mockResolvedValue({ data: { ok: true, provisioned: false }, error: null });
   mocks.createServerClient.mockReset().mockReturnValue({ auth: mocks.auth, rpc: mocks.rpc });
 });
@@ -171,6 +173,31 @@ describe("Vercel-managed Supabase sessions", () => {
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
+  it("resends confirmations through Auth with CAPTCHA and a canonical confirmation origin", async () => {
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/resend-confirmation", {
+      email: "USER@example.com", captchaToken: "captcha-token", company_id: "attacker-tenant",
+    }), response);
+    expect(result.statusCode).toBe(200);
+    expect(mocks.auth.resend).toHaveBeenCalledWith({
+      type: "signup", email: "user@example.com",
+      options: { captchaToken: "captcha-token", emailRedirectTo: "https://app.example.com/auth/confirm" },
+    });
+    expect(result.body).toMatchObject({ ok: true, message: expect.stringContaining("If this email can be registered") });
+  });
+
+  it("keeps resend responses generic for unknown, confirmed, or throttled identities", async () => {
+    const first = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/resend-confirmation", { email: "user@example.com", captchaToken: "captcha-token" }), first.response);
+    for (const error of [{ message: "User not found", status: 404 }, { message: "Email already confirmed", status: 422 }, { message: "rate limit exceeded", status: 429 }]) {
+      mocks.auth.resend.mockResolvedValueOnce({ data: {}, error });
+      const repeated = makeResponse();
+      await authHandler(makeRequest("POST", "/api/auth/resend-confirmation", { email: "user@example.com", captchaToken: "captcha-token" }), repeated.response);
+      expect(repeated.result.statusCode).toBe(200);
+      expect(repeated.result.body).toEqual(first.result.body);
+    }
+  });
+
   it("rejects unconfigured or insecure canonical origins and header-injected redirects", async () => {
     vi.stubEnv("AUTH_SITE_URL", "");
     expect(() => registrationOrigin()).toThrow();
@@ -226,6 +253,39 @@ describe("Vercel-managed Supabase sessions", () => {
     expect(result.body).not.toHaveProperty("user");
   });
 
+  it("routes authenticated invited users toward acceptance instead of business registration", async () => {
+    mocks.rpc.mockResolvedValueOnce({ data: { ok: true, provisioned: false, invitation_pending: true }, error: null });
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/login", { email: user.email, password: "example-password", captchaToken: "captcha-token" }), response);
+    expect(result.statusCode).toBe(200);
+    expect(result.body).toMatchObject({ user: { id: user.id, invitation_pending: true } });
+  });
+
+  it("rejects a business registration login when completion reports no workspace and no invitation", async () => {
+    const registrationUser = { ...user, user_metadata: { ...user.user_metadata, tsflow_signup_intent: "business_registration" } };
+    mocks.auth.signInWithPassword.mockResolvedValueOnce({ data: { user: registrationUser }, error: null });
+    mocks.rpc.mockResolvedValueOnce({ data: { ok: true, provisioned: false, invitation_pending: false }, error: null });
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/login", { email: user.email, password: "example-password", captchaToken: "captcha-token" }), response);
+    expect(result.statusCode).toBe(409);
+    expect(mocks.auth.signOut).toHaveBeenCalledOnce();
+    expect(result.body).not.toHaveProperty("user");
+  });
+
+  it("recovers workspaces through a user-bound RPC without forwarding client ownership or role fields", async () => {
+    mocks.rpc.mockResolvedValueOnce({ data: { ok: true, provisioned: true }, error: null });
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/recover-workspace", {
+      businessName: "Example Business", city: "Lagos", state: "Lagos",
+      user_id: "attacker-user", company_id: "attacker-company", role: "super_admin",
+    }), response);
+    expect(result.statusCode).toBe(200);
+    expect(mocks.rpc).toHaveBeenCalledWith("recover_business_registration", {
+      p_business_name: "Example Business", p_city: "Lagos", p_state: "Lagos",
+    });
+    expect(result.body).toEqual({ ok: true, user: { id: user.id, email: user.email, display_name: "Example User" } });
+  });
+
   it("tolerates only a missing pre-migration RPC for normal/invited accounts", async () => {
     mocks.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202" } });
     const normal = makeResponse();
@@ -252,7 +312,7 @@ describe("Vercel-managed Supabase sessions", () => {
     await authHandler(req, response);
 
     expect(result.statusCode).toBe(200);
-    expect(result.body).toEqual({ user: { id: user.id, email: user.email, display_name: "Example User" } });
+    expect(result.body).toEqual({ user: { id: user.id, email: user.email, display_name: "Example User", invitation_pending: false } });
     expect(JSON.stringify(result.body)).not.toContain("access_token");
     expect(JSON.stringify(result.body)).not.toContain("refresh_token");
     const cookies = headers.get("set-cookie");

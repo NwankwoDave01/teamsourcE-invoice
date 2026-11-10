@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BrandMark } from "@/components/shared/BrandMark";
 import { TurnstileCaptcha } from "@/components/auth/TurnstileCaptcha";
-import { registerBusiness, type RegistrationInput } from "@/lib/authSession";
+import { registerBusiness, resendSignupConfirmation, type RegistrationInput } from "@/lib/authSession";
 
 export default function Signup() {
   const [form, setForm] = useState<Omit<RegistrationInput, "captchaToken">>({
@@ -18,6 +18,7 @@ export default function Signup() {
   const [captchaError, setCaptchaError] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [resendMessage, setResendMessage] = useState("");
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(event: FormEvent) {
@@ -38,6 +39,23 @@ export default function Signup() {
       setError(err instanceof Error ? err.message : "Registration is temporarily unavailable. Please try again.");
     } finally {
       setForm((current) => ({ ...current, password: "", passwordConfirmation: "" }));
+      setCaptchaToken(null);
+      setCaptchaResetKey((key) => key + 1);
+      setLoading(false);
+    }
+  }
+
+  async function handleResend(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    setResendMessage("");
+    if (!captchaToken) { setCaptchaError("Complete the CAPTCHA before requesting another confirmation email."); return; }
+    setLoading(true);
+    try {
+      setResendMessage(await resendSignupConfirmation(form.email, captchaToken));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Confirmation resend is temporarily unavailable. Please try again.");
+    } finally {
       setCaptchaToken(null);
       setCaptchaResetKey((key) => key + 1);
       setLoading(false);
@@ -65,6 +83,18 @@ export default function Signup() {
             <MailCheck className="mx-auto h-8 w-8 text-primary" />
             <h1 className="text-2xl font-semibold">Check your email</h1>
             <p role="status" className="text-sm text-muted-foreground">{message}</p>
+            <form onSubmit={handleResend} className="space-y-3 text-left">
+              <Label htmlFor="resend-email">Email address</Label>
+              <Input id="resend-email" type="email" autoComplete="email" maxLength={320} required
+                value={form.email} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
+              <TurnstileCaptcha resetKey={captchaResetKey} onTokenChange={setCaptchaToken} onError={setCaptchaError} />
+              {captchaError && <p role="alert" className="text-sm text-destructive">{captchaError}</p>}
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+              {resendMessage && <p role="status" className="text-sm text-muted-foreground">{resendMessage}</p>}
+              <Button type="submit" variant="outline" className="w-full" disabled={loading}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Resend confirmation email
+              </Button>
+            </form>
             <Button asChild className="w-full"><Link to="/auth/login">Go to sign in</Link></Button>
           </div> : <>
             <h1 className="text-2xl font-semibold">Create a business account</h1>

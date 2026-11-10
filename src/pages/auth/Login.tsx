@@ -42,7 +42,7 @@ export default function Login() {
       verifyingSession = true;
       const verifiedSession = await refreshSession(true);
       if (!verifiedSession) throw new Error("The new session could not be verified.");
-      navigate(from, { replace: true });
+      navigate(signedInUser.invitation_pending ? "/auth/accept-invite" : from, { replace: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Please try again.";
       const normalizedMessage = message.toLowerCase();

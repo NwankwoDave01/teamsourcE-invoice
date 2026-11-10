@@ -2,6 +2,7 @@ export interface SessionUser {
   id: string;
   email: string | null;
   display_name?: string | null;
+  invitation_pending?: boolean;
 }
 
 interface AuthResponse {
@@ -88,6 +89,34 @@ export async function registerBusiness(input: RegistrationInput): Promise<string
   return result.message ?? "Check your email to confirm your account.";
 }
 
+export async function resendSignupConfirmation(email: string, captchaToken: string): Promise<string> {
+  const response = await fetch("/api/auth/resend-confirmation", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, captchaToken }),
+  });
+  const result = await readResponse(response, "/api/auth/resend-confirmation") as AuthResponse & { message?: string };
+  if (!response.ok) throw new Error(result.error || "Confirmation resend failed.");
+  return result.message ?? "If this email can be confirmed, we have sent a confirmation link.";
+}
+
 export async function confirmSignup(tokenHash: string) {
   return postAuth("confirm-signup", { token_hash: tokenHash });
+}
+
+export async function recoverBusinessWorkspace(input: { businessName: string; city: string; state: string }) {
+  const response = await fetch("/api/auth/recover-workspace", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+  const result = await readResponse(response, "/api/auth/recover-workspace") as AuthResponse & { invitation_pending?: boolean };
+  if (!response.ok) {
+    const error = new Error(result.error || "Workspace recovery failed.") as Error & { invitationPending?: boolean };
+    error.invitationPending = result.invitation_pending === true;
+    throw error;
+  }
+  return result.user ?? null;
 }

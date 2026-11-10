@@ -25,3 +25,7 @@ dist-ssr
 
 # Local Supabase CLI metadata
 supabase/.temp/
+# Local environment secrets
+.env
+.env.*
+!.env.example

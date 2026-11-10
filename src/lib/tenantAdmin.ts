@@ -68,9 +68,11 @@ export async function loadUserRoles(uid: string) {
 }
 
 export interface InvitationDetails {
+  pending: boolean;
   companyName: string;
   role: string;
   email?: string;
+  needsPasswordSetup: boolean;
 }
 
 export async function fetchInvitationStatus(): Promise<InvitationDetails> {
@@ -82,7 +84,13 @@ export async function fetchInvitationStatus(): Promise<InvitationDetails> {
     "Inviting Company";
   const role = typeof data.role === "string" ? data.role : "staff_user";
   const email = typeof data.email === "string" ? data.email : undefined;
-  return { companyName, role, email };
+  return {
+    pending: data.pending === true,
+    companyName,
+    role,
+    email,
+    needsPasswordSetup: data.needs_password_setup === true,
+  };
 }
 
 export async function acceptTenantInvitation(): Promise<unknown> {

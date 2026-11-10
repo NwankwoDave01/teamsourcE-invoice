@@ -10,6 +10,7 @@
  */
 import { normalizeTaxCategory } from "./taxCategory.ts";
 import { deriveInvoiceKind, round2 } from "./nrsMap.ts";
+import { normalizeTaxpayerTin } from "./tin.ts";
 
 export type StrictSeverity = "error" | "warning";
 
@@ -35,8 +36,10 @@ const e = (field: string, code: string, message: string): StrictIssue => ({ fiel
 const w = (field: string, code: string, message: string): StrictIssue => ({ field, code, message, severity: "warning" });
 
 function requireTin(value: unknown, field: string, label: string): StrictIssue[] {
-  const v = typeof value === "string" ? value.trim() : "";
-  if (!v) return [e(field, "TIN_REQUIRED", `${label} TIN is required for NRS submission.`)];
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return [e(field, "TIN_REQUIRED", `${label} TIN is required for NRS submission.`)];
+  const v = normalizeTaxpayerTin(raw);
+  if (!v) return [e(field, "TIN_INVALID", `${label} TIN is blank or a placeholder and cannot identify a taxpayer.`)];
   if (!/\d/.test(v)) return [e(field, "TIN_INVALID", `${label} TIN must contain digits.`)];
   if (v.replace(/\D/g, "").length < 8) {
     return [w(field, "TIN_SHORT", `${label} TIN looks short — verify against NRS records.`)];

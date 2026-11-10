@@ -57,9 +57,12 @@ function getTarget(req: ApiRequest, supabaseUrl: string): URL | null {
   return target;
 }
 
-function requestPayload(req: ApiRequest): string | Buffer | undefined {
+function requestPayload(req: ApiRequest): string | Uint8Array | undefined {
   if (req.method === "GET" || req.method === "HEAD") return undefined;
-  if (typeof req.body === "string" || Buffer.isBuffer(req.body)) return req.body;
+  if (typeof req.body === "string") return req.body;
+  // Copy the bytes into a DOM Uint8Array so Fetch accepts the body without
+  // changing binary payloads or relying on Buffer's ArrayBufferLike typing.
+  if (Buffer.isBuffer(req.body)) return Uint8Array.from(req.body);
   if (req.body === undefined) return undefined;
   return JSON.stringify(req.body);
 }
