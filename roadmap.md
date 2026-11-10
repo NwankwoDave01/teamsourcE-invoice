@@ -1,5 +1,10 @@
 # Frontend SI → APP alignment
 
+## Public business registration (source only; no deployment or live SQL)
+- [ ] Finish registration form, manual confirmation, cookie-authenticated API and focused tests
+- [ ] Review staged migration against confirmed schema and preserve invitation nonce/acceptance behavior
+- [ ] Validate tests and automatic preview checks; document production readiness blockers and manual setup
+
 ## Tenant team management & invitation acceptance
 - [x] Implement tenant-admin team list, invitations, role changes, removal and revocation UI
 - [x] Dedicated /auth/accept-invite page: verify invitation_status, set password, accept_invitation, and reload active membership
