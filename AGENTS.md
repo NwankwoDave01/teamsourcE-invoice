@@ -10,3 +10,4 @@
 - Route all nrs-submit calls through src/lib/nrs/submitContract.ts via useNrsSubmit; success requires data.ok === true and unconfirmed outcomes must block retry.
 - Gate sandbox signing using fresh tenant-scoped invoice and submission-history reads plus a non-secret, user/company/invoice-scoped device marker written before invoking; existing history has no proven retry-safe semantics, and the backend remains the final cross-device/concurrency safeguard.
 - Keep browser preflight in a frontend-owned validator limited to evidenced structural rules; older checked-in functions do not establish the deployed validation contract.
+- Keep self-service registration in the cookie-authenticated server API: CAPTCHA is verified by Auth, confirmation is an explicit POST, redirect origins come from deployment-owned AUTH_SITE_URL, and a no-argument user-bound RPC provisions tenants only after confirmed email; this prevents browser-selected roles/tenants and scanner-consumed tokens.

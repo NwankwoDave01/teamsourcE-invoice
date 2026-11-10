@@ -51,26 +51,34 @@ export function parseRegistration(body: Record<string, unknown>):
   return { ok: true, value: { email, password, businessName, legalName: legalName || null, fullName, captchaToken } };
 }
 
-function requestOrigin(req: ApiRequest): string {
-  const forwarded = req.headers["x-forwarded-proto"];
-  const protocol = (Array.isArray(forwarded) ? forwarded[0] : forwarded)?.split(",")[0]?.trim()
-    ?? (process.env.NODE_ENV === "production" ? "https" : "http");
-  return `${protocol}://${req.headers.host}`;
+export function registrationOrigin(): string {
+  // Deployment-owned configuration only; never derive email links from request headers.
+  const configured = process.env.AUTH_SITE_URL;
+  if (!configured) throw new Error("AUTH_SITE_URL must be configured before registration is available");
+  const url = new URL(configured);
+  if (url.username || url.password || url.search || url.hash || url.pathname !== "/"
+    || (url.protocol !== "https:" && !(process.env.NODE_ENV !== "production"
+      && url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)))) {
+    throw new Error("AUTH_SITE_URL must be a canonical HTTPS site origin");
+  }
+  return url.origin;
 }
 
-async function completeRegistration(client: ReturnType<typeof createAuthClient>): Promise<boolean> {
-  try {
-    const { data, error } = await client.rpc("complete_business_registration");
-    if (error) {
-      console.error("[auth] Business registration provisioning failed", error.code ?? "unknown");
-      return false;
-    }
-    return Boolean(data && typeof data === "object" && (data as { ok?: unknown }).ok === true
-      && (data as { provisioned?: unknown }).provisioned === true);
-  } catch (error) {
-    console.error("[auth] Business registration provisioning unavailable", error);
-    return false;
+async function completeRegistration(client: ReturnType<typeof createAuthClient>, user: { user_metadata?: Record<string, unknown> }): Promise<boolean> {
+  const { data, error } = await client.rpc("complete_business_registration");
+  if (error) {
+    // Source can ship before the reviewed migration. Only a missing RPC is tolerated
+    // for pre-existing accounts; actual provisioning failures are never ignored.
+    if (error.code === "PGRST202" && user.user_metadata?.tsflow_signup_intent !== "business_registration") return false;
+    throw new Error("Your workspace setup could not be completed. Please sign in again to retry.");
   }
+  if (!data || typeof data !== "object" || data.ok !== true || typeof data.provisioned !== "boolean") {
+    throw new Error("Workspace setup could not be confirmed. Please sign in again to retry.");
+  }
+  if (!data.provisioned && user.user_metadata?.tsflow_signup_intent === "business_registration") {
+    throw new Error("Your registration is unavailable or expired. Please contact your administrator.");
+  }
+  return data.provisioned;
 }
 
 const handler: ApiHandler = async (req, res) => {
@@ -133,15 +141,26 @@ const handler: ApiHandler = async (req, res) => {
         return;
       }
       // Finish a confirmed self-service registration (no-op for everyone else).
-      await completeRegistration(client);
+      try {
+        await completeRegistration(client, data.user);
+      } catch (error) {
+        await client.auth.signOut();
+        respondJson(res, 409, { error: error instanceof Error ? error.message : "Workspace setup failed. Please sign in to retry." });
+        return;
+      }
       respondJson(res, 200, { user: publicUser(data.user) });
       return;
     }
 
     if (action === "register") {
       const parsed = parseRegistration(body);
-      if (!parsed.ok) {
+      if (parsed.ok === false) {
         respondJson(res, 400, { error: parsed.error });
+        return;
+      }
+      const origin = registrationOrigin();
+      if (req.headers.origin !== origin) {
+        respondJson(res, 403, { error: "Registration is not available from this site." });
         return;
       }
       const { email, password, businessName, legalName, fullName, captchaToken } = parsed.value;
@@ -150,7 +169,7 @@ const handler: ApiHandler = async (req, res) => {
         password,
         options: {
           captchaToken,
-          emailRedirectTo: `${requestOrigin(req)}/auth/confirm`,
+          emailRedirectTo: `${origin}/auth/confirm`,
           // Only intent + display data; company id and role are never accepted from clients.
           data: {
             display_name: fullName,
@@ -196,7 +215,7 @@ const handler: ApiHandler = async (req, res) => {
         respondJson(res, 400, { error: "This confirmation link is invalid or has expired." });
         return;
       }
-      const provisioned = await completeRegistration(client);
+      const provisioned = await completeRegistration(client, data.user);
       if (!provisioned) {
         respondJson(res, 409, { error: "Your email is confirmed, but the workspace could not be set up. Sign in to retry." });
         return;
