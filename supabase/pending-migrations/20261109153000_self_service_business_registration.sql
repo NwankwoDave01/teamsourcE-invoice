@@ -1,4 +1,13 @@
--- Self-service business registration (REVIEW BEFORE APPLYING; NOT applied by Lovable).
+-- NOT READY: source review draft only; NEVER applied by Lovable.
+-- Blocking review items for the external production database:
+-- 1. Compare invitation branch byte-for-byte with pg_get_functiondef(handle_new_user).
+--    The repository invitation-only function is reconstructed, not a live snapshot.
+-- 2. Verify all referenced columns, defaults, indexes, FKs, grants and enum labels
+--    against the live catalog; repository evidence + supplied schema are not a full catalog.
+-- 3. Agree the missing taxpayer TIN policy. companies.tin is NOT NULL and the
+--    registration form does not collect TIN. 'NG-PENDING' below is LEGACY ONLY,
+--    not an approved new business value; do not apply until this is resolved.
+-- 4. Test trigger + RPC transactions/concurrency on an isolated staging database.
 -- Move to supabase/migrations/ (or apply via your migration workflow) after review.
 --
 -- Design:
@@ -38,13 +47,13 @@ CREATE TABLE IF NOT EXISTS public.pending_business_registrations (
   completed_at timestamptz
 );
 
-CREATE INDEX IF NOT EXISTS pending_business_registrations_expiry_idx
-  ON public.pending_business_registrations (expires_at) WHERE status = 'pending';
-
 -- Server/database only: no browser role may read or write this table.
 REVOKE ALL ON public.pending_business_registrations FROM PUBLIC, anon, authenticated;
 GRANT ALL ON public.pending_business_registrations TO service_role;
 ALTER TABLE public.pending_business_registrations ENABLE ROW LEVEL SECURITY;
+
+CREATE INDEX IF NOT EXISTS pending_business_registrations_expiry_idx
+  ON public.pending_business_registrations (expires_at) WHERE status = 'pending';
 
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS trigger
@@ -86,10 +95,6 @@ BEGIN
          OR (v_legal_name IS NOT NULL AND char_length(v_legal_name) > 200) THEN
         RAISE EXCEPTION 'Business registration details are invalid.';
       END IF;
-
-      INSERT INTO public.profiles (id, display_name)
-      VALUES (NEW.id, v_display_name)
-      ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name;
 
       INSERT INTO public.pending_business_registrations
         (user_id, email, business_name, legal_name, admin_full_name)
@@ -161,20 +166,29 @@ BEGIN
     RETURN pg_catalog.jsonb_build_object('ok', true, 'provisioned', false);
   END IF;
 
-  IF v_reg.status = 'completed' THEN
-    RETURN pg_catalog.jsonb_build_object('ok', true, 'provisioned', true, 'company_id', v_reg.company_id);
-  END IF;
-
   IF v_confirmed IS NULL OR v_email IS DISTINCT FROM v_reg.email THEN
     RAISE EXCEPTION 'Email confirmation is required before the workspace can be created';
+  END IF;
+
+  IF v_reg.status = 'completed' THEN
+    IF v_reg.company_id IS NULL THEN
+      RAISE EXCEPTION 'Completed workspace is unavailable';
+    END IF;
+    RETURN pg_catalog.jsonb_build_object('ok', true, 'provisioned', true, 'company_id', v_reg.company_id);
   END IF;
 
   IF v_reg.expires_at <= pg_catalog.now() THEN
     RAISE EXCEPTION 'This registration has expired. Please register again.';
   END IF;
 
-  INSERT INTO public.companies (name, legal_name, tin, plan, status, created_by, email)
-  VALUES (v_reg.business_name, v_reg.legal_name, 'NG-PENDING', 'Starter', 'Trial', v_uid, v_reg.email)
+  INSERT INTO public.profiles (id, display_name)
+  VALUES (v_uid, v_reg.admin_full_name)
+  ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name;
+
+  -- NOT READY: resolve TIN policy before this draft can be applied.
+  -- Use existing plan/status defaults rather than overriding them.
+  INSERT INTO public.companies (name, legal_name, tin, created_by, email)
+  VALUES (v_reg.business_name, v_reg.legal_name, 'NG-PENDING', v_uid, v_reg.email)
   RETURNING id INTO v_company_id;
 
   INSERT INTO public.company_members (company_id, user_id, status, last_active_at)
