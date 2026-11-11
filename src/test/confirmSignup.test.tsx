@@ -23,6 +23,15 @@ function open(path = "/auth/confirm?token_hash=test-token&type=email") {
 }
 
 describe("manual signup confirmation", () => {
+  it("shows provisioning failure without loading membership or entering the workspace", async () => {
+    mocks.confirmSignup.mockRejectedValueOnce(new Error("Workspace setup failed. Sign in to retry."));
+    open();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm email" }));
+    await screen.findByRole("alert");
+    expect(mocks.refreshSession).not.toHaveBeenCalled();
+    expect(mocks.loadActiveMembership).not.toHaveBeenCalled();
+    expect(screen.queryByText("Verified workspace")).not.toBeInTheDocument();
+  });
   it("never consumes tokens on page load; confirms once after a person clicks", async () => {
     open();
     expect(mocks.confirmSignup).not.toHaveBeenCalled();

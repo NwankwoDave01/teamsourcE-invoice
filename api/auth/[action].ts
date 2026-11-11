@@ -38,7 +38,10 @@ function diagnose(action: string, event: string, error?: unknown) {
 
 function registrationAuthFailure(action: string, error: { code?: string; status?: number; message: string }) {
   diagnose(action, "auth_rejected", error);
-  if (error.code === "captcha_failed" || /captcha/i.test(error.message)) {
+  if (error.status && error.status >= 500) {
+    return { status: 503, body: { error: "Registration is temporarily unavailable. Please try again later." } };
+  }
+  if (error.code === "captcha_failed" || (!error.code && /captcha/i.test(error.message))) {
     return { status: 400, body: { error: "CAPTCHA verification failed. Please try again." } };
   }
   if (error.status === 429 || /rate limit/i.test(error.message)) {
@@ -49,7 +52,7 @@ function registrationAuthFailure(action: string, error: { code?: string; status?
   }
   // Only evidenced duplicate/privacy cases are success-shaped. Database/trigger
   // failures are unexpected even if their HTTP status is 400.
-  if (["user_already_exists", "email_exists", "email_address_not_authorized"].includes(error.code ?? "")
+  if (["user_already_exists", "email_exists"].includes(error.code ?? "")
     || (error.status === 400 && /^(User already registered|This email has a pending company invitation\.)/i.test(error.message))) {
     return { status: 200, body: { ok: true, message: GENERIC_REGISTER_MESSAGE } };
   }
@@ -251,8 +254,8 @@ const handler: ApiHandler = async (req, res) => {
       });
       if (error) {
         // Already-confirmed emails get the same privacy-preserving response.
-        if (error.code === "email_not_confirmed" || error.code === "user_not_found"
-          || /already confirmed/i.test(error.message)) {
+        if (error.status !== undefined && error.status < 500 && (error.code === "user_not_found"
+          || /already confirmed/i.test(error.message))) {
           diagnose(action, "privacy_response", error);
         } else {
           const failure = registrationAuthFailure(action, error);
