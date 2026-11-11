@@ -6,6 +6,7 @@ import supabaseHandler from "../../api/supabase-proxy";
 const mocks = vi.hoisted(() => ({
   createServerClient: vi.fn(),
   rpc: vi.fn(),
+  from: vi.fn(),
   auth: {
     getSession: vi.fn(),
     getUser: vi.fn(),
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
     verifyOtp: vi.fn(),
     updateUser: vi.fn(),
     signUp: vi.fn(),
+    resend: vi.fn(),
   },
 }));
 
@@ -107,8 +109,10 @@ beforeEach(() => {
   mocks.auth.verifyOtp.mockReset().mockResolvedValue({ data: { user }, error: null });
   mocks.auth.updateUser.mockReset().mockResolvedValue({ data: { user }, error: null });
   mocks.auth.signUp.mockReset().mockResolvedValue({ data: { user: null, session: null }, error: null });
+  mocks.auth.resend.mockReset().mockResolvedValue({ data: {}, error: null });
+  mocks.from.mockReset().mockReturnValue({ select: vi.fn().mockReturnThis(), eq: vi.fn().mockReturnThis(), limit: vi.fn().mockResolvedValue({ data: [], error: null }) });
   mocks.rpc.mockReset().mockResolvedValue({ data: { ok: true, provisioned: false }, error: null });
-  mocks.createServerClient.mockReset().mockReturnValue({ auth: mocks.auth, rpc: mocks.rpc });
+  mocks.createServerClient.mockReset().mockReturnValue({ auth: mocks.auth, rpc: mocks.rpc, from: mocks.from });
 });
 
 afterEach(() => {
@@ -168,6 +172,93 @@ describe("Vercel-managed Supabase sessions", () => {
     const { response, result } = makeResponse();
     await authHandler(makeRequest("POST", "/api/auth/register", registration), response);
     expect(result.statusCode).toBe(400);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it.each(["register", "resend-signup"])("diagnoses unexpected %s failures without exposing sensitive errors or claiming success", async (action) => {
+    const diagnostic = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const error = { code: "unexpected_failure", status: 500, message: "private password token cookie CAPTCHA details" };
+    if (action === "register") mocks.auth.signUp.mockResolvedValueOnce({ data: null, error });
+    else mocks.auth.resend.mockResolvedValueOnce({ data: null, error });
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", `/api/auth/${action}`, registration), response);
+    expect(result.statusCode).toBe(503);
+    expect(result.body).not.toHaveProperty("ok");
+    expect(diagnostic).toHaveBeenCalledWith({ action, event: "auth_rejected", code: "unexpected_failure", status: 500 });
+    expect(JSON.stringify(diagnostic.mock.calls)).not.toContain(error.message);
+    expect(JSON.stringify(result.body)).not.toContain(error.message);
+    diagnostic.mockRestore();
+  });
+
+  it("does not disguise a database trigger failure as a duplicate", async () => {
+    mocks.auth.signUp.mockResolvedValueOnce({ data: null, error: { code: "unexpected_failure", status: 400, message: "Database error saving new user" } });
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/register", registration), response);
+    expect(result.statusCode).toBe(503);
+    expect(result.body).not.toHaveProperty("ok");
+  });
+
+  it("requires and forwards CAPTCHA for confirmation resend, without tenant or role inputs", async () => {
+    const missing = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/resend-signup", { email: user.email }), missing.response);
+    expect(missing.result.statusCode).toBe(400);
+    expect(mocks.auth.resend).not.toHaveBeenCalled();
+    const sent = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/resend-signup", { ...registration, company_id: "other", role: "super_admin" }), sent.response);
+    expect(sent.result.statusCode).toBe(200);
+    expect(mocks.auth.resend).toHaveBeenCalledExactlyOnceWith({ type: "signup", email: "user@example.com", options: { captchaToken: "captcha-token", emailRedirectTo: "https://app.example.com/auth/confirm" } });
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("uses the same generic resend response for an already confirmed email", async () => {
+    const success = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/resend-signup", registration), success.response);
+    mocks.auth.resend.mockResolvedValueOnce({ data: null, error: { code: "email_exists", status: 400, message: "Email already confirmed" } });
+    const duplicate = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/resend-signup", registration), duplicate.response);
+    expect(duplicate.result.statusCode).toBe(200);
+    expect(duplicate.result.body).toEqual(success.result.body);
+  });
+
+  it("permits only explicitly configured preview or local canonical origins", async () => {
+    vi.stubEnv("NODE_ENV", "development");
+    vi.stubEnv("AUTH_SITE_URL", "http://localhost:8080");
+    expect(registrationOrigin()).toBe("http://localhost:8080");
+    const local = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/register", registration, { host: "localhost:8080", origin: "http://localhost:8080", "x-forwarded-proto": "http" }), local.response);
+    expect(local.result.statusCode).toBe(200);
+    expect(mocks.auth.signUp.mock.calls[0][0].options.emailRedirectTo).toBe("http://localhost:8080/auth/confirm");
+    vi.stubEnv("AUTH_SITE_URL", "https://preview.example.com");
+    expect(registrationOrigin()).toBe("https://preview.example.com");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("AUTH_SITE_URL", "http://localhost:8080");
+    expect(() => registrationOrigin()).toThrow();
+  });
+
+  it.each(["resend-signup", "confirm-signup"])("rejects a header-injected origin for %s", async (action) => {
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", `/api/auth/${action}`, registration, { host: "attacker.example", origin: "https://attacker.example" }), response);
+    expect(result.statusCode).toBe(403);
+    expect(mocks.createServerClient).not.toHaveBeenCalled();
+  });
+
+  it("clears the confirmation session if provisioning fails", async () => {
+    mocks.auth.verifyOtp.mockResolvedValueOnce({ data: { user: { ...user, email_confirmed_at: "2026-11-10T07:06:00Z" } }, error: null });
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: { code: "P0001", message: "private db error" } });
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/confirm-signup", { token_hash: "signup-token" }), response);
+    expect(result.statusCode).toBe(409);
+    expect(result.body).not.toHaveProperty("user");
+    expect(mocks.auth.signOut).toHaveBeenCalledOnce();
+  });
+
+  it("does not expose an incomplete self-service session on reload", async () => {
+    mocks.auth.getUser.mockResolvedValueOnce({ data: { user: { ...user, user_metadata: { tsflow_signup_intent: "business_registration" } } }, error: null });
+    const { response, result } = makeResponse();
+    await authHandler(makeRequest("GET", "/api/auth/session"), response);
+    expect(result.statusCode).toBe(409);
+    expect(result.body).not.toHaveProperty("user");
+    expect(mocks.auth.signOut).toHaveBeenCalledOnce();
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
 

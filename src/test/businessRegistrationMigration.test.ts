@@ -27,7 +27,7 @@ describe("staged registration SQL safety guards", () => {
     expect(guard).toBeGreaterThan(0);
     expect(guard).toBeLessThan(rpc.indexOf("IF v_reg.status = 'completed' THEN"));
     expect(guard).toBeLessThan(rpc.indexOf("INSERT INTO public.companies"));
-    expect(rpc).toContain("VALUES (v_company_id, v_uid, 'company_admin')");
+    expect(rpc).toContain("VALUES (v_uid, v_company_id, 'company_admin')");
   });
   it("locks before idempotent completion checks and excludes browser access to pending rows", () => {
     expect(rpc.indexOf("FOR UPDATE")).toBeLessThan(rpc.indexOf("IF v_reg.status = 'completed' THEN"));
@@ -35,5 +35,11 @@ describe("staged registration SQL safety guards", () => {
     expect(draft).toContain("REVOKE ALL ON public.pending_business_registrations FROM PUBLIC, anon, authenticated");
     expect(draft).toContain("ALTER TABLE public.pending_business_registrations ENABLE ROW LEVEL SECURITY");
     expect(draft).toContain("REVOKE ALL ON FUNCTION public.complete_business_registration() FROM PUBLIC, anon");
+  });
+  it("cannot provision using a guessed TIN while the policy is unresolved", () => {
+    expect(draft).not.toContain("NG-PENDING");
+    const disabled = rpc.indexOf("RAISE EXCEPTION 'Business registration provisioning is not enabled");
+    expect(disabled).toBeGreaterThan(0);
+    expect(disabled).toBeLessThan(rpc.indexOf("INSERT INTO public.profiles"));
   });
 });

@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BrandMark } from "@/components/shared/BrandMark";
 import { TurnstileCaptcha } from "@/components/auth/TurnstileCaptcha";
-import { registerBusiness, type RegistrationInput } from "@/lib/authSession";
+import { registerBusiness, resendSignup, type RegistrationInput } from "@/lib/authSession";
 
 export default function Signup() {
   const [form, setForm] = useState<Omit<RegistrationInput, "captchaToken">>({
@@ -44,6 +44,20 @@ export default function Signup() {
     }
   }
 
+  async function handleResend(event: FormEvent) {
+    event.preventDefault();
+    setError("");
+    if (!captchaToken) { setCaptchaError("Complete the CAPTCHA before resending."); return; }
+    setLoading(true);
+    try { setMessage(await resendSignup(form.email, captchaToken)); }
+    catch (err) { setError(err instanceof Error ? err.message : "Confirmation resend is temporarily unavailable."); }
+    finally {
+      setCaptchaToken(null);
+      setCaptchaResetKey((key) => key + 1);
+      setLoading(false);
+    }
+  }
+
   const fields = [
     { name: "businessName", label: "Business name", max: 160, required: true, autoComplete: "organization" },
     { name: "legalName", label: "Legal name (optional)", max: 200, required: false, autoComplete: "off" },
@@ -65,6 +79,17 @@ export default function Signup() {
             <MailCheck className="mx-auto h-8 w-8 text-primary" />
             <h1 className="text-2xl font-semibold">Check your email</h1>
             <p role="status" className="text-sm text-muted-foreground">{message}</p>
+            <form onSubmit={handleResend} className="space-y-4 text-left">
+              <Label htmlFor="resend-email">Work email</Label>
+              <Input id="resend-email" type="email" required maxLength={320} value={form.email}
+                disabled={loading} onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))} />
+              <TurnstileCaptcha resetKey={captchaResetKey} onTokenChange={setCaptchaToken} onError={setCaptchaError} />
+              {captchaError && <p role="alert" className="text-sm text-destructive">{captchaError}</p>}
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+              <Button type="submit" variant="outline" className="w-full" disabled={loading}>
+                {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Resend confirmation
+              </Button>
+            </form>
             <Button asChild className="w-full"><Link to="/auth/login">Go to sign in</Link></Button>
           </div> : <>
             <h1 className="text-2xl font-semibold">Create a business account</h1>

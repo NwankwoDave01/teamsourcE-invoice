@@ -475,17 +475,18 @@ describe("Authentication & Invitation Flow Safeguards", () => {
     });
   });
 
-  describe("Invitation-only signup", () => {
-    it("does not submit public signup or create a workspace", async () => {
+  describe("Separate public registration", () => {
+    it("preserves administrator invitation guidance without accepting an invitation on signup load", async () => {
       render(
         <MemoryRouter initialEntries={["/auth/signup"]}>
           <Signup />
         </MemoryRouter>
       );
 
-      expect(await screen.findByText("Workspace access is invitation-only")).toBeInTheDocument();
-      expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: "Create workspace" })).not.toBeInTheDocument();
+      expect(await screen.findByRole("heading", { name: "Create a business account" })).toBeInTheDocument();
+      expect(screen.getByText(/Open your administrator’s invitation email/)).toBeInTheDocument();
+      expect(mocks.verifyInvitation).not.toHaveBeenCalled();
+      expect(mocks.invoke).not.toHaveBeenCalled();
     });
   });
 });
