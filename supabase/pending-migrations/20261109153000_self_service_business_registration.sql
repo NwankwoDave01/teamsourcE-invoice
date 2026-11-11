@@ -5,8 +5,8 @@
 -- 2. Verify all referenced columns, defaults, indexes, FKs, grants and enum labels
 --    against the live catalog; repository evidence + supplied schema are not a full catalog.
 -- 3. Agree the missing taxpayer TIN policy. companies.tin is NOT NULL and the
---    registration form does not collect TIN. 'NG-PENDING' below is LEGACY ONLY,
---    not an approved new business value; do not apply until this is resolved.
+--    registration form does not collect TIN. No placeholder is permitted.
+--    Provisioning deliberately raises before writes until this policy is resolved.
 -- 4. Test trigger + RPC transactions/concurrency on an isolated staging database.
 -- Move to supabase/migrations/ (or apply via your migration workflow) after review.
 --
@@ -181,14 +181,19 @@ BEGIN
     RAISE EXCEPTION 'This registration has expired. Please register again.';
   END IF;
 
+  -- NOT READY: companies.tin is required with no evidenced default. There is
+  -- no approved source for a new business TIN. Fail before ALL provisioning
+  -- writes instead of inserting a fabricated taxpayer identity.
+  RAISE EXCEPTION 'Business registration provisioning is not enabled: TIN policy requires review';
+
   INSERT INTO public.profiles (id, display_name)
   VALUES (v_uid, v_reg.admin_full_name)
   ON CONFLICT (id) DO UPDATE SET display_name = EXCLUDED.display_name;
 
   -- NOT READY: resolve TIN policy before this draft can be applied.
   -- Use existing plan/status defaults rather than overriding them.
-  INSERT INTO public.companies (name, legal_name, tin, created_by, email)
-  VALUES (v_reg.business_name, v_reg.legal_name, 'NG-PENDING', v_uid, v_reg.email)
+  INSERT INTO public.companies (name, legal_name, created_by, email)
+  VALUES (v_reg.business_name, v_reg.legal_name, v_uid, v_reg.email)
   RETURNING id INTO v_company_id;
 
   INSERT INTO public.company_members (company_id, user_id, status, last_active_at)

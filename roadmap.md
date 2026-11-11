@@ -1,8 +1,9 @@
 # Frontend SI → APP alignment
 
 ## Public business registration (source only; no deployment or live SQL)
-- [ ] Finish registration form, manual confirmation, cookie-authenticated API and focused tests
-- [ ] Review staged migration against confirmed schema and preserve invitation nonce/acceptance behavior
+- [x] Finish registration form, manual confirmation, cookie-authenticated API, explicit resend and focused tests
+- [x] Review source draft and preserve invitation nonce/acceptance branch byte-for-byte; remove guessed TIN and fail before provisioning writes
+- [ ] Blocked: approve missing-TIN policy and verify external catalog/trigger, grants, staging concurrency and isolation before migration approval
 - [ ] Validate tests and automatic preview checks; document production readiness blockers and manual setup
 
 ## Tenant team management & invitation acceptance

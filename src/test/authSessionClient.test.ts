@@ -1,11 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getCurrentUser, signInWithPassword } from "../lib/authSession";
+import { getCurrentUser, signInWithPassword, resendSignup } from "../lib/authSession";
 
 afterEach(() => {
   vi.unstubAllGlobals();
 });
 
 describe("authentication API response handling", () => {
+  it("uses cookie-authenticated POST for resend and propagates unexpected failures", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Registration is temporarily unavailable." }), { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(resendSignup("user@example.com", "test-captcha")).rejects.toThrow("Registration is temporarily unavailable.");
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/resend-signup", expect.objectContaining({ method: "POST", credentials: "same-origin", body: JSON.stringify({ email: "user@example.com", captchaToken: "test-captcha" }) }));
+  });
   it("reports an empty API response with its HTTP status and endpoint", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, {
       status: 405,
