@@ -57,6 +57,7 @@ export default function ConfirmSignup() {
           {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Confirm email
         </Button>}
         <Button asChild variant="outline" className="w-full"><Link to="/auth/login">Go to sign in</Link></Button>
+        <Link to="/auth/signup" className="block text-sm text-primary hover:underline">Register or request a new confirmation email</Link>
       </Card>
     </div>
   </div>;

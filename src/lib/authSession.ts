@@ -91,3 +91,14 @@ export async function registerBusiness(input: RegistrationInput): Promise<string
 export async function confirmSignup(tokenHash: string) {
   return postAuth("confirm-signup", { token_hash: tokenHash });
 }
+
+export async function resendSignup(email: string, captchaToken: string): Promise<string> {
+  const response = await fetch("/api/auth/resend-signup", {
+    method: "POST", credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, captchaToken }),
+  });
+  const result = await readResponse(response, "/api/auth/resend-signup") as AuthResponse & { ok?: boolean; message?: string };
+  if (!response.ok || result.ok !== true) throw new Error(result.error || "Confirmation resend failed.");
+  return result.message ?? "Check your email for a confirmation link.";
+}

@@ -26,6 +26,36 @@ const GENERIC_REGISTER_MESSAGE =
   "If this email can be registered, we have sent a confirmation link. Confirm your email to activate your workspace.";
 const EMAIL_PATTERN = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{2,}$/;
 
+// Deliberately omit messages and request data: Auth errors can contain secrets.
+function diagnose(action: string, event: string, error?: unknown) {
+  const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
+  console.error({
+    action, event,
+    code: typeof value.code === "string" && /^[a-zA-Z0-9_]{1,64}$/.test(value.code) ? value.code : null,
+    status: typeof value.status === "number" ? value.status : null,
+  });
+}
+
+function registrationAuthFailure(action: string, error: { code?: string; status?: number; message: string }) {
+  diagnose(action, "auth_rejected", error);
+  if (error.code === "captcha_failed" || /captcha/i.test(error.message)) {
+    return { status: 400, body: { error: "CAPTCHA verification failed. Please try again." } };
+  }
+  if (error.status === 429 || /rate limit/i.test(error.message)) {
+    return { status: 429, body: { error: "Too many attempts. Please wait and try again." } };
+  }
+  if (error.code === "signup_disabled" || /signups? not allowed|signup.*disabled/i.test(error.message)) {
+    return { status: 503, body: { error: "Registration is not available right now." } };
+  }
+  // Only evidenced duplicate/privacy cases are success-shaped. Database/trigger
+  // failures are unexpected even if their HTTP status is 400.
+  if (["user_already_exists", "email_exists", "email_address_not_authorized"].includes(error.code ?? "")
+    || (error.status === 400 && /^(User already registered|This email has a pending company invitation\.)/i.test(error.message))) {
+    return { status: 200, body: { ok: true, message: GENERIC_REGISTER_MESSAGE } };
+  }
+  return { status: 503, body: { error: "Registration is temporarily unavailable. Please try again later." } };
+}
+
 function cleanText(value: unknown): string {
   // eslint-disable-next-line no-control-regex
   return typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/g, "").replace(/\s+/g, " ").trim() : "";
@@ -67,12 +97,14 @@ export function registrationOrigin(): string {
 async function completeRegistration(client: ReturnType<typeof createAuthClient>, user: { user_metadata?: Record<string, unknown> }): Promise<boolean> {
   const { data, error } = await client.rpc("complete_business_registration");
   if (error) {
+    diagnose("complete-registration", "rpc_rejected", error);
     // Source can ship before the reviewed migration. Only a missing RPC is tolerated
     // for pre-existing accounts; actual provisioning failures are never ignored.
     if (error.code === "PGRST202" && user.user_metadata?.tsflow_signup_intent !== "business_registration") return false;
     throw new Error("Your workspace setup could not be completed. Please sign in again to retry.");
   }
   if (!data || typeof data !== "object" || data.ok !== true || typeof data.provisioned !== "boolean") {
+    diagnose("complete-registration", "invalid_rpc_response");
     throw new Error("Workspace setup could not be confirmed. Please sign in again to retry.");
   }
   if (!data.provisioned && user.user_metadata?.tsflow_signup_intent === "business_registration") {
@@ -97,15 +129,27 @@ const handler: ApiHandler = async (req, res) => {
     try {
       const client = createAuthClient(req, res);
       const session = await getAuthenticatedSession(client);
+      // A failed confirmation must never become a usable pending-registration
+      // session on reload. GET only checks access; it never provisions a tenant.
+      if (session?.user.user_metadata?.tsflow_signup_intent === "business_registration") {
+        const { data, error } = await client.from("company_members").select("company_id")
+          .eq("user_id", session.user.id).eq("status", "Active").limit(1);
+        if (error || !data?.length) {
+          diagnose("session", "registration_access_unconfirmed", error);
+          await client.auth.signOut();
+          respondJson(res, 409, { error: "Workspace setup is incomplete. Sign in to retry." });
+          return;
+        }
+      }
       respondJson(res, 200, { user: session ? publicUser(session.user) : null });
     } catch (error) {
-      console.error("[auth/session] Session validation failed", error);
+      diagnose("session", "session_validation_failed", error);
       respondJson(res, 503, { error: "Session validation is temporarily unavailable" });
     }
     return;
   }
 
-  if (!["login", "logout", "verify-invite", "update-password", "register", "confirm-signup"].includes(action)) {
+  if (!["login", "logout", "verify-invite", "update-password", "register", "resend-signup", "confirm-signup"].includes(action)) {
     respondJson(res, 404, { error: "Not found" });
     return;
   }
@@ -119,6 +163,14 @@ const handler: ApiHandler = async (req, res) => {
   }
 
   try {
+    // Registration links and confirmation requests use the deployment-owned
+    // origin, not Host/forwarded headers. Preview/local origins must be configured
+    // explicitly through AUTH_SITE_URL; there is no guessed fallback.
+    const origin = ["register", "resend-signup", "confirm-signup"].includes(action) ? registrationOrigin() : null;
+    if (origin && req.headers.origin !== origin) {
+      respondJson(res, 403, { error: "Registration is not available from this site." });
+      return;
+    }
     const client = createAuthClient(req, res);
     const body = requestBody(req);
 
@@ -158,11 +210,6 @@ const handler: ApiHandler = async (req, res) => {
         respondJson(res, 400, { error: parsed.error });
         return;
       }
-      const origin = registrationOrigin();
-      if (req.headers.origin !== origin) {
-        respondJson(res, 403, { error: "Registration is not available from this site." });
-        return;
-      }
       const { email, password, businessName, legalName, fullName, captchaToken } = parsed.value;
       const { data, error } = await client.auth.signUp({
         email,
@@ -180,25 +227,38 @@ const handler: ApiHandler = async (req, res) => {
         },
       });
       if (error) {
-        const message = error.message.toLowerCase();
-        if (/captcha/.test(message)) {
-          respondJson(res, 400, { error: "CAPTCHA verification failed. Please try again." });
-          return;
-        }
-        if (error.status === 429 || /rate limit/.test(message)) {
-          respondJson(res, 429, { error: "Too many attempts. Please wait and try again." });
-          return;
-        }
-        if (/signups? not allowed|signup.*disabled/.test(message)) {
-          respondJson(res, 503, { error: "Registration is not available right now." });
-          return;
-        }
-        // Duplicate emails, pending invitations and trigger rejections all get the generic reply.
-        console.error("[auth/register] Sign-up rejected", error.status ?? "unknown");
+        const failure = registrationAuthFailure(action, error);
+        respondJson(res, failure.status, failure.body);
+        return;
       }
       if (data?.session) {
         // Never grant a session before email confirmation, even if auto-confirm is misconfigured.
         await client.auth.signOut();
+      }
+      respondJson(res, 200, { ok: true, message: GENERIC_REGISTER_MESSAGE });
+      return;
+    }
+
+    if (action === "resend-signup") {
+      const email = cleanText(body.email).toLowerCase();
+      const captchaToken = typeof body.captchaToken === "string" ? body.captchaToken.trim() : "";
+      if (!captchaToken || email.length > 320 || !EMAIL_PATTERN.test(email)) {
+        respondJson(res, 400, { error: "A valid email and CAPTCHA are required." });
+        return;
+      }
+      const { error } = await client.auth.resend({
+        type: "signup", email, options: { captchaToken, emailRedirectTo: `${origin}/auth/confirm` },
+      });
+      if (error) {
+        // Already-confirmed emails get the same privacy-preserving response.
+        if (error.code === "email_not_confirmed" || error.code === "user_not_found"
+          || /already confirmed/i.test(error.message)) {
+          diagnose(action, "privacy_response", error);
+        } else {
+          const failure = registrationAuthFailure(action, error);
+          respondJson(res, failure.status, failure.body);
+          return;
+        }
       }
       respondJson(res, 200, { ok: true, message: GENERIC_REGISTER_MESSAGE });
       return;
@@ -212,12 +272,17 @@ const handler: ApiHandler = async (req, res) => {
       }
       const { data, error } = await client.auth.verifyOtp({ token_hash: tokenHash, type: "email" });
       if (error || !data.user || !data.user.email_confirmed_at) {
-        respondJson(res, 400, { error: "This confirmation link is invalid or has expired." });
+        diagnose(action, "token_verification_failed", error);
+        await client.auth.signOut();
+        respondJson(res, error && error.status && error.status >= 500 ? 503 : 400, { error: "This confirmation link could not be verified. Request a new link or try again later." });
         return;
       }
-      const provisioned = await completeRegistration(client, data.user);
-      if (!provisioned) {
-        respondJson(res, 409, { error: "Your email is confirmed, but the workspace could not be set up. Sign in to retry." });
+      try {
+        const provisioned = await completeRegistration(client, data.user);
+        if (!provisioned) throw new Error("Your email is confirmed, but the workspace could not be set up. Sign in to retry.");
+      } catch (error) {
+        await client.auth.signOut();
+        respondJson(res, 409, { error: error instanceof Error ? error.message : "Workspace setup failed. Sign in to retry." });
         return;
       }
       respondJson(res, 200, { user: publicUser(data.user) });
@@ -270,7 +335,7 @@ const handler: ApiHandler = async (req, res) => {
     }
     respondJson(res, 200, { user: publicUser(data.user) });
   } catch (error) {
-    console.error(`[auth/${action}] Authentication operation failed`, error);
+    diagnose(action, "operation_failed", error);
     respondJson(res, 503, { error: "The authentication service is temporarily unavailable" });
   }
 };
