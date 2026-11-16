@@ -85,7 +85,7 @@ function isSameOriginBrowserRequest(req: ApiRequest): boolean {
 
 // Node Buffers are valid fetch bodies at runtime; copy into a plain Uint8Array for DOM typings.
 function toBodyInit(payload: string | Buffer | undefined): BodyInit | undefined {
-  return typeof payload === "string" || payload === undefined ? payload : new Uint8Array(payload);
+  return typeof payload === "string" || payload === undefined ? payload : (new Uint8Array(payload) as unknown as BodyInit);
 }
 
 const handler: ApiHandler = async (req, res) => {
