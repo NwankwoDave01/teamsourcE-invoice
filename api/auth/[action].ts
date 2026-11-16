@@ -6,6 +6,7 @@ import {
   methodNotAllowed,
   respondJson,
 } from "../_lib/session.js";
+import { PASSWORD_POLICY_SUMMARY, passwordPolicyError } from "../_lib/passwordPolicy.js";
 
 function requestBody(req: ApiRequest): Record<string, unknown> {
   return req.body && typeof req.body === "object" && !Array.isArray(req.body)
@@ -38,6 +39,11 @@ function diagnose(action: string, event: string, error?: unknown) {
 
 function registrationAuthFailure(action: string, error: { code?: string; status?: number; message: string }) {
   diagnose(action, "auth_rejected", error);
+  // Weak-password rejections are actionable and reveal nothing about the account.
+  if (error.code === "weak_password" || (error.status === 422 && /password/i.test(error.message) && !/already|invitation/i.test(error.message))
+    || /^Password should (be|contain)/i.test(error.message)) {
+    return { status: 400, body: { error: PASSWORD_POLICY_SUMMARY } };
+  }
   if (error.status && error.status >= 500) {
     return { status: 503, body: { error: "Registration is temporarily unavailable. Please try again later." } };
   }
@@ -79,7 +85,8 @@ export function parseRegistration(body: Record<string, unknown>):
   if (legalName.length > 200) return { ok: false, error: "Legal name must be 200 characters or fewer." };
   if (fullName.length < 2 || fullName.length > 120) return { ok: false, error: "Enter your full name (2 to 120 characters)." };
   if (email.length > 320 || !EMAIL_PATTERN.test(email)) return { ok: false, error: "Enter a valid work email." };
-  if (password.length < 12 || password.length > 128) return { ok: false, error: "Password must be between 12 and 128 characters long" };
+  const passwordError = passwordPolicyError(password);
+  if (passwordError) return { ok: false, error: passwordError };
   if (password !== confirmation) return { ok: false, error: "Passwords do not match." };
   return { ok: true, value: { email, password, businessName, legalName: legalName || null, fullName, captchaToken } };
 }
