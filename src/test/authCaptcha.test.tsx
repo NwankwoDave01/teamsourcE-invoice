@@ -201,7 +201,7 @@ describe("Turnstile authentication", () => {
       </MemoryRouter>,
     );
 
-    for (const [label, value] of [["Business name", "Test Business"], ["Full name", "Test User"], ["Work email", "user@example.com"], ["Password", "secure-password"], ["Confirm password", "secure-password"]]) {
+    for (const [label, value] of [["Business name", "Test Business"], ["Full name", "Test User"], ["Work email", "user@example.com"], ["Password", "Secure-Pass1!"], ["Confirm password", "Secure-Pass1!"]]) {
       fireEvent.change(screen.getByLabelText(label), { target: { value } });
     }
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
@@ -210,7 +210,7 @@ describe("Turnstile authentication", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create account" }));
     await waitFor(() => expect(mocks.registerBusiness).toHaveBeenCalledWith({
       businessName: "Test Business", legalName: "", fullName: "Test User", email: "user@example.com",
-      password: "secure-password", passwordConfirmation: "secure-password", captchaToken: "turnstile-test-token",
+      password: "Secure-Pass1!", passwordConfirmation: "Secure-Pass1!", captchaToken: "turnstile-test-token",
     }));
     expect(mocks.refreshSession).not.toHaveBeenCalled();
     await screen.findByRole("button", { name: "Resend confirmation" });
