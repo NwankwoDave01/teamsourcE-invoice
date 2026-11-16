@@ -123,16 +123,50 @@ afterEach(() => {
 describe("Vercel-managed Supabase sessions", () => {
   const registration = {
     businessName: "Example Business", legalName: "", fullName: "Example User",
-    email: "USER@example.com", password: "example-password", passwordConfirmation: "example-password", captchaToken: "captcha-token",
+    email: "USER@example.com", password: "Example-Pass1", passwordConfirmation: "Example-Pass1", captchaToken: "captcha-token",
   };
 
   it("normalizes registration details and rejects invalid fields", () => {
     expect(parseRegistration({ ...registration, businessName: "  Example  Business  " })).toEqual({
-      ok: true, value: { email: "user@example.com", password: "example-password", businessName: "Example Business", legalName: null, fullName: "Example User", captchaToken: "captcha-token" },
+      ok: true, value: { email: "user@example.com", password: "Example-Pass1", businessName: "Example Business", legalName: null, fullName: "Example User", captchaToken: "captcha-token" },
     });
-    for (const invalid of [{ businessName: "x" }, { fullName: "x" }, { legalName: "x".repeat(201) }, { email: "invalid" }, { password: "short" }, { passwordConfirmation: "different-password" }]) {
+    for (const invalid of [{ businessName: "x" }, { fullName: "x" }, { legalName: "x".repeat(201) }, { email: "invalid" }, { password: "short" }, { passwordConfirmation: "Different-Pass1" }]) {
       expect(parseRegistration({ ...registration, ...invalid }).ok).toBe(false);
     }
+  });
+
+  it("enforces each password rule with a specific message", () => {
+    const check = (password: string) => parseRegistration({ ...registration, password, passwordConfirmation: password });
+    const base = "Abcdefgh1!";
+    expect(check("Abcdefghi1!")).toEqual({ ok: false, error: "Password must be between 12 and 128 characters long." }); // 11
+    expect(check("Abcdefghij1!").ok).toBe(true); // 12
+    expect(check(base + "a".repeat(118)).ok).toBe(true); // 128
+    expect(check(base + "a".repeat(119)).ok).toBe(false); // 129
+    expect(check("ABCDEFGHIJ1!")).toEqual({ ok: false, error: "Password must include a lowercase letter (a-z)." });
+    expect(check("abcdefghij1!")).toEqual({ ok: false, error: "Password must include an uppercase letter (A-Z)." });
+    expect(check("Abcdefghijk!")).toEqual({ ok: false, error: "Password must include a number (0-9)." });
+    const noSpecial = check("Abcdefghijk1");
+    expect(noSpecial.ok === false && noSpecial.error).toMatch(/special character/);
+    for (const special of "!@#$%^&*()_+-=[]{};':\"\\|<>?,./`~") expect(check(`Abcdefghij1${special}`).ok).toBe(true);
+    expect(check("Abcdefghij1 ").ok).toBe(false); // space is not in the allowed set
+    expect(parseRegistration({ ...registration, passwordConfirmation: "Different-Pass1" })).toEqual({ ok: false, error: "Passwords do not match." });
+  });
+
+  it("maps Auth weak-password rejections to the requirements message, not duplicates", async () => {
+    mocks.auth.signUp.mockResolvedValueOnce({ data: {}, error: { code: "weak_password", status: 422, message: "Password should contain at least one character of each: abc..." } });
+    const weak = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/register", registration), weak.response);
+    expect(weak.result.statusCode).toBe(400);
+    expect(JSON.stringify(weak.result.body)).toMatch(/12 to 128 characters.*special character/);
+    expect(JSON.stringify(weak.result.body)).not.toMatch(/abc\.\.\./);
+    mocks.auth.signUp.mockResolvedValueOnce({ data: {}, error: { code: "user_already_exists", status: 422, message: "User already registered" } });
+    const dup = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/register", registration), dup.response);
+    expect(dup.result.statusCode).toBe(200);
+    mocks.auth.signUp.mockResolvedValueOnce({ data: {}, error: { status: 400, message: "This email has a pending company invitation." } });
+    const invite = makeResponse();
+    await authHandler(makeRequest("POST", "/api/auth/register", registration), invite.response);
+    expect(invite.result.statusCode).toBe(200);
   });
 
   it("requires CAPTCHA before any signup call", async () => {
@@ -147,7 +181,7 @@ describe("Vercel-managed Supabase sessions", () => {
     await authHandler(makeRequest("POST", "/api/auth/register", { ...registration, company_id: "attacker-tenant", role: "super_admin", tsflow_invitation_nonce: "attacker-nonce" }), response);
     expect(result.statusCode).toBe(200);
     expect(mocks.auth.signUp).toHaveBeenCalledWith({
-      email: "user@example.com", password: "example-password", options: {
+      email: "user@example.com", password: "Example-Pass1", options: {
         captchaToken: "captcha-token", emailRedirectTo: "https://app.example.com/auth/confirm",
         data: { display_name: "Example User", business_name: "Example Business", legal_name: null, tsflow_signup_intent: "business_registration" },
       },
@@ -311,7 +345,7 @@ describe("Vercel-managed Supabase sessions", () => {
   it("blocks login when registration completion fails instead of silently granting access", async () => {
     mocks.rpc.mockResolvedValueOnce({ data: null, error: { code: "P0001", message: "provisioning failed" } });
     const { response, result } = makeResponse();
-    await authHandler(makeRequest("POST", "/api/auth/login", { email: user.email, password: "example-password", captchaToken: "captcha-token" }), response);
+    await authHandler(makeRequest("POST", "/api/auth/login", { email: user.email, password: "Example-Pass1", captchaToken: "captcha-token" }), response);
     expect(result.statusCode).toBe(409);
     expect(mocks.auth.signOut).toHaveBeenCalledOnce();
     expect(result.body).not.toHaveProperty("user");
@@ -320,11 +354,11 @@ describe("Vercel-managed Supabase sessions", () => {
   it("tolerates only a missing pre-migration RPC for normal/invited accounts", async () => {
     mocks.rpc.mockResolvedValue({ data: null, error: { code: "PGRST202" } });
     const normal = makeResponse();
-    await authHandler(makeRequest("POST", "/api/auth/login", { email: user.email, password: "example-password", captchaToken: "captcha-token" }), normal.response);
+    await authHandler(makeRequest("POST", "/api/auth/login", { email: user.email, password: "Example-Pass1", captchaToken: "captcha-token" }), normal.response);
     expect(normal.result.statusCode).toBe(200);
     mocks.auth.signInWithPassword.mockResolvedValueOnce({ data: { user: { ...user, user_metadata: { tsflow_signup_intent: "business_registration" } } }, error: null });
     const pending = makeResponse();
-    await authHandler(makeRequest("POST", "/api/auth/login", { email: user.email, password: "example-password", captchaToken: "captcha-token" }), pending.response);
+    await authHandler(makeRequest("POST", "/api/auth/login", { email: user.email, password: "Example-Pass1", captchaToken: "captcha-token" }), pending.response);
     expect(pending.result.statusCode).toBe(409);
   });
 
@@ -335,7 +369,7 @@ describe("Vercel-managed Supabase sessions", () => {
     });
     const req = makeRequest("POST", "/api/auth/login", {
       email: user.email,
-      password: "example-password",
+      password: "Example-Pass1",
       captchaToken: "captcha-token",
     });
     const { response, headers, result } = makeResponse();
@@ -356,7 +390,7 @@ describe("Vercel-managed Supabase sessions", () => {
     ]));
     expect(mocks.auth.signInWithPassword).toHaveBeenCalledWith({
       email: user.email,
-      password: "example-password",
+      password: "Example-Pass1",
       options: { captchaToken: "captcha-token" },
     });
   });

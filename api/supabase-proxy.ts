@@ -83,6 +83,13 @@ function isSameOriginBrowserRequest(req: ApiRequest): boolean {
   return fetchSite === "same-origin";
 }
 
+// Node Buffers are valid fetch bodies at runtime; copy into a plain Uint8Array for DOM typings.
+function toBodyInit(payload: string | Buffer | undefined): BodyInit | undefined {
+  if (payload === undefined) return undefined;
+  if (typeof payload === "string") return payload;
+  return new Uint8Array(payload) as unknown as BodyInit;
+}
+
 const handler: ApiHandler = async (req, res) => {
   const method = req.method ?? "";
 
@@ -140,7 +147,7 @@ const handler: ApiHandler = async (req, res) => {
     const upstream = await fetch(target, {
       method,
       headers,
-      body: requestPayload(req),
+      body: toBodyInit(requestPayload(req)),
       redirect: "manual",
     });
 

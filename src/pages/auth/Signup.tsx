@@ -1,12 +1,13 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import { Loader2, MailCheck } from "lucide-react";
+import { Check, Loader2, MailCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BrandMark } from "@/components/shared/BrandMark";
 import { TurnstileCaptcha } from "@/components/auth/TurnstileCaptcha";
+import { PASSWORD_RULES, passwordPolicyError } from "../../../api/_lib/passwordPolicy";
 import { registerBusiness, resendSignup, type RegistrationInput } from "@/lib/authSession";
 
 export default function Signup() {
@@ -27,9 +28,8 @@ export default function Signup() {
     if (form.businessName.trim().length < 2 || form.fullName.trim().length < 2) {
       setError("Enter your business name and full name (at least 2 characters each)."); return;
     }
-    if (form.password.length < 12 || form.password.length > 128) {
-      setError("Password must be between 12 and 128 characters long."); return;
-    }
+    const passwordError = passwordPolicyError(form.password);
+    if (passwordError) { setError(passwordError); return; }
     if (form.password !== form.passwordConfirmation) { setError("Passwords do not match."); return; }
     setLoading(true);
     try {
@@ -57,6 +57,10 @@ export default function Signup() {
       setLoading(false);
     }
   }
+
+  const passwordsMatch = form.password === form.passwordConfirmation;
+  const canSubmit = Boolean(captchaToken) && form.businessName.trim().length >= 2 && form.fullName.trim().length >= 2
+    && form.email.trim().length > 0 && passwordPolicyError(form.password) === null && passwordsMatch;
 
   const fields = [
     { name: "businessName", label: "Business name", max: 160, required: true, autoComplete: "organization" },
@@ -100,12 +104,31 @@ export default function Signup() {
                   <Input id={field.name} type={"type" in field ? field.type : "text"}
                     required={field.required} maxLength={field.max} autoComplete={field.autoComplete}
                     minLength={field.name === "password" || field.name === "passwordConfirmation" ? 12 : undefined}
+                    aria-describedby={field.name === "password" ? "password-requirements"
+                      : field.name === "passwordConfirmation" && form.passwordConfirmation ? "password-match" : undefined}
                     value={form[field.name]} onChange={(event) => setForm((current) => ({ ...current, [field.name]: event.target.value }))} />
+                  {field.name === "password" && <div id="password-requirements" className="rounded-md border bg-muted/30 p-3">
+                    <p className="mb-1.5 text-xs font-medium text-foreground">Password requirements</p>
+                    <ul className="space-y-1 text-xs" aria-live="polite">
+                      {PASSWORD_RULES.map((rule) => {
+                        const met = rule.test(form.password);
+                        return <li key={rule.id} className={`flex items-center gap-1.5 ${met ? "text-primary" : "text-muted-foreground"}`}>
+                          {met ? <Check className="h-3.5 w-3.5" aria-hidden /> : <X className="h-3.5 w-3.5" aria-hidden />}
+                          <span>{rule.label}<span className="sr-only">{met ? " (met)" : " (not met)"}</span></span>
+                        </li>;
+                      })}
+                    </ul>
+                  </div>}
+                  {field.name === "passwordConfirmation" && form.passwordConfirmation && <p id="password-match" aria-live="polite"
+                    className={`flex items-center gap-1.5 text-xs ${passwordsMatch ? "text-primary" : "text-destructive"}`}>
+                    {passwordsMatch ? <Check className="h-3.5 w-3.5" aria-hidden /> : <X className="h-3.5 w-3.5" aria-hidden />}
+                    {passwordsMatch ? "Passwords match" : "Passwords do not match"}
+                  </p>}
                 </div>)}
                 <TurnstileCaptcha resetKey={captchaResetKey} onTokenChange={setCaptchaToken} onError={setCaptchaError} />
                 {captchaError && <p role="alert" className="text-sm text-destructive">{captchaError}</p>}
                 {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-                <Button type="submit" className="w-full" disabled={loading}>
+                <Button type="submit" className="w-full" disabled={loading || !canSubmit}>
                   {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create account
                 </Button>
               </fieldset>
