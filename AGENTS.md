@@ -1,5 +1,7 @@
 # Architecture rules
 
+- Keep inactivity deadlines in the authenticated-route idle controller and synchronize timestamp/status-only records; session continuation uses the cookie-authenticated session API, while polling/focus never renews idle time. Client-only idle expiry is not a server authorization boundary.
+
 - Keep migration-evidenced missing client types in a frontend-only schema extension rather than editing generated types or changing runtime requests; this preserves managed files and existing backend behavior.
 
 - Route tenant team reads and mutations through the authenticated tenant-admin contract using the active auth company; accept invitations explicitly via /auth/accept-invite (invitation_status, password set, accept_invitation) before reading Active-only membership, with stale-session guards and normal sign-in kept separate from auto-acceptance, so the server remains authoritative for access and roles.

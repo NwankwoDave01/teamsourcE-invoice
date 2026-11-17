@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { IdleSession } from "@/components/auth/IdleSession";
 import NotFound from "./pages/NotFound";
 import LandingPage from "./pages/LandingPage";
 import ApiDocs from "./pages/ApiDocs";
@@ -51,6 +52,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <IdleSession />
           <Routes>
             <Route path="/" element={<LandingPage />} />
            {/* <Route path="/" element={<Navigate to="/app/dashboard" replace />} />*/}

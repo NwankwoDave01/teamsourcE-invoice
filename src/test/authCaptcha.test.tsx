@@ -88,6 +88,25 @@ function fillLoginForm() {
 }
 
 describe("Turnstile authentication", () => {
+  it("toggles sign-in password visibility with accessible labels and retains its value", () => {
+    renderLogin();
+    const password = screen.getByLabelText("Password");
+    fireEvent.change(password, { target: { value: "Keep-This1!Password" } });
+    const toggle = screen.getByRole("button", { name: "Show password" });
+    expect(toggle).toHaveAttribute("type", "button");
+    toggle.focus();
+    expect(toggle).toHaveFocus();
+    expect(password).toHaveAttribute("type", "password");
+    expect(password).toHaveAttribute("autocomplete", "current-password");
+    fireEvent.click(toggle);
+    expect(password).toHaveAttribute("type", "text");
+    expect(password).toHaveValue("Keep-This1!Password");
+    fireEvent.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(password).toHaveAttribute("type", "password");
+    expect(password).toHaveValue("Keep-This1!Password");
+    expect(mocks.signInWithPassword).not.toHaveBeenCalled();
+  });
+
   it("submits a completed CAPTCHA token with password sign-in", async () => {
     renderLogin();
     fillLoginForm();

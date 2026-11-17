@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { signInWithPassword } from "@/lib/authSession";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,12 +16,14 @@ import { TurnstileCaptcha } from "@/components/auth/TurnstileCaptcha";
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, signOut, refreshSession } = useAuth();
+  const { user, signOut, refreshSession, logoutError } = useAuth();
+  const sessionExpired = (location.state as { reason?: string } | null)?.reason === "session_expired";
   const noMembership = (location.state as { reason?: string } | null)?.reason === "no_active_membership";
   const from = (location.state as { from?: string } | null)?.from ?? "/app/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [captchaToken, setCaptchaToken] = useState<string | null>(null);
   const [captchaResetKey, setCaptchaResetKey] = useState(0);
@@ -78,6 +80,11 @@ export default function Login() {
             <p className="text-sm text-muted-foreground">Sign in to your workspace.</p>
           </div>
 
+          {sessionExpired && <p role="status" className="mb-4 text-sm text-muted-foreground">Your session expired after 60 minutes of inactivity. Please sign in again.</p>}
+          {logoutError && <div className="mb-4 space-y-2">
+            <p role="alert" className="text-sm text-destructive">{logoutError}</p>
+            <Button type="button" variant="outline" onClick={() => void signOut(sessionExpired ? "session_expired" : "signed_out").catch(() => undefined)}>Retry sign out</Button>
+          </div>}
           {noMembership && (
             <div className="mb-6 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
               <p className="font-medium">No active company workspace</p>
@@ -112,8 +119,15 @@ export default function Login() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="password">Password</Label>
-              <Input id="password" type="password" required autoComplete="current-password"
-                value={password} onChange={(e) => setPassword(e.target.value)} />
+              <div className="relative">
+                <Input id="password" type={showPassword ? "text" : "password"} required autoComplete="current-password"
+                  className="pr-12" value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Button type="button" variant="ghost" size="icon" className="absolute right-0 top-0 h-10 w-10"
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword} onClick={() => setShowPassword((visible) => !visible)}>
+                  {showPassword ? <EyeOff className="h-4 w-4" aria-hidden /> : <Eye className="h-4 w-4" aria-hidden />}
+                </Button>
+              </div>
             </div>
             <TurnstileCaptcha
               resetKey={captchaResetKey}
