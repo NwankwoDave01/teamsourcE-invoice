@@ -1,3 +1,5 @@
+import { startIdleSession } from "@/lib/idleSession";
+
 export interface SessionUser {
   id: string;
   email: string | null;
@@ -51,7 +53,9 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
 }
 
 export async function signInWithPassword(email: string, password: string, captchaToken: string) {
-  return postAuth("login", { email, password, captchaToken });
+  const user = await postAuth("login", { email, password, captchaToken });
+  if (user) startIdleSession(user.id);
+  return user;
 }
 
 export async function signOutFromSession() {

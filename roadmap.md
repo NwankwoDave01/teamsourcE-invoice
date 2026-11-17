@@ -1,7 +1,7 @@
 # Frontend SI → APP alignment
 
 ## Sign-in visibility and inactivity timeout (preview only)
-- [ ] Add and verify sign-in password toggle; preserve signup and CAPTCHA
+- [x] Add and verify sign-in password toggle; preserve signup and CAPTCHA
 - [ ] Add centralized 60-minute idle expiry, 58-minute warning, verified continuation and cross-tab signout
 - [ ] Test sleep/visibility, genuine activity, excluded routes and server architecture limitations; run checks and inspect diff
 

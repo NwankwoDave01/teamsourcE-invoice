@@ -16,7 +16,8 @@ import { TurnstileCaptcha } from "@/components/auth/TurnstileCaptcha";
 export default function Login() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, signOut, refreshSession } = useAuth();
+  const { user, signOut, refreshSession, logoutError } = useAuth();
+  const sessionExpired = (location.state as { reason?: string } | null)?.reason === "session_expired";
   const noMembership = (location.state as { reason?: string } | null)?.reason === "no_active_membership";
   const from = (location.state as { from?: string } | null)?.from ?? "/app/dashboard";
 
@@ -79,6 +80,11 @@ export default function Login() {
             <p className="text-sm text-muted-foreground">Sign in to your workspace.</p>
           </div>
 
+          {sessionExpired && <p role="status" className="mb-4 text-sm text-muted-foreground">Your session expired after 60 minutes of inactivity. Please sign in again.</p>}
+          {logoutError && <div className="mb-4 space-y-2">
+            <p role="alert" className="text-sm text-destructive">{logoutError}</p>
+            <Button type="button" variant="outline" onClick={() => void signOut(sessionExpired ? "session_expired" : "signed_out").catch(() => undefined)}>Retry sign out</Button>
+          </div>}
           {noMembership && (
             <div className="mb-6 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-200">
               <p className="font-medium">No active company workspace</p>

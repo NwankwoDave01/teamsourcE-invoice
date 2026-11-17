@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { getCurrentUser, signOutFromSession, type SessionUser } from "@/lib/authSession";
 import { loadActiveMembership, loadUserRoles } from "@/lib/tenantAdmin";
+import { SIGN_OUT_KEY, writeIdle } from "@/lib/idleSession";
 
 type Role = "super_admin" | "company_admin" | "finance_officer" | "staff_user";
 
@@ -12,7 +13,9 @@ interface AuthCtx {
   companyId: string | null;
   roles: Role[];
   isSuperAdmin: boolean;
-  signOut: () => Promise<void>;
+  signOut: (reason?: "signed_out" | "session_expired") => Promise<void>;
+  signOutReason: "signed_out" | "session_expired" | null;
+  logoutError: string | null;
   refreshSession: (forceReload?: boolean) => Promise<SessionUser | null>;
   refreshMembership: () => Promise<void>;
 }
@@ -30,6 +33,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const membershipRequest = useRef(0);
   const sessionRequest = useRef(0);
   const loadedUid = useRef<string | null>(null);
+  const signingOut = useRef(false);
+  const logoutRequest = useRef<Promise<void> | null>(null);
+  const [signOutReason, setSignOutReason] = useState<"signed_out" | "session_expired" | null>(null);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   const loadMembership = useCallback(async (uid: string) => {
     const request = ++membershipRequest.current;
@@ -62,6 +69,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshSession = useCallback(async (forceReload = false): Promise<SessionUser | null> => {
+    if (signingOut.current && !forceReload) return null;
+    if (forceReload && logoutRequest.current) await logoutRequest.current;
+    if (forceReload) signingOut.current = false;
     const request = ++sessionRequest.current;
     setAuthError(null);
     setLoading(true);
@@ -69,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const currentUser = await getCurrentUser();
       if (request !== sessionRequest.current) return null;
       const uid = currentUser?.id ?? null;
+      if (uid) { setSignOutReason(null); setLogoutError(null); }
       currentUid.current = uid;
       setUser(currentUser);
       if (!uid) {
@@ -125,8 +136,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [refreshSession]);
 
-  const signOut = async () => {
-    await signOutFromSession();
+  const signOut = useCallback((reason: "signed_out" | "session_expired" = "signed_out"): Promise<void> => {
+    if (logoutRequest.current) return logoutRequest.current;
+    signingOut.current = true;
+    const uid = currentUid.current;
+    if (uid) writeIdle(uid, { at: Date.now(), status: "expired" });
+    try { localStorage.setItem(SIGN_OUT_KEY, JSON.stringify({ at: Date.now(), status: reason })); } catch { /* No credentials are stored. */ }
+    setSignOutReason(reason);
+    setLogoutError(null);
     ++sessionRequest.current;
     ++membershipRequest.current;
     currentUid.current = null;
@@ -137,7 +154,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthError(null);
     setMembershipError(null);
     setLoading(false);
-  };
+    const request = signOutFromSession().catch((error: unknown) => {
+      setLogoutError("You are signed out of this page, but server sign-out could not be confirmed. Retry sign out.");
+      throw error;
+    }).finally(() => { logoutRequest.current = null; });
+    logoutRequest.current = request;
+    return request;
+  }, []);
+
+  useEffect(() => {
+    const synchronize = (event: StorageEvent) => {
+      if (event.key !== SIGN_OUT_KEY || !event.newValue || signingOut.current || !currentUid.current) return;
+      try {
+        const value = JSON.parse(event.newValue);
+        if (Number.isFinite(value.at) && value.at > 0 && value.at <= Date.now()
+          && (value.status === "signed_out" || value.status === "session_expired")) {
+          void signOut(value.status).catch(() => undefined);
+        }
+      } catch { /* Ignore malformed cross-tab messages. */ }
+    };
+    window.addEventListener("storage", synchronize);
+    return () => window.removeEventListener("storage", synchronize);
+  }, [signOut]);
 
   const refreshMembership = async () => {
     const uid = currentUid.current;
@@ -155,6 +193,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         roles,
         isSuperAdmin: roles.includes("super_admin"),
         signOut,
+        signOutReason,
+        logoutError,
         refreshSession,
         refreshMembership,
       }}
