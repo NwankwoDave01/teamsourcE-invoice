@@ -1,5 +1,10 @@
 # Frontend SI → APP alignment
 
+## Sign-in visibility and inactivity timeout (preview only)
+- [ ] Add and verify sign-in password toggle; preserve signup and CAPTCHA
+- [ ] Add centralized 60-minute idle expiry, 58-minute warning, verified continuation and cross-tab signout
+- [ ] Test sleep/visibility, genuine activity, excluded routes and server architecture limitations; run checks and inspect diff
+
 ## Public business registration (source only; no deployment or live SQL)
 - [x] Finish registration form, manual confirmation, cookie-authenticated API, explicit resend and focused tests
 - [x] Review source draft and preserve invitation nonce/acceptance branch byte-for-byte; remove guessed TIN and fail before provisioning writes
