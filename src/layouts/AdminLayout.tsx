@@ -6,11 +6,11 @@ import { TopBar } from "@/components/shell/TopBar";
 export default function AdminLayout() {
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background">
+      <div className="app-shell flex min-h-svh w-full bg-background">
         <AdminSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar variant="admin" />
-          <main className="flex-1 overflow-x-hidden">
+          <main className="min-w-0 flex-1 overflow-x-hidden">
             <Outlet />
           </main>
         </div>

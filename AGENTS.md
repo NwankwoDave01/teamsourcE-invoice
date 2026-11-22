@@ -1,5 +1,7 @@
 # Architecture rules
 
+- Apply shared visual changes through global semantic tokens and existing UI/shell primitives; scope app content spacing to the app-shell class so routes and feature contracts remain unchanged.
+
 - Keep inactivity deadlines in the authenticated-route idle controller and synchronize timestamp/status-only records; session continuation uses the cookie-authenticated session API, while polling/focus never renews idle time. Client-only idle expiry is not a server authorization boundary.
 
 - Keep migration-evidenced missing client types in a frontend-only schema extension rather than editing generated types or changing runtime requests; this preserves managed files and existing backend behavior.

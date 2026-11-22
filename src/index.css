@@ -5,28 +5,28 @@
 @layer base {
   :root {
     /* Surfaces */
-    --background: 220 20% 98%;
-    --foreground: 222 47% 11%;
+    --background: 220 50% 97.6471%;
+    --foreground: 214.6667 58.4416% 15.098%;
 
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 214.6667 58.4416% 15.098%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
+    --popover-foreground: 214.6667 58.4416% 15.098%;
 
-    /* Brand — deep indigo, enterprise finance feel */
-    --primary: 232 64% 36%;
-    --primary-foreground: 210 40% 98%;
-    --primary-glow: 232 84% 58%;
+    /* Brand — enterprise fintech blue */
+    --primary: 221.2121 83.1933% 53.3333%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 221.2121 83.1933% 53.3333%;
 
     --secondary: 220 14% 96%;
-    --secondary-foreground: 222 47% 11%;
+    --secondary-foreground: 214.6667 58.4416% 15.098%;
 
     --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
+    --muted-foreground: 215 18% 42%;
 
-    --accent: 232 80% 96%;
-    --accent-foreground: 232 64% 36%;
+    --accent: 217.1429 100% 95.8824%;
+    --accent-foreground: 221.2121 83.1933% 53.3333%;
 
     --destructive: 0 72% 51%;
     --destructive-foreground: 210 40% 98%;
@@ -35,35 +35,35 @@
     --success-foreground: 210 40% 98%;
 
     --warning: 38 92% 50%;
-    --warning-foreground: 222 47% 11%;
+    --warning-foreground: 214.6667 58.4416% 15.098%;
 
     --info: 211 92% 50%;
     --info-foreground: 210 40% 98%;
 
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 232 64% 36%;
+    --ring: 221.2121 83.1933% 53.3333%;
 
-    --radius: 0.625rem;
+    --radius: 0.5rem;
 
-    /* Sidebar — tenant (deep indigo) */
-    --sidebar-background: 230 35% 12%;
-    --sidebar-foreground: 220 15% 80%;
-    --sidebar-primary: 232 84% 58%;
+    /* Navigation — enterprise navy */
+    --sidebar-background: 214.6667 58.4416% 15.098%;
+    --sidebar-foreground: 214 25% 82%;
+    --sidebar-primary: 221.2121 83.1933% 53.3333%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 230 30% 18%;
+    --sidebar-accent: 215 48% 22%;
     --sidebar-accent-foreground: 0 0% 100%;
-    --sidebar-border: 230 25% 20%;
-    --sidebar-ring: 232 84% 58%;
+    --sidebar-border: 215 35% 28%;
+    --sidebar-ring: 221.2121 83.1933% 53.3333%;
 
-    /* Admin sidebar — slate/teal accent */
-    --admin-sidebar-background: 220 40% 10%;
-    --admin-sidebar-accent: 174 70% 42%;
+    /* Admin navigation shares the same brand palette */
+    --admin-sidebar-background: 214.6667 58.4416% 15.098%;
+    --admin-sidebar-accent: 221.2121 83.1933% 53.3333%;
 
     /* Effects */
-    --shadow-sm: 0 1px 2px 0 hsl(220 43% 11% / 0.04);
-    --shadow-md: 0 4px 12px -2px hsl(220 43% 11% / 0.08);
-    --shadow-lg: 0 12px 32px -8px hsl(220 43% 11% / 0.12);
+    --shadow-sm: 0 1px 3px 0 hsl(var(--foreground) / 0.04);
+    --shadow-md: 0 4px 16px -4px hsl(var(--foreground) / 0.08);
+    --shadow-lg: 0 12px 32px -8px hsl(var(--foreground) / 0.12);
     --gradient-primary: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary-glow)) 100%);
     --gradient-subtle: linear-gradient(180deg, hsl(220 20% 99%) 0%, hsl(220 20% 96%) 100%);
 
@@ -77,14 +77,14 @@
     --card-foreground: 210 40% 98%;
     --popover: 222 47% 8%;
     --popover-foreground: 210 40% 98%;
-    --primary: 232 84% 64%;
-    --primary-foreground: 222 47% 11%;
-    --primary-glow: 232 84% 72%;
+    --primary: 217 92% 68%;
+    --primary-foreground: 214.6667 58.4416% 15.098%;
+    --primary-glow: 217 92% 76%;
     --secondary: 222 32% 14%;
     --secondary-foreground: 210 40% 98%;
     --muted: 222 32% 14%;
     --muted-foreground: 220 9% 65%;
-    --accent: 232 50% 20%;
+    --accent: 216 48% 22%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62% 50%;
     --destructive-foreground: 210 40% 98%;
@@ -93,15 +93,15 @@
     --info: 211 92% 60%;
     --border: 222 32% 18%;
     --input: 222 32% 18%;
-    --ring: 232 84% 64%;
+    --ring: 217 92% 68%;
     --sidebar-background: 222 47% 4%;
     --sidebar-foreground: 220 15% 75%;
-    --sidebar-primary: 232 84% 64%;
+    --sidebar-primary: 217 92% 68%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 222 32% 12%;
     --sidebar-accent-foreground: 0 0% 100%;
     --sidebar-border: 222 32% 14%;
-    --sidebar-ring: 232 84% 64%;
+    --sidebar-ring: 217 92% 68%;
   }
 }
 
@@ -111,10 +111,40 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
-    font-feature-settings: "cv11", "ss01", "ss03";
+    font-feature-settings: "tnum";
+    line-height: 1.5;
   }
   h1, h2, h3, h4 {
-    @apply tracking-tight;
+    letter-spacing: 0;
+  }
+}
+
+@layer components {
+  .app-shell { letter-spacing: 0; }
+  .app-shell main > div:not([class*="flex"]) > .p-6 {
+    padding: 1.5rem 2rem;
+  }
+  [data-sidebar="menu-button"] {
+    min-height: 2.5rem;
+  }
+  [data-sidebar="menu-button"][data-active="true"] {
+    background: hsl(var(--sidebar-primary));
+    color: hsl(var(--sidebar-primary-foreground));
+  }
+  [data-sidebar="group-label"] {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  @media (max-width: 767px) {
+    .app-shell main > div:not([class*="flex"]) > .p-6 { padding: 1rem; }
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }
 

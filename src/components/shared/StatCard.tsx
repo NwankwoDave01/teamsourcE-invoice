@@ -13,10 +13,10 @@ interface StatCardProps {
 export function StatCard({ label, value, delta, icon: Icon, hint }: StatCardProps) {
   return (
     <Card className="p-5 shadow-elegant-sm">
-      <div className="flex items-start justify-between">
-        <div className="space-y-1.5">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
-          <p className="text-2xl font-semibold text-foreground">{value}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 space-y-1.5">
+          <p className="text-xs font-medium text-muted-foreground">{label}</p>
+          <p className="break-words text-2xl font-semibold tabular-nums text-foreground">{value}</p>
           {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
         </div>
         <div className="rounded-lg bg-accent p-2.5 text-accent-foreground">

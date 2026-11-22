@@ -23,11 +23,11 @@ export default function TenantLayout() {
 
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full bg-background">
+      <div className="app-shell flex min-h-svh w-full bg-background">
         <TenantSidebar />
         <div className="flex min-w-0 flex-1 flex-col">
           <TopBar variant="tenant" />
-          <main className="flex-1 overflow-x-hidden">
+          <main className="min-w-0 flex-1 overflow-x-hidden">
             <Outlet />
           </main>
         </div>

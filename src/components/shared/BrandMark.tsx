@@ -28,15 +28,13 @@ export function BrandMark({
     subtitle ??
     (isAdmin ? "Platform Console" : variant === "tenant" ? BRAND.shortTagline : undefined);
 
-  const tileClass = isAdmin
-    ? "bg-success shadow-elegant-md"
-    : "bg-gradient-primary shadow-elegant-md";
-  const monogramClass = isAdmin ? "text-success-foreground" : "text-primary-foreground";
+  const tileClass = "bg-primary shadow-elegant-sm";
+  const monogramClass = "text-primary-foreground";
 
   return (
     <div className="flex items-center gap-2.5">
       <div className={`flex ${s.box} items-center justify-center rounded-md ${tileClass}`}>
-        <span className={`font-bold tracking-tight ${monogramClass} ${s.text}`}>
+        <span className={`font-bold ${monogramClass} ${s.text}`}>
           {BRAND.monogram}
         </span>
       </div>
@@ -51,7 +49,7 @@ export function BrandMark({
           </span>
           {sub && (
             <span
-              className={`text-[10px] uppercase tracking-wider ${
+              className={`text-[10px] ${
                 variant === "auth" ? "text-muted-foreground" : "text-sidebar-foreground/60"
               }`}
             >

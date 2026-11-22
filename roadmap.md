@@ -1,5 +1,10 @@
 # Frontend SI → APP alignment
 
+## Shared visual foundation and app shell (presentation only)
+- [x] Update semantic palette, typography and shared cards/buttons/tables/page headers
+- [x] Align responsive tenant/admin navigation and top bar without functional changes
+- [x] Verify shell rendering with isolated fixtures and all 299 existing tests; inspect automatic TypeScript/build checks and final diff
+
 ## Sign-in visibility and inactivity timeout (preview only)
 - [x] Add and verify sign-in password toggle; preserve signup and CAPTCHA
 - [ ] Add centralized 60-minute idle expiry, 58-minute warning, verified continuation and cross-tab signout

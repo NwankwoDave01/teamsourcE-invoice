@@ -13,6 +13,7 @@ import {
 import {
   Collapsible, CollapsibleContent, CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/shared/BrandMark";
 
 const main = [
@@ -95,7 +96,7 @@ export function TenantSidebar() {
                 >
                   <item.icon className="h-4 w-4 shrink-0" />
                   <span className="flex-1 text-left">{item.title}</span>
-                  <ChevronDown className="chevron h-3.5 w-3.5 shrink-0 text-sidebar-foreground/50 transition-transform" />
+                  <ChevronDown className="chevron h-3.5 w-3.5 shrink-0 text-sidebar-foreground/70 transition-transform" />
                 </SidebarMenuButton>
               </CollapsibleTrigger>
               <CollapsibleContent>
@@ -131,38 +132,41 @@ export function TenantSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="border-b border-sidebar-border bg-sidebar px-4 py-4">
+      <SidebarHeader className="border-b border-sidebar-border bg-sidebar px-4 py-5 group-data-[collapsible=icon]:px-2">
         <Link to="/app/dashboard" className="flex items-center">
           <BrandMark variant="tenant" size="sm" showText={!collapsed} />
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="bg-sidebar px-2 py-3">
+      <SidebarContent className="bg-sidebar px-2 py-4 group-data-[collapsible=icon]:px-0">
         <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/50">Workspace</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-sidebar-foreground/70">Workspace</SidebarGroupLabel>
           <SidebarGroupContent>
             {renderItems(main)}
             {renderGroupedItems(groupedMain)}
           </SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/50">Invoicing</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-sidebar-foreground/70">Invoicing</SidebarGroupLabel>
           <SidebarGroupContent>{renderItems(invoicing)}</SidebarGroupContent>
         </SidebarGroup>
         <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/50">Administration</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-sidebar-foreground/70">Administration</SidebarGroupLabel>
           <SidebarGroupContent>{renderItems(admin)}</SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border bg-sidebar p-3">
-        <button
+        <Button
+          type="button" variant="ghost"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           onClick={toggleSidebar}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          className="flex h-9 w-full items-center justify-start gap-2 rounded-md px-2 py-1.5 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
           <ChevronsLeft className={`h-4 w-4 transition-transform ${collapsed ? "rotate-180" : ""}`} />
           {!collapsed && <span>Collapse sidebar</span>}
-        </button>
+        </Button>
       </SidebarFooter>
     </Sidebar>
   );

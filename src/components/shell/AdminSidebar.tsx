@@ -8,6 +8,7 @@ import {
   SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/shared/BrandMark";
 
 const items = [
@@ -27,15 +28,15 @@ export function AdminSidebar() {
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
-      <SidebarHeader className="border-b border-sidebar-border bg-sidebar px-4 py-4">
+      <SidebarHeader className="border-b border-sidebar-border bg-sidebar px-4 py-5 group-data-[collapsible=icon]:px-2">
         <Link to="/admin/overview" className="flex items-center">
           <BrandMark variant="admin" size="sm" showText={!collapsed} />
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="bg-sidebar px-2 py-3">
+      <SidebarContent className="bg-sidebar px-2 py-4 group-data-[collapsible=icon]:px-0">
         <SidebarGroup>
-          <SidebarGroupLabel className="text-sidebar-foreground/50">Platform</SidebarGroupLabel>
+          <SidebarGroupLabel className="text-sidebar-foreground/70">Platform</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {items.map((item) => {
@@ -61,13 +62,16 @@ export function AdminSidebar() {
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border bg-sidebar p-3">
-        <button
+        <Button
+          type="button" variant="ghost"
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           onClick={toggleSidebar}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+          className="flex h-9 w-full items-center justify-start gap-2 rounded-md px-2 py-1.5 text-xs text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
         >
           <ChevronsLeft className={`h-4 w-4 transition-transform ${collapsed ? "rotate-180" : ""}`} />
           {!collapsed && <span>Collapse sidebar</span>}
-        </button>
+        </Button>
       </SidebarFooter>
     </Sidebar>
   );
