@@ -13,7 +13,7 @@ export function BlogCard({ article }: { article: BlogArticle }) {
       </Link>
       <div className="blog-card-body"><div className="blog-card-meta"><span>{article.category}</span><span><Clock3 size={13}/>{article.readingTime} min read</span></div>
         <h3><Link to={`/insights/${article.slug}`}>{article.title}</Link></h3><p>{article.excerpt}</p>
-        <div className="blog-card-foot"><span>{article.publishedAt ? new Date(article.publishedAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : "Draft sample"}</span><Link to={`/insights/${article.slug}`} className="text-link">Read Article <ArrowRight size={15}/></Link></div>
+        <div className="blog-card-foot"><span>{article.publishedAt ? new Date(article.publishedAt).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : article.isPlaceholder ? "Draft sample" : "Date unavailable"}</span><Link to={`/insights/${article.slug}`} className="text-link">Read Article <ArrowRight size={15}/></Link></div>
       </div>
     </article>
   );

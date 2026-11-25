@@ -38,7 +38,7 @@ type WordPressPost = {
   content?: { rendered?: string };
   categories?: number[];
   _embedded?: {
-    "wp:term"?: Array<Array<{ name?: string }>>;
+    "wp:term"?: Array<Array<{ id?: number; name?: string; taxonomy?: string }>>;
     "wp:featuredmedia"?: Array<{ source_url?: string; alt_text?: string }>;
   };
   yoast_head_json?: { description?: string; og_image?: Array<{ url?: string }> };
@@ -75,7 +75,7 @@ function mapWordPressPost(post: WordPressPost): BlogArticle {
   const title = textFromHtml(post.title?.rendered);
   const excerpt = textFromHtml(post.excerpt?.rendered);
   const media = post._embedded?.["wp:featuredmedia"]?.[0];
-  const category = post._embedded?.["wp:term"]?.flat().find((term) => term.name)?.name ?? "Insights";
+  const category = post._embedded?.["wp:term"]?.flat().find((term) => term.id === TS_FLOW_CATEGORY_ID && term.taxonomy === "category")?.name ?? "TS-Flow Insights";
   const image = post.yoast_head_json?.og_image?.[0]?.url;
   const body = blocksFromHtml(post.content?.rendered);
   const wordCount = body.map((block) => block.type === "list" ? block.items.join(" ") : block.type === "image" ? "" : block.text).join(" ").split(/\s+/).filter(Boolean).length;
@@ -100,25 +100,50 @@ function mapWordPressPost(post: WordPressPost): BlogArticle {
 }
 
 const endpoint = import.meta.env.VITE_WORDPRESS_API_URL?.replace(/\/$/, "");
+const TS_FLOW_CATEGORY_ID = 178;
+const POSTS_PER_PAGE = 100;
 
 async function requestPublishedPosts(): Promise<BlogArticle[]> {
   if (!endpoint) return [];
-  const response = await fetch(`${endpoint}/wp-json/wp/v2/posts?status=publish&_embed=1&per_page=100`);
-  if (!response.ok) throw new Error(`WordPress returned ${response.status}`);
-  const posts = await response.json() as WordPressPost[];
-  return posts
-    .filter((post) => post.status === "publish")
-    .map(mapWordPressPost)
-    .filter((article) => article.slug && article.title);
+  const articles: BlogArticle[] = [];
+  for (let page = 1; ; page++) {
+    const params = new URLSearchParams({
+      categories: String(TS_FLOW_CATEGORY_ID),
+      status: "publish",
+      _embed: "1",
+      per_page: String(POSTS_PER_PAGE),
+      page: String(page),
+      orderby: "date",
+      order: "desc",
+    });
+    const response = await fetch(`${endpoint}/wp-json/wp/v2/posts?${params}`);
+    if (!response.ok) throw new Error(`WordPress returned ${response.status}`);
+    const posts = await response.json() as WordPressPost[];
+    articles.push(
+      ...posts
+        .filter((post) => post.status === "publish" && post.categories?.includes(TS_FLOW_CATEGORY_ID))
+        .map(mapWordPressPost)
+        .filter((article) => article.slug && article.title),
+    );
+    const totalPages = Number(response.headers.get("X-WP-TotalPages"));
+    if ((Number.isFinite(totalPages) && totalPages > 0 && page >= totalPages) || posts.length < POSTS_PER_PAGE) break;
+  }
+  return articles.sort((a, b) => Date.parse(b.publishedAt ?? "") - Date.parse(a.publishedAt ?? ""));
 }
 
 async function requestPublishedPost(slug: string): Promise<BlogArticle | undefined> {
   if (!endpoint) return undefined;
-  const params = new URLSearchParams({ slug, status: "publish", _embed: "1", per_page: "1" });
+  const params = new URLSearchParams({
+    slug,
+    categories: String(TS_FLOW_CATEGORY_ID),
+    status: "publish",
+    _embed: "1",
+    per_page: "1",
+  });
   const response = await fetch(`${endpoint}/wp-json/wp/v2/posts?${params}`);
   if (!response.ok) throw new Error(`WordPress returned ${response.status} while looking up article "${slug}"`);
   const posts = await response.json() as WordPressPost[];
-  const post = posts.find((item) => item.status === "publish" && item.slug === slug);
+  const post = posts.find((item) => item.status === "publish" && item.slug === slug && item.categories?.includes(TS_FLOW_CATEGORY_ID));
   return post ? mapWordPressPost(post) : undefined;
 }
 
