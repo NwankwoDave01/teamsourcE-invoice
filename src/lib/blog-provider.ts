@@ -112,11 +112,18 @@ async function requestPublishedPosts(): Promise<BlogArticle[]> {
     .filter((article) => article.slug && article.title);
 }
 
+async function requestPublishedPost(slug: string): Promise<BlogArticle | undefined> {
+  if (!endpoint) return undefined;
+  const params = new URLSearchParams({ slug, status: "publish", _embed: "1", per_page: "1" });
+  const response = await fetch(`${endpoint}/wp-json/wp/v2/posts?${params}`);
+  if (!response.ok) throw new Error(`WordPress returned ${response.status} while looking up article "${slug}"`);
+  const posts = await response.json() as WordPressPost[];
+  const post = posts.find((item) => item.status === "publish" && item.slug === slug);
+  return post ? mapWordPressPost(post) : undefined;
+}
+
 export const blogProvider: BlogProvider = {
   isConfigured: Boolean(endpoint),
   getArticles: requestPublishedPosts,
-  async getArticle(slug) {
-    const articles = await requestPublishedPosts();
-    return articles.find((article) => article.slug === slug);
-  },
+  getArticle: requestPublishedPost,
 };
