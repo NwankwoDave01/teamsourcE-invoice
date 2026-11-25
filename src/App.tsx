@@ -11,6 +11,8 @@ import LandingPage from "./pages/LandingPage";
 import ApiDocs from "./pages/ApiDocs";
 import SLA from "./pages/SLA";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
+import InsightsPage from "./pages/InsightsPage";
+import BlogArticlePage from "./pages/BlogArticlePage";
 
 import TenantLayout from "./layouts/TenantLayout";
 import AdminLayout from "./layouts/AdminLayout";
@@ -64,6 +66,8 @@ const App = () => (
             <Route path="/api-docs" element={<ApiDocs />} />
             <Route path="/sla" element={<SLA />} />
             <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+            <Route path="/insights" element={<InsightsPage />} />
+            <Route path="/insights/:slug" element={<BlogArticlePage />} />
 
             <Route element={<ProtectedRoute />}>
               <Route path="/app" element={<TenantLayout />}>

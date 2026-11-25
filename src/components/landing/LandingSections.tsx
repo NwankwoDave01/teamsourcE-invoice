@@ -2,6 +2,9 @@ import {
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
+  Banknote,
+  Boxes,
+  Calculator,
   BadgeCheck,
   Building2,
   Check,
@@ -13,6 +16,7 @@ import {
   Gauge,
   LockKeyhole,
   Network,
+  ShoppingCart,
   ScrollText,
   ShieldCheck,
   UsersRound,
@@ -45,7 +49,40 @@ const faqs = [
   { q: "How are invoices validated and signed?", a: "TS-Flow provides invoice validation and a signing workflow. The application guides authorised users through the steps available for their account." },
   { q: "How does a business get started?", a: "Choose Get started to open the existing registration flow. To join a company that already uses TS-Flow, ask its administrator for an invitation." },
   { q: "How do I access my account?", a: "Use Sign in and enter your existing account credentials. Your access to company records depends on your assigned membership and permissions." },
+  { q: "Does TS-Flow support NRS invoice workflows?", a: "TS-Flow supports the configured invoice validation, signing, submission, and status workflows available to your business account. Available steps depend on your workspace configuration." },
+  { q: "How does TS-Flow protect access to company records?", a: "Authenticated account sessions, company-scoped workspaces, and assigned member roles govern access to business records. Administrators manage team membership and available permissions." },
+  { q: "Can I find out more about the public API and service terms?", a: "Visit API Documentation for public integration information, the Service Level Agreement for service terms, or the Privacy Policy for information about data handling." },
 ];
+
+const platformModules = [
+  { id: "e-invoicing", icon: FileText, name: "E-Invoicing", descriptor: "A focused foundation for digital invoicing.", details: ["Electronic invoice management", "Validation & digital signing", "NRS e-invoicing workflows"], accent: "invoice", status: "Available" },
+  { id: "banking", icon: Banknote, name: "Banking", descriptor: "Business banking operations and financial transaction management.", details: ["Business banking operations", "Financial transactions", "Banking-related workflows"], accent: "banking", status: "Coming soon" },
+  { id: "accounting", icon: Calculator, name: "Accounting", descriptor: "A connected home for financial records and bookkeeping operations.", details: ["Financial records", "Bookkeeping", "Accounting operations & reporting"], accent: "accounting", status: "Coming soon" },
+  { id: "human-resources", icon: UsersRound, name: "Human Resources", descriptor: "Workforce activities and people operations, together.", details: ["Employee management", "Workforce administration", "HR operations"], accent: "people", status: "Coming soon" },
+  { id: "inventory", icon: Boxes, name: "Inventory", descriptor: "A clearer view of products and stock movement.", details: ["Product & stock management", "Inventory monitoring", "Stock operations"], accent: "inventory", status: "Coming soon" },
+  { id: "sales", icon: ShoppingCart, name: "Sales", descriptor: "Customer transactions and day-to-day sales management.", details: ["Sales management", "Customer transactions", "Business sales operations"], accent: "sales", status: "Coming soon" },
+];
+
+export function PlatformEcosystem() {
+  return <section className="platform-ecosystem" aria-labelledby="ecosystem-heading">
+    <div className="shell">
+      <div className="ecosystem-heading">
+        <div><p className="eyebrow">The TS-Flow platform</p><h2 id="ecosystem-heading">One platform. Every essential business operation.</h2></div>
+        <p>TS-Flow brings essential business functions together in one connected platform, helping organisations manage financial operations, workforce activities, inventory and business processes.</p>
+      </div>
+      <div className="ecosystem-grid">
+        {platformModules.map(({ id, icon: Icon, name, descriptor, details, accent, status }, index) => <article className={`ecosystem-module ecosystem-${accent}`} id={id} key={id}>
+          <div className="ecosystem-module-top"><span className="ecosystem-icon"><Icon size={19} strokeWidth={1.8} /></span><span className="ecosystem-module-status">{status}</span></div>
+          <div className="ecosystem-module-copy"><h3>{name}</h3><p>{descriptor}</p></div>
+          <ul>{details.map((detail) => <li key={detail}>{detail}</li>)}</ul>
+          <div className="module-art" aria-hidden="true"><span/><span/><span/></div>
+        </article>)}
+      </div>
+      <a className="ecosystem-security" href="#security"><span className="ecosystem-icon"><ShieldCheck size={19} strokeWidth={1.8} /></span><span><strong>Security &amp; Compliance</strong><small>Trust and governance across the platform</small></span><ArrowRight size={17} /></a>
+      <p className="ecosystem-note">A connected platform vision, bringing core business functions into one experience.</p>
+    </div>
+  </section>;
+}
 
 export function ProductPreview() {
   return (
@@ -98,7 +135,7 @@ export function TrustStrip() {
   const marks = [
     { name: "NITDA", detail: "System Integrator Accredited", initials: "N" },
     { name: "ISO 27001", detail: "Certified", initials: "ISO" },
-    { name: "Software Quality Assurance", detail: "Approved", initials: "SQA" },
+    { name: "NDPC", detail: "Nigeria Data Protection Commission", initials: "NDPC" },
     { name: "NRS", detail: "E-Invoicing", initials: "NRS" },
   ];
   return <section aria-label="Trust and certifications" className="border-y border-slate-200/80 bg-white"><div className="mx-auto max-w-7xl px-5 py-7 sm:px-8 lg:px-10"><p className="mb-5 text-center text-[10px] font-semibold uppercase tracking-[.2em] text-slate-400">Built for business confidence and compliance</p><div className="grid grid-cols-2 gap-y-6 md:grid-cols-4">{marks.map((mark) => <div key={mark.name} className="flex items-center justify-center gap-3 px-2 md:border-r md:border-slate-100 last:border-0"><span className="flex h-10 min-w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-2 text-[10px] font-bold tracking-wide text-slate-700">{mark.initials}</span><span><span className="block text-xs font-semibold text-slate-800">{mark.name}</span><span className="mt-0.5 block text-[10px] text-slate-500">{mark.detail}</span></span></div>)}</div></div></section>;
@@ -119,13 +156,13 @@ export function SecurityAndBenefits() {
 }
 
 export function Faq() {
-  return <section id="resources" className="scroll-mt-24 bg-[#f5f8fc] py-20 sm:py-24"><div className="mx-auto grid max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-[.7fr_1.3fr] lg:px-10"><div><p className="text-xs font-semibold uppercase tracking-[.19em] text-blue-700">Frequently asked questions</p><h2 className="mt-4 text-balance text-3xl font-semibold tracking-[-.04em] text-slate-950 sm:text-4xl">A little more clarity.</h2><p className="mt-4 max-w-sm text-sm leading-6 text-slate-600">Learn the essentials about working with TS-Flow.</p><Link to="/api-docs" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-800">Explore platform resources <ArrowRight size={15}/></Link></div><div className="divide-y divide-slate-200 border-y border-slate-200">{faqs.map((item) => <details key={item.q} className="group py-5"><summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left text-sm font-semibold text-slate-900 marker:hidden [&::-webkit-details-marker]:hidden">{item.q}<ChevronDown size={17} className="shrink-0 text-slate-400 transition-transform group-open:rotate-180" /></summary><p className="max-w-2xl pr-8 pt-3 text-sm leading-6 text-slate-600">{item.a}</p></details>)}</div></div></section>;
+  return <section aria-labelledby="faq-heading" className="faq-wrap" id="resources"><div className="mx-auto grid max-w-7xl gap-10 px-5 sm:px-8 lg:grid-cols-[.7fr_1.3fr] lg:px-10"><div><p className="text-xs font-semibold uppercase tracking-[.19em] text-blue-700">Frequently asked questions</p><h2 id="faq-heading" className="mt-4 text-balance text-3xl font-semibold tracking-[-.04em] text-slate-950 sm:text-4xl">A little more clarity.</h2><p className="mt-4 max-w-sm text-sm leading-6 text-slate-600">Learn the essentials about working with TS-Flow.</p><Link to="/api-docs" className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-blue-700 hover:text-blue-800">Explore platform resources <ArrowRight size={15}/></Link></div><div className="divide-y divide-slate-200 border-y border-slate-200">{faqs.map((item) => <details key={item.q} className="group py-5"><summary className="flex cursor-pointer list-none items-center justify-between gap-4 text-left text-sm font-semibold text-slate-900 marker:hidden [&::-webkit-details-marker]:hidden">{item.q}<ChevronDown size={17} className="shrink-0 text-slate-400 transition-transform group-open:rotate-180" /></summary><p className="faq-answer max-w-2xl pr-8 pt-3 text-sm leading-6 text-slate-600">{item.a}</p></details>)}</div></div></section>;
 }
 
 export function FinalCta() {
-  return <section className="bg-white px-5 py-16 sm:px-8 sm:py-20"><div className="relative mx-auto max-w-7xl overflow-hidden rounded-[28px] bg-blue-700 px-6 py-12 text-center sm:px-12 sm:py-16"><div className="absolute -right-20 -top-40 h-96 w-96 rounded-full border border-white/10" aria-hidden="true"/><div className="absolute -right-5 -top-24 h-72 w-72 rounded-full border border-white/10" aria-hidden="true"/><div className="relative mx-auto max-w-2xl"><p className="text-xs font-semibold uppercase tracking-[.19em] text-blue-100">Ready for a clearer workflow?</p><h2 className="mt-4 text-balance text-3xl font-semibold tracking-[-.04em] text-white sm:text-4xl">Make invoicing simpler. Make compliance smarter.</h2><p className="mx-auto mt-4 max-w-xl text-sm leading-7 text-blue-100/85">Bring your invoicing and compliance workflows together with TS-Flow.</p><Link to="/auth/signup" className="mt-8 inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-blue-800 shadow-sm transition hover:bg-blue-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">Get started <ArrowRight size={16}/></Link></div></div></section>;
+  return <section className="final-cta"><p className="eyebrow">Ready for a clearer workflow?</p><h2>Make invoicing simpler. Make compliance smarter.</h2><p>Bring your invoicing and compliance workflows together with TS-Flow.</p><Link to="/auth/signup" className="home-btn">Get started <ArrowRight size={16}/></Link></section>;
 }
 
 export function SiteFooter() {
-  return <footer className="border-t border-slate-200 bg-white"><div className="mx-auto grid max-w-7xl gap-10 px-5 py-12 sm:px-8 md:grid-cols-[1.4fr_1fr_1fr_1fr] lg:px-10"><div><Link to="/" className="inline-flex items-center gap-2.5"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-700 text-xs font-bold text-white">TS</span><span className="text-base font-semibold tracking-tight text-slate-950">TS-Flow</span></Link><p className="mt-4 max-w-xs text-sm leading-6 text-slate-600">Enterprise e-invoicing and compliance workflows for modern businesses.</p><a href="mailto:support@teamsource.net" className="mt-4 inline-block text-sm font-medium text-blue-700 hover:text-blue-800">support@teamsource.net</a></div><div><h3 className="text-xs font-semibold uppercase tracking-[.12em] text-slate-900">Platform</h3><div className="mt-4 space-y-3 text-sm text-slate-600"><a className="block hover:text-blue-700" href="#features">Features</a><a className="block hover:text-blue-700" href="#platform">How it works</a><a className="block hover:text-blue-700" href="#compliance">Security & compliance</a></div></div><div><h3 className="text-xs font-semibold uppercase tracking-[.12em] text-slate-900">Resources</h3><div className="mt-4 space-y-3 text-sm text-slate-600"><Link className="block hover:text-blue-700" to="/api-docs">API documentation</Link><Link className="block hover:text-blue-700" to="/sla">Service level agreement</Link><Link className="block hover:text-blue-700" to="/privacy-policy">Privacy policy</Link></div></div><div><h3 className="text-xs font-semibold uppercase tracking-[.12em] text-slate-900">Your account</h3><div className="mt-4 space-y-3 text-sm text-slate-600"><Link className="block hover:text-blue-700" to="/auth/login">Sign in</Link><Link className="block hover:text-blue-700" to="/auth/signup">Get started</Link></div></div></div><div className="border-t border-slate-100"><div className="mx-auto flex max-w-7xl flex-col gap-2 px-5 py-5 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between sm:px-8 lg:px-10"><span>© {new Date().getFullYear()} Teamsource. All rights reserved.</span><span>TS-Flow · Business invoicing & compliance</span></div></div></footer>;
+  return <footer className="border-t border-slate-200 bg-white"><div className="shell footer-links"><div className="footer-brand"><Link to="/" className="inline-flex items-center gap-2.5"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-700 text-xs font-bold text-white">TS</span><span className="text-base font-semibold tracking-tight text-slate-950">TS-Flow</span></Link><p>Business e-invoicing and compliance workflows by Teamsource.</p><img className="footer-company-logo" src="/images/companies/TEAMSOURCE%20LOGO.svg" alt="Teamsource logo" loading="lazy"/><a href="mailto:support@teamsource.net">Contact support</a></div><div className="footer-col"><h3>Platform</h3><Link to="/" >E-Invoicing</Link><a href="#management">Invoice Management</a><a href="#workflow">Invoice Workflow</a><a href="#nrs">NRS E-Invoicing</a><a href="#security">Security &amp; Compliance</a></div><div className="footer-col"><h3>Resources</h3><a href="/api-docs">API Documentation</a><a href="/sla">Service Level Agreement</a><a href="/privacy-policy">Privacy Policy</a><a href="#insights">Insights</a><a href="#resources">Frequently asked questions</a></div><div className="footer-col"><h3>Company</h3><a href="mailto:support@teamsource.net">Contact Teamsource</a><a href="#stories">Illustrative Use Cases</a><a href="mailto:support@teamsource.net">Contact</a></div><div className="footer-col"><h3>Account</h3><a href="/auth/login">Sign in</a><a href="/auth/signup">Get started</a></div></div><div className="footer-bottom"><div className="shell"><span>© {new Date().getFullYear()} Teamsource. All rights reserved.</span><span>TS-Flow · E-invoicing &amp; business workflows</span></div></div></footer>;
 }
