@@ -16,6 +16,7 @@
 @media(max-width:460px){.trusted-companies .company-logo-item{width:200px;min-width:200px;height:100px;padding:12px 16px}}
 
 .ecosystem-module-status{border:1px solid #dde6f1;border-radius:999px;padding:5px 8px;color:#66758a;background:#f8fafc;font-size:10px;font-weight:700;white-space:nowrap}
+.footer-company-logo{display:block;width:min(180px,100%);height:34px;margin:9px 0;object-fit:contain;object-position:left center}
 
 .stories-disclosure{max-width:860px;margin:-10px 0 24px;padding:11px 14px;border-left:3px solid #9db8e7;border-radius:0 8px 8px 0;background:#eef3fb;color:#50627c;font-size:11px;line-height:1.65}
 .customer-story-layout{align-items:stretch}
