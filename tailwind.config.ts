@@ -12,6 +12,16 @@ export default {
       screens: { "2xl": "1400px" },
     },
     extend: {
+      fontSize: {
+        xs: ["var(--font-size-xs)", { lineHeight: "1rem" }],
+        sm: ["var(--font-size-sm)", { lineHeight: "1.375rem" }],
+        base: ["var(--font-size-base)", { lineHeight: "1.5rem" }],
+        lg: ["var(--font-size-lg)", { lineHeight: "1.75rem" }],
+        xl: ["var(--font-size-xl)", { lineHeight: "1.875rem" }],
+        "2xl": ["var(--font-size-2xl)", { lineHeight: "2.125rem" }],
+        "3xl": ["var(--font-size-3xl)", { lineHeight: "2.375rem" }],
+        "4xl": ["var(--font-size-4xl)", { lineHeight: "2.75rem" }],
+      },
       fontFamily: {
         sans: ["Segoe UI", "Helvetica Neue", "Arial", "sans-serif"],
       },
