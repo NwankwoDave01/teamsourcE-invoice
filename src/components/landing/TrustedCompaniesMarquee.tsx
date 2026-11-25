@@ -4,7 +4,7 @@ import { BrandImageSlot } from "./BrandImageSlot";
 function LogoTrack({ duplicate = false }: { duplicate?: boolean }) {
   return <div className="company-logo-track" aria-hidden={duplicate || undefined}>
     {companyLogos.map((company) => <div className="company-logo-item" key={`${duplicate ? "copy-" : ""}${company.name}`}>
-      <BrandImageSlot src={company.image} alt={company.alt} label="Logo asset pending" />
+      <BrandImageSlot src={company.image} alt={company.alt} label="Logo asset pending" className={company.name === "GIBADI" ? "brand-image-large" : ""} />
     </div>)}
   </div>;
 }
