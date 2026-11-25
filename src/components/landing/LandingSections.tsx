@@ -2,6 +2,9 @@ import {
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
+  Banknote,
+  Boxes,
+  Calculator,
   BadgeCheck,
   Building2,
   Check,
@@ -13,6 +16,7 @@ import {
   Gauge,
   LockKeyhole,
   Network,
+  ShoppingCart,
   ScrollText,
   ShieldCheck,
   UsersRound,
@@ -49,6 +53,36 @@ const faqs = [
   { q: "How does TS-Flow protect access to company records?", a: "Authenticated account sessions, company-scoped workspaces, and assigned member roles govern access to business records. Administrators manage team membership and available permissions." },
   { q: "Can I find out more about the public API and service terms?", a: "Visit API Documentation for public integration information, the Service Level Agreement for service terms, or the Privacy Policy for information about data handling." },
 ];
+
+const platformModules = [
+  { id: "e-invoicing", icon: FileText, name: "E-Invoicing", descriptor: "A focused foundation for digital invoicing.", details: ["Electronic invoice management", "Validation & digital signing", "NRS e-invoicing workflows"], accent: "invoice" },
+  { id: "banking", icon: Banknote, name: "Banking", descriptor: "Business banking operations and financial transaction management.", details: ["Business banking operations", "Financial transactions", "Banking-related workflows"], accent: "banking" },
+  { id: "accounting", icon: Calculator, name: "Accounting", descriptor: "A connected home for financial records and bookkeeping operations.", details: ["Financial records", "Bookkeeping", "Accounting operations & reporting"], accent: "accounting" },
+  { id: "human-resources", icon: UsersRound, name: "Human Resources", descriptor: "Workforce activities and people operations, together.", details: ["Employee management", "Workforce administration", "HR operations"], accent: "people" },
+  { id: "inventory", icon: Boxes, name: "Inventory", descriptor: "A clearer view of products and stock movement.", details: ["Product & stock management", "Inventory monitoring", "Stock operations"], accent: "inventory" },
+  { id: "sales", icon: ShoppingCart, name: "Sales", descriptor: "Customer transactions and day-to-day sales management.", details: ["Sales management", "Customer transactions", "Business sales operations"], accent: "sales" },
+];
+
+export function PlatformEcosystem() {
+  return <section className="platform-ecosystem" aria-labelledby="ecosystem-heading">
+    <div className="shell">
+      <div className="ecosystem-heading">
+        <div><p className="eyebrow">The TS-Flow platform</p><h2 id="ecosystem-heading">One platform. Every essential business operation.</h2></div>
+        <p>TS-Flow brings essential business functions together in one connected platform, helping organisations manage financial operations, workforce activities, inventory and business processes.</p>
+      </div>
+      <div className="ecosystem-grid">
+        {platformModules.map(({ id, icon: Icon, name, descriptor, details, accent }, index) => <article className={`ecosystem-module ecosystem-${accent}`} id={id} key={id}>
+          <div className="ecosystem-module-top"><span className="ecosystem-icon"><Icon size={19} strokeWidth={1.8} /></span><span className="ecosystem-number">0{index + 1}</span></div>
+          <div className="ecosystem-module-copy"><h3>{name}</h3><p>{descriptor}</p></div>
+          <ul>{details.map((detail) => <li key={detail}>{detail}</li>)}</ul>
+          <div className="module-art" aria-hidden="true"><span/><span/><span/></div>
+        </article>)}
+      </div>
+      <a className="ecosystem-security" href="#security"><span className="ecosystem-icon"><ShieldCheck size={19} strokeWidth={1.8} /></span><span><strong>Security &amp; Compliance</strong><small>Trust and governance across the platform</small></span><ArrowRight size={17} /></a>
+      <p className="ecosystem-note">A connected platform vision, bringing core business functions into one experience.</p>
+    </div>
+  </section>;
+}
 
 export function ProductPreview() {
   return (
