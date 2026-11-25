@@ -48,3 +48,38 @@
 @media(max-width:760px){.stories-disclosure{margin:-3px 0 18px;font-size:10px}.supporting-testimonials{grid-template-columns:1fr 1fr;grid-template-rows:auto;align-items:stretch}.supporting-testimonials .testimonial-card{padding:16px}.testimonial-featured .testimonial-quote{font-size:20px}}
 @media(max-width:460px){.supporting-testimonials{grid-template-columns:1fr}.testimonial-card,.testimonial-featured{padding:20px}.testimonial-featured .testimonial-quote{margin:22px 0 27px;font-size:19px}.supporting-testimonials .testimonial-card{padding:18px}}
 
+@media screen{
+  .ts-home :is(.desktop-nav,.account-links,.home-btn,.eyebrow,.hero-note,.visual-label,.visual-caption,.ecosystem-heading .eyebrow,.ecosystem-heading>p,.ecosystem-number,.ecosystem-module p,.ecosystem-module li,.ecosystem-module-status,.ecosystem-security strong,.ecosystem-security small,.ecosystem-note,.capability strong,.capability small,.section-rule h2,.micro,.company-slot.reserved,.credential strong,.credential small,.category-nav>a,.feature-copy li,.text-link,.screen-tabs button,.audit-note,.story-type,.story-label,.resource-card-head,.resource-links a,.blog-card-meta,.blog-card-foot,.blog-card-foot .text-link,.blog-state,.footer-brand>a:last-child,.footer-col h3,.footer-col>a,.footer-bottom,.stories-disclosure,.testimonial-industry,.testimonial-person h3,.testimonial-person p,.testimonial-company,.certification-strip>.shell>.eyebrow,.certification-item h3,.certification-item p,.brand-image-fallback,.company-logo-name,.mobile-product-links a,.article-back,.article-category,.article-byline,.article-body figcaption,.article-featured-image>span,.article-not-found p:not(.eyebrow)){
+    font-size:13px;
+  }
+
+  .ts-home :is(.hero-copy .intro,.ecosystem-heading>p,.ecosystem-module p,.feature-copy>p:not(.eyebrow),.editorial-heading>p,.story-copy p,.resource-card>p,.blog-card-body>p,.insights-page-intro>.shell>p:last-child,.article-excerpt,.article-body,.article-not-found p:not(.eyebrow),.final-cta>p:not(.eyebrow),.footer-brand p){
+    font-size:16px;
+    line-height:1.6;
+  }
+
+  .ts-home :is(.supporting-testimonials .testimonial-quote){
+    font-size:15px;
+    line-height:1.65;
+  }
+
+  .ts-home :is(.blog-card h3,.story-copy h3,.resource-card h3){
+    font-size:17px;
+    line-height:1.4;
+  }
+
+  .insights-page :is(.eyebrow,.text-link,.blog-card-meta,.blog-card-foot,.blog-card-foot .text-link,.blog-state,.article-back,.article-category,.article-byline,.article-body figcaption,.article-featured-image>span,.sample-disclaimer){
+    font-size:13px;
+  }
+
+  .insights-page :is(.insights-page-intro>.shell>p:last-child,.blog-card-body>p,.article-excerpt,.article-body,.article-not-found p:not(.eyebrow)){
+    font-size:16px;
+    line-height:1.6;
+  }
+
+  .insights-page .blog-card h3{
+    font-size:17px;
+    line-height:1.4;
+  }
+}
+
