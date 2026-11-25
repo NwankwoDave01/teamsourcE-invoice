@@ -55,12 +55,12 @@ const faqs = [
 ];
 
 const platformModules = [
-  { id: "e-invoicing", icon: FileText, name: "E-Invoicing", descriptor: "A focused foundation for digital invoicing.", details: ["Electronic invoice management", "Validation & digital signing", "NRS e-invoicing workflows"], accent: "invoice" },
-  { id: "banking", icon: Banknote, name: "Banking", descriptor: "Business banking operations and financial transaction management.", details: ["Business banking operations", "Financial transactions", "Banking-related workflows"], accent: "banking" },
-  { id: "accounting", icon: Calculator, name: "Accounting", descriptor: "A connected home for financial records and bookkeeping operations.", details: ["Financial records", "Bookkeeping", "Accounting operations & reporting"], accent: "accounting" },
-  { id: "human-resources", icon: UsersRound, name: "Human Resources", descriptor: "Workforce activities and people operations, together.", details: ["Employee management", "Workforce administration", "HR operations"], accent: "people" },
-  { id: "inventory", icon: Boxes, name: "Inventory", descriptor: "A clearer view of products and stock movement.", details: ["Product & stock management", "Inventory monitoring", "Stock operations"], accent: "inventory" },
-  { id: "sales", icon: ShoppingCart, name: "Sales", descriptor: "Customer transactions and day-to-day sales management.", details: ["Sales management", "Customer transactions", "Business sales operations"], accent: "sales" },
+  { id: "e-invoicing", icon: FileText, name: "E-Invoicing", descriptor: "A focused foundation for digital invoicing.", details: ["Electronic invoice management", "Validation & digital signing", "NRS e-invoicing workflows"], accent: "invoice", status: "Available" },
+  { id: "banking", icon: Banknote, name: "Banking", descriptor: "Business banking operations and financial transaction management.", details: ["Business banking operations", "Financial transactions", "Banking-related workflows"], accent: "banking", status: "Coming soon" },
+  { id: "accounting", icon: Calculator, name: "Accounting", descriptor: "A connected home for financial records and bookkeeping operations.", details: ["Financial records", "Bookkeeping", "Accounting operations & reporting"], accent: "accounting", status: "Coming soon" },
+  { id: "human-resources", icon: UsersRound, name: "Human Resources", descriptor: "Workforce activities and people operations, together.", details: ["Employee management", "Workforce administration", "HR operations"], accent: "people", status: "Coming soon" },
+  { id: "inventory", icon: Boxes, name: "Inventory", descriptor: "A clearer view of products and stock movement.", details: ["Product & stock management", "Inventory monitoring", "Stock operations"], accent: "inventory", status: "Coming soon" },
+  { id: "sales", icon: ShoppingCart, name: "Sales", descriptor: "Customer transactions and day-to-day sales management.", details: ["Sales management", "Customer transactions", "Business sales operations"], accent: "sales", status: "Coming soon" },
 ];
 
 export function PlatformEcosystem() {
@@ -71,8 +71,8 @@ export function PlatformEcosystem() {
         <p>TS-Flow brings essential business functions together in one connected platform, helping organisations manage financial operations, workforce activities, inventory and business processes.</p>
       </div>
       <div className="ecosystem-grid">
-        {platformModules.map(({ id, icon: Icon, name, descriptor, details, accent }, index) => <article className={`ecosystem-module ecosystem-${accent}`} id={id} key={id}>
-          <div className="ecosystem-module-top"><span className="ecosystem-icon"><Icon size={19} strokeWidth={1.8} /></span><span className="ecosystem-number">0{index + 1}</span></div>
+        {platformModules.map(({ id, icon: Icon, name, descriptor, details, accent, status }, index) => <article className={`ecosystem-module ecosystem-${accent}`} id={id} key={id}>
+          <div className="ecosystem-module-top"><span className="ecosystem-icon"><Icon size={19} strokeWidth={1.8} /></span><span className="ecosystem-module-status">{status}</span></div>
           <div className="ecosystem-module-copy"><h3>{name}</h3><p>{descriptor}</p></div>
           <ul>{details.map((detail) => <li key={detail}>{detail}</li>)}</ul>
           <div className="module-art" aria-hidden="true"><span/><span/><span/></div>
@@ -135,7 +135,7 @@ export function TrustStrip() {
   const marks = [
     { name: "NITDA", detail: "System Integrator Accredited", initials: "N" },
     { name: "ISO 27001", detail: "Certified", initials: "ISO" },
-    { name: "Software Quality Assurance", detail: "Approved", initials: "SQA" },
+    { name: "NDPC", detail: "Nigeria Data Protection Commission", initials: "NDPC" },
     { name: "NRS", detail: "E-Invoicing", initials: "NRS" },
   ];
   return <section aria-label="Trust and certifications" className="border-y border-slate-200/80 bg-white"><div className="mx-auto max-w-7xl px-5 py-7 sm:px-8 lg:px-10"><p className="mb-5 text-center text-[10px] font-semibold uppercase tracking-[.2em] text-slate-400">Built for business confidence and compliance</p><div className="grid grid-cols-2 gap-y-6 md:grid-cols-4">{marks.map((mark) => <div key={mark.name} className="flex items-center justify-center gap-3 px-2 md:border-r md:border-slate-100 last:border-0"><span className="flex h-10 min-w-10 items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-2 text-[10px] font-bold tracking-wide text-slate-700">{mark.initials}</span><span><span className="block text-xs font-semibold text-slate-800">{mark.name}</span><span className="mt-0.5 block text-[10px] text-slate-500">{mark.detail}</span></span></div>)}</div></div></section>;

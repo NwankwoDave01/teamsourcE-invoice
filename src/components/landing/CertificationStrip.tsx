@@ -9,7 +9,7 @@ export function CertificationStrip() {
         <div className="certification-grid">
           {certifications.map((credential) => (
             <article className="certification-item" key={credential.name}>
-              <BrandImageSlot src={credential.image} alt={credential.alt} label="Logo asset pending" />
+              {credential.image && credential.alt && <BrandImageSlot src={credential.image} alt={credential.alt} />}
               <div><h3>{credential.name}</h3><p>{credential.detail}</p></div>
             </article>
           ))}

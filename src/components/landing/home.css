@@ -15,3 +15,5 @@
 @media(max-width:760px){.trusted-companies .company-logo-track{gap:8px}.trusted-companies .company-logo-item{width:230px;min-width:230px;height:112px;padding:14px 18px}}
 @media(max-width:460px){.trusted-companies .company-logo-item{width:200px;min-width:200px;height:100px;padding:12px 16px}}
 
+.ecosystem-module-status{border:1px solid #dde6f1;border-radius:999px;padding:5px 8px;color:#66758a;background:#f8fafc;font-size:10px;font-weight:700;white-space:nowrap}
+

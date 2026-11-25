@@ -1,5 +1,3 @@
-import { sampleArticles } from "@/data/blogArticles";
-
 export type ArticleBlock =
   | { type: "paragraph"; text: string }
   | { type: "heading"; level: 2 | 3; text: string }
@@ -25,6 +23,7 @@ export interface BlogArticle {
 export interface BlogProvider {
   getArticles(): Promise<BlogArticle[]>;
   getArticle(slug: string): Promise<BlogArticle | undefined>;
+  isConfigured: boolean;
 }
 
 type WordPressPost = {
@@ -103,14 +102,18 @@ function mapWordPressPost(post: WordPressPost): BlogArticle {
 const endpoint = import.meta.env.VITE_WORDPRESS_API_URL?.replace(/\/$/, "");
 
 async function requestPublishedPosts(): Promise<BlogArticle[]> {
-  if (!endpoint) return sampleArticles;
+  if (!endpoint) return [];
   const response = await fetch(`${endpoint}/wp-json/wp/v2/posts?status=publish&_embed=1&per_page=100`);
   if (!response.ok) throw new Error(`WordPress returned ${response.status}`);
   const posts = await response.json() as WordPressPost[];
-  return posts.map(mapWordPressPost).filter((article) => article.slug && article.title);
+  return posts
+    .filter((post) => post.status === "publish")
+    .map(mapWordPressPost)
+    .filter((article) => article.slug && article.title);
 }
 
 export const blogProvider: BlogProvider = {
+  isConfigured: Boolean(endpoint),
   getArticles: requestPublishedPosts,
   async getArticle(slug) {
     const articles = await requestPublishedPosts();
