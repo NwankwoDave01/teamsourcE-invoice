@@ -8,3 +8,10 @@
 @media(max-width:460px){.insights-page .shell{width:calc(100% - 30px)}.certification-item{gap:7px;padding:5px 1px}.certification-item .brand-image-slot{width:65px;height:38px}.certification-item h3{font-size:9px}.certification-item p{font-size:7px}.certification-item .brand-image-fallback{font-size:6px}.supporting-testimonials{grid-template-columns:1fr}.blog-card{grid-template-columns:1fr}.blog-card-image{min-height:0;aspect-ratio:16/9}.blog-card-body{padding:16px}.article-byline{gap:9px}.article-byline .sample-disclaimer{width:100%}.article-featured-image{aspect-ratio:4/3}}
 @media(prefers-reduced-motion:reduce){.marquee-motion{animation:none}.marquee-viewport{overflow-x:auto;scrollbar-width:thin}.marquee-viewport .company-logo-track[aria-hidden="true"]{display:none}.blog-card,.blog-card-image img{transition:none}}
 
+.trusted-companies .company-logo-track{gap:8px;padding:0 10px}
+.trusted-companies .company-logo-item{width:290px;min-width:290px;height:136px;justify-content:center;gap:0;padding:18px 24px;border:0;border-radius:0;background:#fff;box-shadow:none}
+.trusted-companies .company-logo-item .brand-image-slot{width:100%;height:100%;border:0;border-radius:0;background:transparent}
+.trusted-companies .company-logo-item .brand-image-slot img{width:100%;height:100%;max-width:none;max-height:none;object-fit:contain}
+@media(max-width:760px){.trusted-companies .company-logo-track{gap:8px}.trusted-companies .company-logo-item{width:230px;min-width:230px;height:112px;padding:14px 18px}}
+@media(max-width:460px){.trusted-companies .company-logo-item{width:200px;min-width:200px;height:100px;padding:12px 16px}}
+
