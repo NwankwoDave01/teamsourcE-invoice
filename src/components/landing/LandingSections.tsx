@@ -78,7 +78,6 @@ export function PlatformEcosystem() {
           <div className="module-art" aria-hidden="true"><span/><span/><span/></div>
         </article>)}
       </div>
-      <a className="ecosystem-security" href="#security"><span className="ecosystem-icon"><ShieldCheck size={19} strokeWidth={1.8} /></span><span><strong>Security &amp; Compliance</strong><small>Trust and governance across the platform</small></span><ArrowRight size={17} /></a>
       <p className="ecosystem-note">A connected platform vision, bringing core business functions into one experience.</p>
     </div>
   </section>;
