@@ -48,6 +48,41 @@
 @media(max-width:760px){.stories-disclosure{margin:-3px 0 18px;font-size:10px}.supporting-testimonials{grid-template-columns:1fr 1fr;grid-template-rows:auto;align-items:stretch}.supporting-testimonials .testimonial-card{padding:16px}.testimonial-featured .testimonial-quote{font-size:20px}}
 @media(max-width:460px){.supporting-testimonials{grid-template-columns:1fr}.testimonial-card,.testimonial-featured{padding:20px}.testimonial-featured .testimonial-quote{margin:22px 0 27px;font-size:19px}.supporting-testimonials .testimonial-card{padding:18px}}
 
+@media screen{
+  .ts-home :is(.desktop-nav,.account-links,.home-btn,.eyebrow,.hero-note,.visual-label,.visual-caption,.ecosystem-heading .eyebrow,.ecosystem-heading>p,.ecosystem-number,.ecosystem-module p,.ecosystem-module li,.ecosystem-module-status,.ecosystem-security strong,.ecosystem-security small,.ecosystem-note,.capability strong,.capability small,.section-rule h2,.micro,.company-slot.reserved,.credential strong,.credential small,.category-nav>a,.feature-copy li,.text-link,.screen-tabs button,.audit-note,.story-type,.story-label,.resource-card-head,.resource-links a,.blog-card-meta,.blog-card-foot,.blog-card-foot .text-link,.blog-state,.footer-brand>a:last-child,.footer-col h3,.footer-col>a,.footer-bottom,.stories-disclosure,.testimonial-industry,.testimonial-person h3,.testimonial-person p,.testimonial-company,.certification-strip>.shell>.eyebrow,.certification-item h3,.certification-item p,.brand-image-fallback,.company-logo-name,.mobile-product-links a,.article-back,.article-category,.article-byline,.article-body figcaption,.article-featured-image>span,.article-not-found p:not(.eyebrow)){
+    font-size:13px;
+  }
+
+  .ts-home :is(.hero-copy .intro,.ecosystem-heading>p,.ecosystem-module p,.feature-copy>p:not(.eyebrow),.editorial-heading>p,.story-copy p,.resource-card>p,.blog-card-body>p,.insights-page-intro>.shell>p:last-child,.article-excerpt,.article-body,.article-not-found p:not(.eyebrow),.final-cta>p:not(.eyebrow),.footer-brand p){
+    font-size:16px;
+    line-height:1.6;
+  }
+
+  .ts-home :is(.supporting-testimonials .testimonial-quote){
+    font-size:15px;
+    line-height:1.65;
+  }
+
+  .ts-home :is(.blog-card h3,.story-copy h3,.resource-card h3){
+    font-size:17px;
+    line-height:1.4;
+  }
+
+  .insights-page :is(.eyebrow,.text-link,.blog-card-meta,.blog-card-foot,.blog-card-foot .text-link,.blog-state,.article-back,.article-category,.article-byline,.article-body figcaption,.article-featured-image>span,.sample-disclaimer){
+    font-size:13px;
+  }
+
+  .insights-page :is(.insights-page-intro>.shell>p:last-child,.blog-card-body>p,.article-excerpt,.article-body,.article-not-found p:not(.eyebrow)){
+    font-size:16px;
+    line-height:1.6;
+  }
+
+  .insights-page .blog-card h3{
+    font-size:17px;
+    line-height:1.4;
+  }
+}
+
 .feature-nrs .feature-copy{max-width:465px}
 .feature-nrs .feature-copy h2{max-width:460px}
 .feature-nrs .feature-copy ul{gap:11px;margin:22px 0 25px}
@@ -75,6 +110,4 @@
 .nrs-workflow-footer>span:last-child{margin-left:auto}
 @media(max-width:900px){.feature-nrs .feature-grid{grid-template-columns:1fr;gap:32px}.feature-nrs .feature-copy{grid-column:1;grid-row:auto}.feature-nrs .feature-stage{grid-column:1;grid-row:auto}.feature-nrs .feature-copy{max-width:620px}}
 @media(max-width:600px){.nrs-workflow-visual{padding:10px 0 0}.nrs-workflow-heading{margin-bottom:26px}.nrs-workflow-heading strong{font-size:15px}.nrs-workflow-steps{grid-template-columns:1fr;gap:0;padding-left:4px}.nrs-workflow-step{grid-template-columns:48px minmax(0,1fr);grid-template-rows:auto;align-items:center;gap:0 13px;min-height:80px;padding:10px 0}.nrs-workflow-step:not(:last-child)::after{top:58px;right:auto;bottom:-12px;left:23px;width:1px;height:auto;background:linear-gradient(#9bb8e8,#dce6f6)}.nrs-step-icon{grid-column:1;grid-row:1 / span 2;width:44px;height:44px;border-radius:14px}.nrs-step-number{position:static;grid-column:2;grid-row:1;align-self:end;margin-bottom:4px}.nrs-step-copy{grid-column:2;grid-row:2}.nrs-step-copy strong{font-size:13px}.nrs-step-copy small{font-size:11px}.nrs-workflow-footer{margin:24px 4px 0}.nrs-workflow-footer>span:last-child{font-size:10px}}
-
-.feature-copy .eyebrow{font-size:12px}
 

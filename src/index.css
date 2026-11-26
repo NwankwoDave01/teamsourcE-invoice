@@ -44,6 +44,16 @@
     --input: 220 13% 91%;
     --ring: 221.2121 83.1933% 53.3333%;
 
+    --font-size-micro: 0.75rem;
+    --font-size-xs: 0.8125rem;
+    --font-size-sm: 0.9375rem;
+    --font-size-base: 1.0625rem;
+    --font-size-lg: 1.1875rem;
+    --font-size-xl: 1.3125rem;
+    --font-size-2xl: 1.625rem;
+    --font-size-3xl: 2rem;
+    --font-size-4xl: 2.5rem;
+
     --radius: 0.5rem;
 
     /* Navigation — enterprise navy */
@@ -111,6 +121,7 @@
   }
   body {
     @apply bg-background text-foreground antialiased;
+    font-size: var(--font-size-base);
     font-feature-settings: "tnum";
     line-height: 1.5;
   }
@@ -152,6 +163,20 @@
   .text-balance { text-wrap: balance; }
   .scrollbar-thin::-webkit-scrollbar { width: 8px; height: 8px; }
   .scrollbar-thin::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 4px; }
+}
+
+@layer utilities {
+  @media screen {
+    body [class*="text-[9px]"],
+    body [class*="text-[10px]"] {
+      font-size: var(--font-size-micro);
+    }
+
+    body [class*="text-[11px]"],
+    body [class*="text-[12px]"] {
+      font-size: var(--font-size-xs);
+    }
+  }
 }
 
 @media print {
